@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/home/application/home_controller.dart';
 import '../features/home/presentation/home_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import 'settings/settings_page.dart';
@@ -8,14 +10,14 @@ import 'theme/app_tokens.dart';
 
 enum AppSection { home, chat, analytics, goals, profile }
 
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   AppSection _section = AppSection.home;
   bool _voiceEntryRequested = false;
 
@@ -55,7 +57,9 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  void _openSessionExpired() {
+  Future<void> _openSessionExpired() async {
+    await ref.read(homeControllerProvider.notifier).clearSessionForSignOut();
+    if (!mounted) return;
     final l10n = AppLocalizations.of(context);
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
