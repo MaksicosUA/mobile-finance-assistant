@@ -47,7 +47,7 @@ final class HomePartialResult extends HomeRepositoryResult {
 final class HomeOfflineResult extends HomeRepositoryResult {
   const HomeOfflineResult(this.snapshot);
 
-  /// A synthetic cached snapshot in Slice 2; no persistence is implemented.
+  /// The most recent valid cached snapshot retained while the network is down.
   final HomeSnapshot snapshot;
 }
 
@@ -64,6 +64,24 @@ final class HomeFailureResult extends HomeRepositoryResult {
   final String requestId;
 }
 
+@immutable
+final class HomeCachedSnapshot {
+  const HomeCachedSnapshot({required this.snapshot, required this.isStale});
+
+  final HomeSnapshot snapshot;
+  final bool isStale;
+}
+
 abstract interface class HomeRepository {
   Future<HomeRepositoryResult> fetchHome({bool forceRefresh = false});
+}
+
+/// Optional cache-first capability implemented by the network repository.
+abstract interface class HomeCacheReader {
+  Future<HomeCachedSnapshot?> readCachedHome();
+}
+
+/// Invalidates a replaceable snapshot after a confirmed financial operation.
+abstract interface class HomeCacheInvalidator {
+  Future<void> invalidateHomeCache();
 }
