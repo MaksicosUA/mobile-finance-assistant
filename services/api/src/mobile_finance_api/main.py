@@ -1,16 +1,22 @@
-"""FastAPI application factory for the read-only Home v1 slice."""
+"""FastAPI application factory for authentication and read-only Home v1."""
 
 from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Literal, cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.datastructures import MutableHeaders
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .auth import (
@@ -19,6 +25,8 @@ from .auth import (
     DenyAllCurrentUserAuthenticator,
     current_user,
 )
+from .auth_routes import router as auth_router
+from .auth_service import AuthenticationService, UnavailableAuthenticationService
 from .models import HomeResponse
 from .repository import HomeQuery, HomeRepository, UnavailableHomeRepository
 
@@ -62,6 +70,9 @@ class RequestIdMiddleware:
                         headers["Vary"] = (
                             f"{vary}, Authorization" if vary else "Authorization"
                         )
+                if str(scope.get("path", "")).startswith("/api/v1/auth/"):
+                    headers["Cache-Control"] = "no-store"
+                    headers["Pragma"] = "no-cache"
             await send(message)
 
         await self._app(scope, receive, send_with_request_id)
@@ -143,11 +154,13 @@ async def get_home(
         raw_home = await repository.get_home(user=user, query=query)
         home = HomeResponse.model_validate(raw_home)
         content = home.model_dump_json(by_alias=True).encode("utf-8")
-    except Exception as error:
-        raise HTTPException(
+    except Exception:
+        # Return a sanitized response instead of chaining an exception whose
+        # locals may contain a future financial Home snapshot.
+        return JSONResponse(
             status_code=503,
-            detail="Home temporarily unavailable",
-        ) from error
+            content={"detail": "Home temporarily unavailable"},
+        )
     etag = _strong_etag(content)
     headers = {**_CACHE_HEADERS, "ETag": etag}
 
@@ -165,12 +178,23 @@ def create_app(
     *,
     home_repository: HomeRepository | None = None,
     current_user_authenticator: CurrentUserAuthenticator | None = None,
+    authentication_service: AuthenticationService | None = None,
+    database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            if database_engine is not None:
+                await database_engine.dispose()
 
     application = FastAPI(
         title="Mobile Finance Assistant API",
         version="1.0.0",
+        lifespan=lifespan,
     )
     application.state.home_repository = (
         home_repository if home_repository is not None else UnavailableHomeRepository()
@@ -180,7 +204,34 @@ def create_app(
         if current_user_authenticator is not None
         else DenyAllCurrentUserAuthenticator()
     )
+    application.state.authentication_service = (
+        authentication_service
+        if authentication_service is not None
+        else UnavailableAuthenticationService()
+    )
+
+    @application.exception_handler(RequestValidationError)
+    async def redacted_request_validation_error(
+        request: Request,
+        error: RequestValidationError,
+    ) -> Response:
+        if not request.url.path.startswith("/api/v1/auth/"):
+            return await request_validation_exception_handler(request, error)
+        safe_errors = [
+            {
+                key: value
+                for key, value in item.items()
+                if key not in {"input", "ctx", "url"}
+            }
+            for item in error.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(safe_errors)},
+        )
+
     application.add_middleware(RequestIdMiddleware)
+    application.include_router(auth_router)
     application.include_router(router)
     return application
 

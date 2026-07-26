@@ -3,7 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/generated/app_localizations.dart';
-import 'app_shell.dart';
+import '../features/auth/presentation/auth_gate.dart';
 import 'settings/app_settings_controller.dart';
 import 'theme/app_theme.dart';
 
@@ -28,7 +28,7 @@ class FinanceApp extends ConsumerWidget {
       darkTheme: AppTheme.dark(settings.accent),
       themeMode: settings.themeMode,
       themeAnimationDuration: Duration.zero,
-      home: const AppShell(),
+      home: const AuthGate(),
     );
   }
 }

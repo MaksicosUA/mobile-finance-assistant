@@ -9,7 +9,9 @@ import 'app_settings.dart';
 import 'app_settings_controller.dart';
 
 class SettingsPage extends ConsumerWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.onSignOut});
+
+  final Future<void> Function()? onSignOut;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -112,12 +114,51 @@ class SettingsPage extends ConsumerWidget {
                   l10n.settingsNote,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                if (onSignOut != null) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  _SectionLabel(l10n.accountSection),
+                  const SizedBox(height: AppSpacing.sm),
+                  Semantics(
+                    button: true,
+                    child: OutlinedButton.icon(
+                      key: const Key('settings-sign-out'),
+                      onPressed: () => _confirmSignOut(context),
+                      icon: const Icon(Icons.logout_rounded),
+                      label: Text(l10n.signOutAction),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.signOutDialogTitle),
+        content: Text(l10n.signOutDialogDescription),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.cancelAction),
+          ),
+          FilledButton(
+            key: const Key('confirm-sign-out'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.signOutAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    Navigator.of(context).pop();
+    await onSignOut?.call();
   }
 
   String _accentLabel(AppLocalizations l10n, AppAccent accent) {

@@ -734,6 +734,222 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'На главную'**
   String get backHome;
+
+  /// No description provided for @authLoadingLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверяем защищённую сессию'**
+  String get authLoadingLabel;
+
+  /// No description provided for @loginTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вход'**
+  String get loginTitle;
+
+  /// No description provided for @loginDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Войдите, чтобы открыть свою финансовую картину.'**
+  String get loginDescription;
+
+  /// No description provided for @registerTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Создание аккаунта'**
+  String get registerTitle;
+
+  /// No description provided for @registerDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Создайте защищённый аккаунт, чтобы начать вести финансы.'**
+  String get registerDescription;
+
+  /// No description provided for @displayNameField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Ваше имя'**
+  String get displayNameField;
+
+  /// No description provided for @displayNameRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите имя'**
+  String get displayNameRequired;
+
+  /// No description provided for @emailField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Электронная почта'**
+  String get emailField;
+
+  /// No description provided for @emailInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите корректный адрес электронной почты'**
+  String get emailInvalid;
+
+  /// No description provided for @passwordField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пароль'**
+  String get passwordField;
+
+  /// No description provided for @confirmPasswordField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторите пароль'**
+  String get confirmPasswordField;
+
+  /// No description provided for @passwordRequirements.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не менее 12 символов'**
+  String get passwordRequirements;
+
+  /// No description provided for @passwordInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пароль должен содержать от 12 до 128 символов'**
+  String get passwordInvalid;
+
+  /// No description provided for @passwordsDoNotMatch.
+  ///
+  /// In ru, this message translates to:
+  /// **'Пароли не совпадают'**
+  String get passwordsDoNotMatch;
+
+  /// No description provided for @showPassword.
+  ///
+  /// In ru, this message translates to:
+  /// **'Показать пароль'**
+  String get showPassword;
+
+  /// No description provided for @hidePassword.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скрыть пароль'**
+  String get hidePassword;
+
+  /// No description provided for @loginAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Войти'**
+  String get loginAction;
+
+  /// No description provided for @registerAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Создать аккаунт'**
+  String get registerAction;
+
+  /// No description provided for @createAccountAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет аккаунта? Создать'**
+  String get createAccountAction;
+
+  /// No description provided for @haveAccountAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Уже есть аккаунт? Войти'**
+  String get haveAccountAction;
+
+  /// No description provided for @authSessionExpiredNotice.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сессия завершена. Войдите снова.'**
+  String get authSessionExpiredNotice;
+
+  /// No description provided for @signedOutNotice.
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы вышли из аккаунта.'**
+  String get signedOutNotice;
+
+  /// No description provided for @invalidCredentialsError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось войти. Проверьте почту и пароль.'**
+  String get invalidCredentialsError;
+
+  /// No description provided for @emailInUseError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось создать аккаунт. Возможно, эта почта уже используется.'**
+  String get emailInUseError;
+
+  /// No description provided for @authInvalidInputError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверьте введённые данные и попробуйте снова.'**
+  String get authInvalidInputError;
+
+  /// No description provided for @authThrottledError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Слишком много попыток. Подождите и попробуйте снова.'**
+  String get authThrottledError;
+
+  /// No description provided for @authOfflineError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нет соединения с интернетом. Проверьте сеть и повторите попытку.'**
+  String get authOfflineError;
+
+  /// No description provided for @authTimeoutError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер не ответил вовремя. Попробуйте снова.'**
+  String get authTimeoutError;
+
+  /// No description provided for @authServiceError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервис входа временно недоступен. Попробуйте позже.'**
+  String get authServiceError;
+
+  /// No description provided for @authUnexpectedError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось завершить вход. Попробуйте снова.'**
+  String get authUnexpectedError;
+
+  /// No description provided for @authSecureStorageError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось открыть защищённое хранилище устройства.'**
+  String get authSecureStorageError;
+
+  /// No description provided for @accountSection.
+  ///
+  /// In ru, this message translates to:
+  /// **'АККАУНТ'**
+  String get accountSection;
+
+  /// No description provided for @signOutAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выйти из аккаунта'**
+  String get signOutAction;
+
+  /// No description provided for @signOutDialogTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выйти из аккаунта?'**
+  String get signOutDialogTitle;
+
+  /// No description provided for @signOutDialogDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Для следующего входа потребуется снова ввести почту и пароль.'**
+  String get signOutDialogDescription;
+
+  /// No description provided for @cancelAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get cancelAction;
 }
 
 class _AppLocalizationsDelegate

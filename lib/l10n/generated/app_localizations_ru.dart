@@ -372,4 +372,123 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get backHome => 'На главную';
+
+  @override
+  String get authLoadingLabel => 'Проверяем защищённую сессию';
+
+  @override
+  String get loginTitle => 'Вход';
+
+  @override
+  String get loginDescription =>
+      'Войдите, чтобы открыть свою финансовую картину.';
+
+  @override
+  String get registerTitle => 'Создание аккаунта';
+
+  @override
+  String get registerDescription =>
+      'Создайте защищённый аккаунт, чтобы начать вести финансы.';
+
+  @override
+  String get displayNameField => 'Ваше имя';
+
+  @override
+  String get displayNameRequired => 'Укажите имя';
+
+  @override
+  String get emailField => 'Электронная почта';
+
+  @override
+  String get emailInvalid => 'Введите корректный адрес электронной почты';
+
+  @override
+  String get passwordField => 'Пароль';
+
+  @override
+  String get confirmPasswordField => 'Повторите пароль';
+
+  @override
+  String get passwordRequirements => 'Не менее 12 символов';
+
+  @override
+  String get passwordInvalid => 'Пароль должен содержать от 12 до 128 символов';
+
+  @override
+  String get passwordsDoNotMatch => 'Пароли не совпадают';
+
+  @override
+  String get showPassword => 'Показать пароль';
+
+  @override
+  String get hidePassword => 'Скрыть пароль';
+
+  @override
+  String get loginAction => 'Войти';
+
+  @override
+  String get registerAction => 'Создать аккаунт';
+
+  @override
+  String get createAccountAction => 'Нет аккаунта? Создать';
+
+  @override
+  String get haveAccountAction => 'Уже есть аккаунт? Войти';
+
+  @override
+  String get authSessionExpiredNotice => 'Сессия завершена. Войдите снова.';
+
+  @override
+  String get signedOutNotice => 'Вы вышли из аккаунта.';
+
+  @override
+  String get invalidCredentialsError =>
+      'Не удалось войти. Проверьте почту и пароль.';
+
+  @override
+  String get emailInUseError =>
+      'Не удалось создать аккаунт. Возможно, эта почта уже используется.';
+
+  @override
+  String get authInvalidInputError =>
+      'Проверьте введённые данные и попробуйте снова.';
+
+  @override
+  String get authThrottledError =>
+      'Слишком много попыток. Подождите и попробуйте снова.';
+
+  @override
+  String get authOfflineError =>
+      'Нет соединения с интернетом. Проверьте сеть и повторите попытку.';
+
+  @override
+  String get authTimeoutError => 'Сервер не ответил вовремя. Попробуйте снова.';
+
+  @override
+  String get authServiceError =>
+      'Сервис входа временно недоступен. Попробуйте позже.';
+
+  @override
+  String get authUnexpectedError =>
+      'Не удалось завершить вход. Попробуйте снова.';
+
+  @override
+  String get authSecureStorageError =>
+      'Не удалось открыть защищённое хранилище устройства.';
+
+  @override
+  String get accountSection => 'АККАУНТ';
+
+  @override
+  String get signOutAction => 'Выйти из аккаунта';
+
+  @override
+  String get signOutDialogTitle => 'Выйти из аккаунта?';
+
+  @override
+  String get signOutDialogDescription =>
+      'Для следующего входа потребуется снова ввести почту и пароль.';
+
+  @override
+  String get cancelAction => 'Отмена';
 }

@@ -5,6 +5,7 @@ import 'app/app.dart';
 import 'app/privacy/app_switcher_privacy.dart';
 import 'app/settings/app_settings_controller.dart';
 import 'app/settings/app_settings_store.dart';
+import 'core/network/api_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,7 +13,12 @@ Future<void> main() async {
   const settingsStore = SharedPreferencesAppSettingsStore();
   final initialSettings = await settingsStore.load();
   const appSwitcherPrivacy = PlatformAppSwitcherPrivacy();
-  await appSwitcherPrivacy.setProtected(initialSettings.privacyMode);
+  // Authentication fields may contain personal data. Network builds begin
+  // protected and AuthGate restores the user's privacy preference only after
+  // a valid local session is established.
+  await appSwitcherPrivacy.setProtected(
+    isNetworkBackendConfigured || initialSettings.privacyMode,
+  );
 
   runApp(
     ProviderScope(
