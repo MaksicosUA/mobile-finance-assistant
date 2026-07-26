@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_config.dart';
+import '../../auth/application/auth_controller.dart';
 import '../data/home_api.dart';
 import '../data/home_cache.dart';
 import '../data/home_repository.dart';
@@ -15,6 +17,9 @@ import 'home_session_recovery.dart';
 import 'home_state.dart';
 
 export 'home_state.dart';
+export '../../auth/application/auth_controller.dart'
+    show authSessionEpochProvider, homeSessionStoreProvider;
+export '../data/home_cache.dart' show homeCacheProvider;
 
 const _homeFixture = String.fromEnvironment(
   'HOME_FIXTURE',
@@ -24,50 +29,19 @@ const _homeScenario = String.fromEnvironment(
   'HOME_SCENARIO',
   defaultValue: 'populated',
 );
-const _homeApiBaseUrl = String.fromEnvironment('HOME_API_BASE_URL');
 const _homeApiTimezone = String.fromEnvironment(
   'HOME_API_TIMEZONE',
   defaultValue: 'Europe/Berlin',
 );
 
-final homeCacheProvider = Provider<HomeCache>(
-  (ref) => EncryptedFileHomeCache(),
-);
-
-final homeSessionEpochProvider = NotifierProvider<HomeSessionEpoch, int>(
-  HomeSessionEpoch.new,
-);
-
-class HomeSessionEpoch extends Notifier<int> {
-  @override
-  int build() => 0;
-
-  void advance() => state += 1;
-}
-
-final homeSessionStoreProvider = Provider<HomeSessionStore>((ref) {
-  final cache = ref.watch(homeCacheProvider);
-  return SecureHomeSessionStore(
-    beforeSessionChange: () async {
-      ref.read(homeSessionEpochProvider.notifier).advance();
-      ref.read(homeControllerProvider.notifier).handleSessionChanging();
-      await cache.clear();
-    },
-    afterTokenRefresh: () async {
-      ref.read(homeSessionEpochProvider.notifier).advance();
-      ref.read(homeControllerProvider.notifier).handleSessionChanging();
-    },
-  );
-});
-
 final homeRepositoryProvider = Provider<HomeRepository>((ref) {
-  if (_homeApiBaseUrl.isNotEmpty) {
+  if (isNetworkBackendConfigured) {
     final dio = Dio();
     ref.onDispose(() => dio.close(force: true));
     return NetworkHomeRepository(
       api: HomeApi(
         dio: dio,
-        baseUri: Uri.parse(_homeApiBaseUrl),
+        baseUri: Uri.parse(configuredApiBaseUrl),
         timezone: _homeApiTimezone,
       ),
       cache: ref.watch(homeCacheProvider),
@@ -96,10 +70,17 @@ class HomeController extends Notifier<HomeState> {
   var _reloadAfterInFlight = false;
   var _authRefreshAttempted = false;
 
-  int get _sessionEpoch => ref.read(homeSessionEpochProvider);
+  int get _sessionEpoch => ref.read(authSessionEpochProvider);
 
   @override
-  HomeState build() => const HomeLoading();
+  HomeState build() {
+    // Every credential/account epoch resets retained presentation state before
+    // the next request, preventing a previous account snapshot from flashing
+    // during login or account replacement.
+    ref.watch(authSessionEpochProvider);
+    _authRefreshAttempted = false;
+    return const HomeLoading();
+  }
 
   void handleSessionChanging() {
     _authRefreshAttempted = false;
@@ -332,10 +313,18 @@ class HomeController extends Notifier<HomeState> {
         }
         authRequestId = retryResult.requestId;
         if (retryEpoch != _sessionEpoch) return;
-      } else {
+      } else if (recoveryResult == HomeSessionRecoveryResult.signOutRequired) {
         if (!_isSameSession(sessionBeforeRecovery, sessionAfterRecovery)) {
           return;
         }
+      } else {
+        _authRefreshAttempted = false;
+        _showFailure(
+          type: HomeFailureType.serviceUnavailable,
+          requestId: authRequestId,
+          retainedSnapshot: retainedSnapshot,
+        );
+        return;
       }
     }
 

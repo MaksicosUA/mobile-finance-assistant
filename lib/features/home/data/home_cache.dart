@@ -5,9 +5,14 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 typedef HomeCacheDirectoryProvider = Future<Directory> Function();
+
+final homeCacheProvider = Provider<HomeCache>(
+  (ref) => EncryptedFileHomeCache(),
+);
 
 /// A validated Home response together with its cache metadata.
 ///

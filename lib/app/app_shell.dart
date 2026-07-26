@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/home/application/home_controller.dart';
 import '../features/home/presentation/home_page.dart';
+import '../features/auth/application/auth_controller.dart';
 import '../l10n/generated/app_localizations.dart';
+import '../core/network/api_config.dart';
 import 'settings/settings_page.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_tokens.dart';
@@ -36,9 +38,15 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   void _openSettings() {
-    Navigator.of(
-      context,
-    ).push<void>(MaterialPageRoute<void>(builder: (_) => const SettingsPage()));
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsPage(
+          onSignOut: isNetworkBackendConfigured
+              ? ref.read(authControllerProvider.notifier).signOut
+              : null,
+        ),
+      ),
+    );
   }
 
   void _openNotifications() {
@@ -58,6 +66,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Future<void> _openSessionExpired() async {
+    if (isNetworkBackendConfigured) {
+      await ref.read(authControllerProvider.notifier).requireSignIn();
+      return;
+    }
     await ref.read(homeControllerProvider.notifier).clearSessionForSignOut();
     if (!mounted) return;
     final l10n = AppLocalizations.of(context);
