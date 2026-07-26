@@ -1,7 +1,10 @@
 {
   "@@locale": "ru",
   "appTitle": "Мои финансы",
-  "defaultUserName": "Пользователь",
+  "greetingMorningNeutral": "Доброе утро",
+  "greetingDayNeutral": "Добрый день",
+  "greetingEveningNeutral": "Добрый вечер",
+  "greetingNightNeutral": "Доброй ночи",
   "greetingMorning": "Доброе утро, {userName}",
   "@greetingMorning": {
     "placeholders": {

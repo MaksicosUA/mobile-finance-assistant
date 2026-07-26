@@ -12,9 +12,17 @@ HomeGreetingPeriod homeGreetingPeriod(DateTime localNow) {
 
 String localizedHomeGreeting(
   AppLocalizations l10n, {
-  required String userName,
+  required String? userName,
   required DateTime localNow,
 }) {
+  if (userName == null) {
+    return switch (homeGreetingPeriod(localNow)) {
+      HomeGreetingPeriod.morning => l10n.greetingMorningNeutral,
+      HomeGreetingPeriod.day => l10n.greetingDayNeutral,
+      HomeGreetingPeriod.evening => l10n.greetingEveningNeutral,
+      HomeGreetingPeriod.night => l10n.greetingNightNeutral,
+    };
+  }
   return switch (homeGreetingPeriod(localNow)) {
     HomeGreetingPeriod.morning => l10n.greetingMorning(userName),
     HomeGreetingPeriod.day => l10n.greetingDay(userName),

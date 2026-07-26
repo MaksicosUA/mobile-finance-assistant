@@ -100,11 +100,29 @@ abstract class AppLocalizations {
   /// **'Мои финансы'**
   String get appTitle;
 
-  /// No description provided for @defaultUserName.
+  /// No description provided for @greetingMorningNeutral.
   ///
   /// In ru, this message translates to:
-  /// **'Пользователь'**
-  String get defaultUserName;
+  /// **'Доброе утро'**
+  String get greetingMorningNeutral;
+
+  /// No description provided for @greetingDayNeutral.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добрый день'**
+  String get greetingDayNeutral;
+
+  /// No description provided for @greetingEveningNeutral.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добрый вечер'**
+  String get greetingEveningNeutral;
+
+  /// No description provided for @greetingNightNeutral.
+  ///
+  /// In ru, this message translates to:
+  /// **'Доброй ночи'**
+  String get greetingNightNeutral;
 
   /// No description provided for @greetingMorning.
   ///

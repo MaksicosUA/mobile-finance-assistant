@@ -106,10 +106,7 @@ class _HomePageState extends ConsumerState<HomePage>
     final l10n = AppLocalizations.of(context);
     final homeState = ref.watch(homeControllerProvider);
     final settings = ref.watch(appSettingsControllerProvider);
-    final userName = switch (homeState) {
-      HomeEmpty(:final data) => data.userName,
-      _ => homeState.retainedSnapshot?.userName ?? l10n.defaultUserName,
-    };
+    final userName = homeState.knownUserName;
     final materialL10n = MaterialLocalizations.of(context);
     final dateLabel = sentenceCase(materialL10n.formatFullDate(_localNow));
 
@@ -139,7 +136,7 @@ class _HomePageState extends ConsumerState<HomePage>
                   dateLabel: dateLabel,
                   notificationsLabel: l10n.notificationsLabel,
                   settingsLabel: l10n.openSettingsLabel,
-                  avatarInitial: userName.characters.first.toUpperCase(),
+                  avatarInitial: userName?.characters.first.toUpperCase(),
                   onNotificationsPressed: widget.onNotificationsPressed,
                   onOpenSettings: widget.onOpenSettings,
                 ),

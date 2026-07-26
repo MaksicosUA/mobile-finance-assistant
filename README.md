@@ -105,10 +105,14 @@ loopback through ADB. Release builds still require HTTPS.
 
 ```bash
 adb reverse tcp:8000 tcp:8000
-flutter run \
-  --dart-define=API_BASE_URL=http://127.0.0.1:8000 \
-  --dart-define=HOME_API_TIMEZONE=Europe/Berlin
+tool/build_android_network_debug.sh --install
 ```
+
+The script always supplies the authenticated API defines and writes the
+distinct artifact
+`build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk`.
+Running a plain `flutter build apk` intentionally creates the fixture build and
+must not be installed over an account-testing build.
 
 Access and refresh tokens, their expiry metadata, the opaque account cache
 scope, and a session revision are stored as one versioned value in platform

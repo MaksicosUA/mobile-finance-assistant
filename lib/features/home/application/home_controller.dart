@@ -190,6 +190,7 @@ class HomeController extends Notifier<HomeState> {
     final sessionEpoch = _sessionEpoch;
     _activeRequestEpoch = sessionEpoch;
     var effectiveSnapshot = retainedSnapshot;
+    var effectiveUserName = retainedSnapshot?.userName ?? state.knownUserName;
 
     try {
       final repository = ref.read(homeRepositoryProvider);
@@ -199,6 +200,8 @@ class HomeController extends Notifier<HomeState> {
           try {
             final cached = await cacheReader.readCachedHome();
             effectiveSnapshot = cached?.snapshot;
+            effectiveUserName =
+                effectiveSnapshot?.userName ?? effectiveUserName;
           } catch (_) {
             effectiveSnapshot = null;
           }
@@ -210,7 +213,7 @@ class HomeController extends Notifier<HomeState> {
           (showRetainedRefresh || readCacheFirst)) {
         state = HomeRefreshing(effectiveSnapshot);
       } else {
-        state = const HomeLoading();
+        state = HomeLoading(userName: effectiveUserName);
       }
 
       final result = await repository.fetchHome(forceRefresh: forceRefresh);
@@ -218,6 +221,7 @@ class HomeController extends Notifier<HomeState> {
       await _applyResult(
         result,
         retainedSnapshot: effectiveSnapshot,
+        retainedUserName: effectiveUserName,
         forceRefresh: forceRefresh,
         sessionEpoch: sessionEpoch,
       );
@@ -227,6 +231,7 @@ class HomeController extends Notifier<HomeState> {
         type: HomeFailureType.unknown,
         requestId: 'req_local_unexpected',
         retainedSnapshot: effectiveSnapshot,
+        retainedUserName: effectiveUserName,
       );
     } finally {
       _requestInFlight = false;
@@ -241,6 +246,7 @@ class HomeController extends Notifier<HomeState> {
   Future<void> _applyResult(
     HomeRepositoryResult result, {
     required HomeSnapshot? retainedSnapshot,
+    required String? retainedUserName,
     required bool forceRefresh,
     required int sessionEpoch,
   }) async {
@@ -263,11 +269,13 @@ class HomeController extends Notifier<HomeState> {
           type: type,
           requestId: requestId,
           retainedSnapshot: retainedSnapshot,
+          retainedUserName: retainedUserName,
         );
       case HomeAuthExpiredResult(:final requestId):
         await _recoverAuthentication(
           requestId: requestId,
           retainedSnapshot: retainedSnapshot,
+          retainedUserName: retainedUserName,
           forceRefresh: forceRefresh,
           sessionEpoch: sessionEpoch,
         );
@@ -277,6 +285,7 @@ class HomeController extends Notifier<HomeState> {
   Future<void> _recoverAuthentication({
     required String requestId,
     required HomeSnapshot? retainedSnapshot,
+    required String? retainedUserName,
     required bool forceRefresh,
     required int sessionEpoch,
   }) async {
@@ -309,6 +318,7 @@ class HomeController extends Notifier<HomeState> {
           await _applyResult(
             retryResult,
             retainedSnapshot: retainedSnapshot,
+            retainedUserName: retainedUserName,
             forceRefresh: forceRefresh,
             sessionEpoch: retryEpoch,
           );
@@ -326,6 +336,7 @@ class HomeController extends Notifier<HomeState> {
           type: HomeFailureType.serviceUnavailable,
           requestId: authRequestId,
           retainedSnapshot: retainedSnapshot,
+          retainedUserName: retainedUserName,
         );
         return;
       }
@@ -334,6 +345,7 @@ class HomeController extends Notifier<HomeState> {
     state = HomeAuthRequired(
       requestId: authRequestId,
       snapshot: retainedSnapshot,
+      userName: retainedUserName,
     );
   }
 
@@ -363,9 +375,14 @@ class HomeController extends Notifier<HomeState> {
     required HomeFailureType type,
     required String requestId,
     required HomeSnapshot? retainedSnapshot,
+    required String? retainedUserName,
   }) {
     state = retainedSnapshot == null
-        ? HomeFailure(type: type, requestId: requestId)
+        ? HomeFailure(
+            type: type,
+            requestId: requestId,
+            userName: retainedUserName,
+          )
         : HomeRefreshFailure(
             snapshot: retainedSnapshot,
             type: type,

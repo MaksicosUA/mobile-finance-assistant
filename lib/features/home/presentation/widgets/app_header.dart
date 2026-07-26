@@ -19,7 +19,7 @@ class AppHeader extends StatelessWidget {
   final String dateLabel;
   final String notificationsLabel;
   final String settingsLabel;
-  final String avatarInitial;
+  final String? avatarInitial;
   final VoidCallback onNotificationsPressed;
   final VoidCallback onOpenSettings;
 
@@ -97,14 +97,19 @@ class AppHeader extends StatelessWidget {
                 onTap: onOpenSettings,
                 borderRadius: BorderRadius.circular(AppRadius.card),
                 child: Center(
-                  child: Text(
-                    avatarInitial,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: avatarInitial == null
+                      ? const Icon(
+                          Icons.person_outline_rounded,
+                          color: Colors.white,
+                        )
+                      : Text(
+                          avatarInitial!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
             ),
