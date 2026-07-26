@@ -18,7 +18,7 @@ class HomeEmptyView extends StatelessWidget {
   final String description;
   final String voiceLabel;
   final String voiceSemanticsLabel;
-  final VoidCallback onVoicePressed;
+  final VoidCallback? onVoicePressed;
 
   @override
   Widget build(BuildContext context) {

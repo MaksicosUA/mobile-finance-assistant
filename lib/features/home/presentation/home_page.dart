@@ -193,13 +193,15 @@ class _HomeStateBody extends StatelessWidget {
     if (state is HomeLoading) {
       return HomeLoadingView(label: l10n.loadingLabel);
     }
-    if (state is HomeEmpty) {
+    if (state case HomeEmpty(:final data)) {
       return HomeEmptyView(
         title: l10n.emptyTitle,
         description: l10n.emptyDescription,
         voiceLabel: l10n.addByVoice,
         voiceSemanticsLabel: l10n.voiceEntryLabel,
-        onVoicePressed: onVoicePressed,
+        onVoicePressed: data.availableActions.contains(HomeAction.voiceEntry)
+            ? onVoicePressed
+            : null,
       );
     }
     if (state case HomeFailure(:final requestId)) {
