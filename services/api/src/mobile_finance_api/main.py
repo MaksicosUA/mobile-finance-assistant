@@ -140,6 +140,7 @@ router = APIRouter()
         304: {"description": "The authenticated representation is unchanged"},
         401: {"description": "Authentication is required"},
         422: {"description": "Unsupported period or invalid IANA timezone"},
+        503: {"description": "The Home projection is temporarily unavailable"},
     },
 )
 async def get_home(

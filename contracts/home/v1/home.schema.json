@@ -168,7 +168,7 @@
           "status": {
             "type": "string",
             "minLength": 1,
-            "description": "Open enum. Known v1 values: confirmed, pending."
+            "description": "Open enum. Home v1 emits confirmed transactions."
           }
         }
       }

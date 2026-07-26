@@ -158,6 +158,10 @@ class HomeMonthSummary(ApiModel):
     def boundaries_are_ordered(self) -> Self:
         if self.to < self.from_:
             raise ValueError("month summary end precedes its start")
+        if self.income < 0 or self.expense < 0:
+            raise ValueError("month income and expense cannot be negative")
+        if self.net_flow != self.income - self.expense:
+            raise ValueError("month net flow must equal income minus expense")
         return self
 
 
@@ -172,6 +176,14 @@ class HomeTrend(ApiModel):
     total: DecimalString
     points: tuple[HomeTrendPoint, ...] = Field(max_length=30)
 
+    @model_validator(mode="after")
+    def expense_values_are_nonnegative(self) -> Self:
+        if self.metric == "expense" and (
+            self.total < 0 or any(point.amount < 0 for point in self.points)
+        ):
+            raise ValueError("expense trend values cannot be negative")
+        return self
+
 
 class HomeGoal(ApiModel):
     id: OpaqueId
@@ -183,6 +195,14 @@ class HomeGoal(ApiModel):
     progress_percent: DecimalString = Field(alias="progressPercent")
     monthly_contribution: DecimalString = Field(alias="monthlyContribution")
 
+    @model_validator(mode="after")
+    def values_are_bounded(self) -> Self:
+        if self.current < 0 or self.target <= 0 or self.monthly_contribution < 0:
+            raise ValueError("goal amounts are outside supported bounds")
+        if not Decimal(0) <= self.progress_percent <= Decimal(100):
+            raise ValueError("goal progress must be between 0 and 100")
+        return self
+
 
 class HomePayment(ApiModel):
     id: OpaqueId
@@ -191,6 +211,12 @@ class HomePayment(ApiModel):
     amount: DecimalString
     currency: CurrencyCode
     status: OpenEnumValue
+
+    @model_validator(mode="after")
+    def amount_is_nonnegative(self) -> Self:
+        if self.amount < 0:
+            raise ValueError("upcoming payment amount cannot be negative")
+        return self
 
 
 class HomeTransaction(ApiModel):
@@ -202,6 +228,14 @@ class HomeTransaction(ApiModel):
     currency: CurrencyCode
     direction: OpenEnumValue
     status: ConfirmedStatus
+
+    @model_validator(mode="after")
+    def amount_matches_known_direction(self) -> Self:
+        if self.direction == "income" and self.amount < 0:
+            raise ValueError("income transaction amount cannot be negative")
+        if self.direction == "expense" and self.amount > 0:
+            raise ValueError("expense transaction amount cannot be positive")
+        return self
 
 
 class HomeWarning(ApiModel):

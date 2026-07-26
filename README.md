@@ -24,14 +24,21 @@ outside it.
 - Self-hosted FastAPI authentication backed by PostgreSQL
 - Argon2id password hashing, ten-minute access JWTs, rotating opaque refresh
   tokens, replay detection, and immediate server-side session revocation
-- Minimal authenticated `GET /api/v1/home` returning a persistent first-use
-  empty state for a newly registered account
-- Alembic migrations for accounts and authentication sessions
+- Authenticated `GET /api/v1/home` returning a persistent first-use empty state
+  or the newest account-scoped PostgreSQL Home projection
+- Immutable, versioned Home read-model tables keyed by exact IANA timezone,
+  with Decimal money, explicit month boundaries, Finance consistency checks,
+  ordered child blocks, and stable ETag representations
+- Alembic migrations for accounts, authentication sessions, and Home read
+  projections
 
 The repository contains no production credential or real user financial data.
 The default Flutter build uses synthetic Home fixtures and does not require an
-account. Network builds enable the real authentication gate. Financial writes,
-bank synchronization, speech-to-text, and full chat are not part of this slice.
+account. Network builds enable the real authentication gate. The API does not
+expose a projection seeder or financial write endpoint; a future deterministic
+Finance Core projector will publish revisions transactionally. Financial
+writes, bank synchronization, speech-to-text, and full chat are not part of
+this slice.
 
 ## Project layout
 

@@ -12,7 +12,7 @@ from .config import require_runtime_settings
 from .database import create_database
 from .main import create_app
 from .passwords import PasswordService
-from .postgres_home_repository import PostgresEmptyHomeRepository
+from .postgres_home_repository import PostgresHomeRepository
 from .tokens import AccessTokenCodec
 
 settings = require_runtime_settings()
@@ -24,7 +24,7 @@ access_tokens = AccessTokenCodec(
 )
 
 app = create_app(
-    home_repository=PostgresEmptyHomeRepository(
+    home_repository=PostgresHomeRepository(
         session_factory=session_factory,
     ),
     current_user_authenticator=PostgresCurrentUserAuthenticator(
