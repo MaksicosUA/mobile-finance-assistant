@@ -1,7 +1,8 @@
 # Mobile Finance Assistant
 
 A mobile-first personal finance assistant built with Flutter. This repository
-contains production application source and a synthetic runtime Home fixture;
+contains production application and read-only API source plus a synthetic
+runtime Home fixture;
 internal tests, product documents, and project-memory files are intentionally
 not part of this clean export.
 
@@ -23,9 +24,12 @@ not part of this clean export.
 - Versioned AES-256-GCM Home snapshot cache with its key held in platform
   secure storage
 - Decimal-string money validation
+- Minimal FastAPI `GET /api/v1/home` service with strict Pydantic models,
+  an authentication boundary, IANA timezone validation, ETag/304, and
+  private-cache headers
 
-All bundled financial data is synthetic. No backend, bank provider,
-speech-to-text service, token, or production credential is bundled.
+All bundled financial data is synthetic. No bank provider, speech-to-text
+service, token, production credential, write endpoint, or database is bundled.
 
 ## Project layout
 
@@ -35,6 +39,7 @@ speech-to-text service, token, or production credential is bundled.
 - `lib/l10n/` — localization source and generated delegates
 - `assets/fixtures/` — synthetic runtime fixture
 - `contracts/home/v1/` — versioned Home response schema
+- `services/api/` — minimal read-only FastAPI Home service
 - `android/` and `ios/` — native Flutter hosts
 
 ## Run locally
@@ -55,6 +60,20 @@ flutter run \
   --dart-define=HOME_API_TIMEZONE=Europe/Berlin
 ```
 
+Run the API with Python 3.12 and `uv`:
+
+```bash
+uv sync --project services/api
+uv run --project services/api \
+  uvicorn mobile_finance_api.main:app --host 127.0.0.1 --port 8000
+```
+
+The exported API is deliberately fail-closed: its default current-user
+authenticator rejects every request and its default Home repository is
+unavailable. A deployment must inject both a verified current-user adapter and
+the appropriate `HomeRepository` through `create_app`. The repository contains
+no development bearer token or authentication bypass.
+
 The future authentication flow writes a bearer token and stable opaque account
 scope through `SecureHomeSessionStore`; both live as one platform-secure value,
 never in SharedPreferences. If a verified session scope is unavailable,
@@ -73,8 +92,7 @@ flutter run --dart-define=HOME_SCENARIO=refresh_failure
 ```
 
 Offline and authentication fixture scenarios remain available for deterministic
-UI review. A real token refresh flow and the minimal FastAPI service are not
-implemented in this repository.
+UI review. A real login/token-refresh transport remains outside this slice.
 
 ## Runtime dependencies
 
@@ -82,6 +100,10 @@ implemented in this repository.
 - `flutter_secure_storage` — platform-protected key storage (BSD-3-Clause)
 - `cryptography` — authenticated AES-GCM encryption (Apache-2.0)
 - `path_provider` — application cache location (BSD-3-Clause)
+- `fastapi` — read-only ASGI API framework (MIT)
+- `pydantic` — strict API model validation and serialization (MIT)
+- `uvicorn` — ASGI server (BSD-3-Clause)
+- `tzdata` — portable IANA timezone database fallback (Apache-2.0)
 
 These packages are open source and require no paid runtime service. The minimum
-supported platform versions are Android 24 and iOS 13.
+supported mobile platform versions are Android 24 and iOS 13.

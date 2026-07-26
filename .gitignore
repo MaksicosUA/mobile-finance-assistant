@@ -33,6 +33,14 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Python development artifacts
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
 # Symbolication related
 app.*.symbols
 

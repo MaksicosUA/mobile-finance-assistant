@@ -1,0 +1,188 @@
+"""FastAPI application factory for the read-only Home v1 slice."""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from typing import Literal, cast
+from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
+from starlette.datastructures import MutableHeaders
+from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from .auth import (
+    AuthenticatedUser,
+    CurrentUserAuthenticator,
+    DenyAllCurrentUserAuthenticator,
+    current_user,
+)
+from .models import HomeResponse
+from .repository import HomeQuery, HomeRepository, UnavailableHomeRepository
+
+_SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_CACHE_HEADERS = {
+    "Cache-Control": "private, no-cache",
+    "Vary": "Authorization",
+}
+
+
+class RequestIdMiddleware:
+    """Attach a non-sensitive bounded request ID to every HTTP response."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        request_id = _request_id_from_scope(scope) or uuid4().hex
+        scope.setdefault("state", {})["request_id"] = request_id
+
+        async def send_with_request_id(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["X-Request-ID"] = request_id
+                if scope.get("path") == "/api/v1/home":
+                    headers["Cache-Control"] = _CACHE_HEADERS["Cache-Control"]
+                    vary = headers.get("Vary", "")
+                    vary_names = {
+                        name.strip().lower() for name in vary.split(",") if name.strip()
+                    }
+                    if "authorization" not in vary_names:
+                        headers["Vary"] = (
+                            f"{vary}, Authorization" if vary else "Authorization"
+                        )
+            await send(message)
+
+        await self._app(scope, receive, send_with_request_id)
+
+
+def _request_id_from_scope(scope: Scope) -> str | None:
+    for raw_name, raw_value in scope.get("headers", ()):  # pragma: no branch
+        if raw_name.lower() not in {b"x-correlation-id", b"x-request-id"}:
+            continue
+        try:
+            candidate = raw_value.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+        return candidate if _SAFE_REQUEST_ID.fullmatch(candidate) else None
+    return None
+
+
+async def _home_repository(request: Request) -> HomeRepository:
+    return cast(HomeRepository, request.app.state.home_repository)
+
+
+def _iana_timezone(value: str) -> ZoneInfo:
+    if (
+        not value
+        or len(value) > 128
+        or value != value.strip()
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    ):
+        raise HTTPException(status_code=422, detail="Invalid IANA timezone")
+    try:
+        return ZoneInfo(value)
+    except (ValueError, ZoneInfoNotFoundError) as error:
+        raise HTTPException(status_code=422, detail="Invalid IANA timezone") from error
+
+
+def _strong_etag(content: bytes) -> str:
+    return f'"{hashlib.sha256(content).hexdigest()}"'
+
+
+def _if_none_match_matches(value: str | None, etag: str) -> bool:
+    if value is None or len(value) > 8192:
+        return False
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in value):
+        return False
+    for raw_candidate in value.split(","):
+        candidate = raw_candidate.strip()
+        if candidate == "*":
+            return True
+        if candidate[:2].lower() == "w/":
+            candidate = candidate[2:].strip()
+        if candidate == etag:
+            return True
+    return False
+
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/v1/home",
+    response_model=HomeResponse,
+    response_model_by_alias=True,
+    responses={
+        200: {"description": "Validated Home aggregate"},
+        304: {"description": "The authenticated representation is unchanged"},
+        401: {"description": "Authentication is required"},
+        422: {"description": "Unsupported period or invalid IANA timezone"},
+    },
+)
+async def get_home(
+    period: Literal["current_month"] = Query(),
+    timezone_name: str = Query(alias="timezone", min_length=1, max_length=128),
+    if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+    user: AuthenticatedUser = Depends(current_user),
+    repository: HomeRepository = Depends(_home_repository),
+) -> Response:
+    query = HomeQuery(period=period, timezone=_iana_timezone(timezone_name))
+    try:
+        raw_home = await repository.get_home(user=user, query=query)
+        home = HomeResponse.model_validate(raw_home)
+        content = home.model_dump_json(by_alias=True).encode("utf-8")
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Home temporarily unavailable",
+        ) from error
+    etag = _strong_etag(content)
+    headers = {**_CACHE_HEADERS, "ETag": etag}
+
+    if _if_none_match_matches(if_none_match, etag):
+        return Response(status_code=304, headers=headers)
+    return Response(
+        content=content,
+        status_code=200,
+        media_type="application/json",
+        headers=headers,
+    )
+
+
+def create_app(
+    *,
+    home_repository: HomeRepository | None = None,
+    current_user_authenticator: CurrentUserAuthenticator | None = None,
+) -> FastAPI:
+    """Build the API with explicit replaceable data and auth adapters."""
+
+    application = FastAPI(
+        title="Mobile Finance Assistant API",
+        version="1.0.0",
+    )
+    application.state.home_repository = (
+        home_repository if home_repository is not None else UnavailableHomeRepository()
+    )
+    application.state.current_user_authenticator = (
+        current_user_authenticator
+        if current_user_authenticator is not None
+        else DenyAllCurrentUserAuthenticator()
+    )
+    application.add_middleware(RequestIdMiddleware)
+    application.include_router(router)
+    return application
+
+
+app = create_app()

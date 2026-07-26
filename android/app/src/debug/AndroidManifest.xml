@@ -4,4 +4,8 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Local E2E uses adb reverse to a loopback FastAPI process. Release
+         builds keep Android's default cleartext restriction and HomeApi still
+         rejects non-loopback HTTP endpoints. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

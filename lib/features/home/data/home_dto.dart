@@ -1,8 +1,11 @@
 import 'package:flutter/foundation.dart';
 
+enum HomePayloadState { ready, firstUseEmpty }
+
 @immutable
 class HomeDto {
   const HomeDto({
+    this.homeState = HomePayloadState.ready,
     required this.generatedAt,
     required this.dataAsOf,
     required this.baseCurrency,
@@ -18,7 +21,10 @@ class HomeDto {
   });
 
   factory HomeDto.fromJson(Map<String, Object?> json) {
-    return HomeDto(
+    final dto = HomeDto(
+      homeState: json.containsKey('homeState')
+          ? _homePayloadState(json['homeState'])
+          : HomePayloadState.ready,
       generatedAt: _utcTimestamp(json['generatedAt'], r'$.generatedAt'),
       dataAsOf: _utcTimestamp(json['dataAsOf'], r'$.dataAsOf'),
       baseCurrency: _currency(json['baseCurrency'], r'$.baseCurrency'),
@@ -65,20 +71,30 @@ class HomeDto {
             );
           })
           .toList(growable: false),
-      warnings: _list(json['warnings'], r'$.warnings').indexed
-          .map((entry) {
-            return HomeWarningDto.fromJson(
-              _map(
-                entry.$2,
-                r'$.warnings['
-                '${entry.$1}]',
-              ),
-            );
-          })
-          .toList(growable: false),
+      warnings: json.containsKey('warnings')
+          ? _list(json['warnings'], r'$.warnings').indexed
+                .map((entry) {
+                  return HomeWarningDto.fromJson(
+                    _map(
+                      entry.$2,
+                      r'$.warnings['
+                      '${entry.$1}]',
+                    ),
+                  );
+                })
+                .toList(growable: false)
+          : const <HomeWarningDto>[],
     );
+    if (dto.homeState == HomePayloadState.firstUseEmpty &&
+        !_isConsistentFirstUseEmpty(dto)) {
+      throw const FormatException(
+        r'$.homeState first_use_empty cannot contain financial data or warnings.',
+      );
+    }
+    return dto;
   }
 
+  final HomePayloadState homeState;
   final String generatedAt;
   final String dataAsOf;
   final String baseCurrency;
@@ -91,6 +107,33 @@ class HomeDto {
   final List<HomeTransactionDto> recentTransactions;
   final List<String> availableActions;
   final List<HomeWarningDto> warnings;
+}
+
+bool _isConsistentFirstUseEmpty(HomeDto dto) {
+  final monetaryValues = <String>[
+    dto.balance.amount,
+    dto.balance.deltaAmount,
+    dto.balance.deltaPercent,
+    dto.monthSummary.income,
+    dto.monthSummary.expense,
+    dto.monthSummary.netFlow,
+    dto.trend.total,
+  ];
+  return monetaryValues.every(_isZeroDecimal) &&
+      dto.trend.points.isEmpty &&
+      dto.primaryGoal == null &&
+      dto.upcomingPayments.isEmpty &&
+      dto.recentTransactions.isEmpty &&
+      dto.warnings.isEmpty;
+}
+
+bool _isZeroDecimal(String value) {
+  final start = value.startsWith('-') ? 1 : 0;
+  for (var index = start; index < value.length; index += 1) {
+    final character = value[index];
+    if (character != '0' && character != '.') return false;
+  }
+  return true;
 }
 
 @immutable
@@ -357,6 +400,16 @@ List<Object?> _list(Object? value, String path) {
 String _nonEmptyString(Object? value, String path) {
   if (value is String && value.trim().isNotEmpty) return value;
   throw FormatException('$path must be a non-empty string.');
+}
+
+HomePayloadState _homePayloadState(Object? value) {
+  final state = _nonEmptyString(value, r'$.homeState');
+  return switch (state) {
+    'first_use_empty' => HomePayloadState.firstUseEmpty,
+    // Home state is an open enum. Unknown future values retain the v1 ready
+    // behavior instead of making an otherwise valid aggregate unusable.
+    _ => HomePayloadState.ready,
+  };
 }
 
 String _decimal(Object? value, String path) {

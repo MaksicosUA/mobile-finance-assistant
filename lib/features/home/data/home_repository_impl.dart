@@ -91,13 +91,13 @@ final class NetworkHomeRepository
       await _clearBestEffort();
       return null;
     }
-    final snapshot = _mapPayload(cached.payload);
-    if (snapshot == null) {
+    final decoded = _decodePayload(cached.payload);
+    if (decoded == null || decoded.dto.homeState != HomePayloadState.ready) {
       await _clearBestEffort();
       return null;
     }
     return HomeCachedSnapshot(
-      snapshot: snapshot,
+      snapshot: decoded.snapshot,
       isStale: cached.isStaleAt(_clock().toUtc()),
     );
   }
@@ -148,12 +148,24 @@ final class NetworkHomeRepository
 
     switch (apiResult) {
       case HomeApiData(:final payload, :final etag, :final requestId):
-        final snapshot = _mapPayload(payload);
-        if (snapshot == null) {
+        final decoded = _decodePayload(payload);
+        if (decoded == null) {
           return HomeFailureResult(
             type: HomeFailureType.unknown,
             requestId: requestId,
           );
+        }
+        if (decoded.dto.homeState == HomePayloadState.firstUseEmpty) {
+          // An empty account is authoritative. Do not retain or persist the
+          // previous financial snapshot under the same account scope.
+          await _clearBestEffort();
+          if (!await _sessionIsCurrent(session)) {
+            return HomeFailureResult(
+              type: HomeFailureType.unknown,
+              requestId: requestId,
+            );
+          }
+          return const HomeDataResult(null);
         }
         if (scopeId != null) {
           final now = _clock().toUtc();
@@ -174,7 +186,7 @@ final class NetworkHomeRepository
             );
           }
         }
-        return HomeDataResult(snapshot);
+        return _resultFor(decoded, requestId: requestId);
       case HomeApiNotModified(:final etag, :final requestId):
         if (forceRefresh) {
           return HomeFailureResult(
@@ -189,13 +201,23 @@ final class NetworkHomeRepository
             requestId: requestId,
           );
         }
-        final snapshot = _mapPayload(current.payload);
-        if (snapshot == null) {
+        final decoded = _decodePayload(current.payload);
+        if (decoded == null) {
           await _clearBestEffort();
           return HomeFailureResult(
             type: HomeFailureType.unknown,
             requestId: requestId,
           );
+        }
+        if (decoded.dto.homeState == HomePayloadState.firstUseEmpty) {
+          await _clearBestEffort();
+          if (!await _sessionIsCurrent(session)) {
+            return HomeFailureResult(
+              type: HomeFailureType.unknown,
+              requestId: requestId,
+            );
+          }
+          return const HomeDataResult(null);
         }
         final now = _clock().toUtc();
         cached = HomeCacheEntry(
@@ -213,7 +235,7 @@ final class NetworkHomeRepository
             requestId: requestId,
           );
         }
-        return HomeDataResult(snapshot);
+        return _resultFor(decoded, requestId: requestId);
       case HomeApiOfflineFailure():
         final snapshot = cached == null ? null : _mapPayload(cached.payload);
         return snapshot == null
@@ -312,7 +334,9 @@ final class NetworkHomeRepository
         await _clearBestEffort();
         return null;
       }
-      if (_mapPayload(entry.payload) == null) {
+      final decoded = _decodePayload(entry.payload);
+      if (decoded == null ||
+          decoded.dto.homeState == HomePayloadState.firstUseEmpty) {
         await _clearBestEffort();
         return null;
       }
@@ -323,11 +347,38 @@ final class NetworkHomeRepository
   }
 
   HomeSnapshot? _mapPayload(Map<String, Object?> payload) {
+    return _decodePayload(payload)?.snapshot;
+  }
+
+  _DecodedHomePayload? _decodePayload(Map<String, Object?> payload) {
     try {
-      return HomeMapper.toDomain(HomeDto.fromJson(payload));
+      final dto = HomeDto.fromJson(payload);
+      return _DecodedHomePayload(dto: dto, snapshot: HomeMapper.toDomain(dto));
     } catch (_) {
       return null;
     }
+  }
+
+  HomeRepositoryResult _resultFor(
+    _DecodedHomePayload decoded, {
+    required String requestId,
+  }) {
+    final blockFailures = <HomeBlock, HomeBlockFailure>{};
+    for (final warning in decoded.dto.warnings) {
+      final block = homeBlockFromContract(warning.block);
+      if (block == null) continue;
+      blockFailures.putIfAbsent(
+        block,
+        () => HomeBlockFailure(code: warning.code, requestId: requestId),
+      );
+    }
+    if (blockFailures.isEmpty) {
+      return HomeDataResult(decoded.snapshot);
+    }
+    return HomePartialResult(
+      snapshot: decoded.snapshot,
+      blockFailures: blockFailures,
+    );
   }
 
   Future<void> _writeBestEffort(HomeCacheEntry entry) async {
@@ -345,6 +396,13 @@ final class NetworkHomeRepository
       // A replaceable cache failure must not expose storage details.
     }
   }
+}
+
+final class _DecodedHomePayload {
+  const _DecodedHomePayload({required this.dto, required this.snapshot});
+
+  final HomeDto dto;
+  final HomeSnapshot snapshot;
 }
 
 DateTime _utcNow() => DateTime.now().toUtc();

@@ -11,6 +11,22 @@ enum HomeBlock {
   recentTransactions,
 }
 
+/// Maps the open contract enum to blocks understood by this client version.
+///
+/// Unknown future values are ignored so additive backend changes cannot hide
+/// otherwise usable v1 data.
+HomeBlock? homeBlockFromContract(String value) {
+  return switch (value) {
+    'balance' => HomeBlock.balance,
+    'monthSummary' => HomeBlock.monthSummary,
+    'trend' => HomeBlock.trend,
+    'primaryGoal' => HomeBlock.primaryGoal,
+    'upcomingPayments' => HomeBlock.upcomingPayments,
+    'recentTransactions' => HomeBlock.recentTransactions,
+    _ => null,
+  };
+}
+
 enum HomeFailureType { timeout, serviceUnavailable, unknown }
 
 @immutable

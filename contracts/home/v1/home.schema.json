@@ -15,10 +15,14 @@
     "primaryGoal",
     "upcomingPayments",
     "recentTransactions",
-    "availableActions",
-    "warnings"
+    "availableActions"
   ],
   "properties": {
+    "homeState": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Open enum. Known v1 values: ready, first_use_empty. Absent or unknown values are interpreted as ready by v1 clients."
+    },
     "generatedAt": { "$ref": "#/$defs/utcTimestamp" },
     "dataAsOf": { "$ref": "#/$defs/utcTimestamp" },
     "baseCurrency": { "$ref": "#/$defs/currency" },
@@ -185,16 +189,64 @@
         "additionalProperties": true,
         "required": ["code", "block"],
         "properties": {
-          "code": { "type": "string", "minLength": 1 },
-          "block": { "type": "string", "minLength": 1 }
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Open warning code interpreted by the affected block."
+          },
+          "block": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Open enum. Known v1 values: balance, monthSummary, trend, primaryGoal, upcomingPayments, recentTransactions."
+          }
         }
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "required": ["homeState"],
+        "properties": { "homeState": { "const": "first_use_empty" } }
+      },
+      "then": {
+        "properties": {
+          "balance": {
+            "properties": {
+              "amount": { "$ref": "#/$defs/zeroDecimal" },
+              "deltaAmount": { "$ref": "#/$defs/zeroDecimal" },
+              "deltaPercent": { "$ref": "#/$defs/zeroDecimal" }
+            }
+          },
+          "monthSummary": {
+            "properties": {
+              "income": { "$ref": "#/$defs/zeroDecimal" },
+              "expense": { "$ref": "#/$defs/zeroDecimal" },
+              "netFlow": { "$ref": "#/$defs/zeroDecimal" }
+            }
+          },
+          "trend": {
+            "properties": {
+              "total": { "$ref": "#/$defs/zeroDecimal" },
+              "points": { "maxItems": 0 }
+            }
+          },
+          "primaryGoal": { "type": "null" },
+          "upcomingPayments": { "maxItems": 0 },
+          "recentTransactions": { "maxItems": 0 },
+          "warnings": { "maxItems": 0 }
+        }
+      }
+    }
+  ],
   "$defs": {
     "decimal": {
       "type": "string",
       "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "zeroDecimal": {
+      "type": "string",
+      "pattern": "^-?0(\\.0+)?$"
     },
     "currency": {
       "type": "string",

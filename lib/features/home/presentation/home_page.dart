@@ -168,10 +168,13 @@ class _HomeStateBody extends StatelessWidget {
 
     final snapshot = state.retainedSnapshot;
     assert(snapshot != null, 'Every remaining state must retain a snapshot.');
-    final failedBlocks = state is HomePartial
-        ? (state as HomePartial).blockFailures.keys.toSet()
-        : const <HomeBlock>{};
-    final banner = _buildBanner(context, snapshot!);
+    final failedBlocks = <HomeBlock>{
+      ...snapshot!.warnings
+          .map((warning) => homeBlockFromContract(warning.block))
+          .nonNulls,
+      if (state case HomePartial(:final blockFailures)) ...blockFailures.keys,
+    };
+    final banner = _buildBanner(context, snapshot);
 
     return Column(
       key: const Key('home-state-with-snapshot'),
