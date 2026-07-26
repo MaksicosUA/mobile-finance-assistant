@@ -49,10 +49,10 @@ class ScenarioHomeRepository implements HomeRepository {
     final fixtureResult = await fixtureRepository.fetchHome(
       forceRefresh: forceRefresh,
     );
-    if (fixtureResult is! HomeDataResult || fixtureResult.snapshot == null) {
+    if (fixtureResult is! HomeDataResult) {
       return fixtureResult;
     }
-    final snapshot = fixtureResult.snapshot!;
+    final snapshot = fixtureResult.snapshot;
 
     return switch (scenario) {
       HomeScenario.partialGoal => HomePartialResult(

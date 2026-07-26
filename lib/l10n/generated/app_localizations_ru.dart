@@ -15,12 +15,24 @@ class AppLocalizationsRu extends AppLocalizations {
   String get defaultUserName => 'Пользователь';
 
   @override
-  String greeting(String userName) {
+  String greetingMorning(String userName) {
     return 'Доброе утро, $userName';
   }
 
   @override
-  String get homeDate => 'Пятница, 11 июля';
+  String greetingDay(String userName) {
+    return 'Добрый день, $userName';
+  }
+
+  @override
+  String greetingEvening(String userName) {
+    return 'Добрый вечер, $userName';
+  }
+
+  @override
+  String greetingNight(String userName) {
+    return 'Доброй ночи, $userName';
+  }
 
   @override
   String get notificationsLabel => 'Уведомления, есть новые';

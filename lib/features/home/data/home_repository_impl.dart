@@ -165,7 +165,7 @@ final class NetworkHomeRepository
               requestId: requestId,
             );
           }
-          return const HomeDataResult(null);
+          return HomeFirstUseResult(HomeMapper.toFirstUseData(decoded.dto));
         }
         if (scopeId != null) {
           final now = _clock().toUtc();
@@ -217,7 +217,7 @@ final class NetworkHomeRepository
               requestId: requestId,
             );
           }
-          return const HomeDataResult(null);
+          return HomeFirstUseResult(HomeMapper.toFirstUseData(decoded.dto));
         }
         final now = _clock().toUtc();
         cached = HomeCacheEntry(

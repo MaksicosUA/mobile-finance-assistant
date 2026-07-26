@@ -165,6 +165,21 @@ class RecentTransaction {
 
 enum HomeAction { voiceEntry, analytics, goals, telegram, unknown }
 
+/// Non-financial metadata retained for a first-use account.
+///
+/// This data is kept in memory only. An authoritative empty response must not
+/// be persisted as a financial Home snapshot.
+@immutable
+class HomeFirstUseData {
+  HomeFirstUseData({
+    required this.userName,
+    required Set<HomeAction> availableActions,
+  }) : availableActions = Set<HomeAction>.unmodifiable(availableActions);
+
+  final String userName;
+  final Set<HomeAction> availableActions;
+}
+
 @immutable
 class HomeWarning {
   const HomeWarning({required this.code, required this.block});

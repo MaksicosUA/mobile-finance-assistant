@@ -24,14 +24,14 @@ class MockHomeRepository implements HomeRepository {
   @override
   Future<HomeRepositoryResult> fetchHome({bool forceRefresh = false}) async {
     await Future<void>.delayed(delay);
-    if (outcome == MockHomeOutcome.empty) {
-      return const HomeDataResult(null);
-    }
-
     final decoded = jsonDecode(await _assetBundle.loadString(fixtureAsset));
     if (decoded is! Map<String, Object?>) {
       throw const FormatException('Home fixture root must be an object.');
     }
-    return HomeDataResult(HomeMapper.toDomain(HomeDto.fromJson(decoded)));
+    final dto = HomeDto.fromJson(decoded);
+    if (outcome == MockHomeOutcome.empty) {
+      return HomeFirstUseResult(HomeMapper.toFirstUseData(dto));
+    }
+    return HomeDataResult(HomeMapper.toDomain(dto));
   }
 }

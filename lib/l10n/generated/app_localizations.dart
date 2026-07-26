@@ -106,17 +106,29 @@ abstract class AppLocalizations {
   /// **'Пользователь'**
   String get defaultUserName;
 
-  /// No description provided for @greeting.
+  /// No description provided for @greetingMorning.
   ///
   /// In ru, this message translates to:
   /// **'Доброе утро, {userName}'**
-  String greeting(String userName);
+  String greetingMorning(String userName);
 
-  /// No description provided for @homeDate.
+  /// No description provided for @greetingDay.
   ///
   /// In ru, this message translates to:
-  /// **'Пятница, 11 июля'**
-  String get homeDate;
+  /// **'Добрый день, {userName}'**
+  String greetingDay(String userName);
+
+  /// No description provided for @greetingEvening.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добрый вечер, {userName}'**
+  String greetingEvening(String userName);
+
+  /// No description provided for @greetingNight.
+  ///
+  /// In ru, this message translates to:
+  /// **'Доброй ночи, {userName}'**
+  String greetingNight(String userName);
 
   /// No description provided for @notificationsLabel.
   ///

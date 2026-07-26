@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../application/home_controller.dart';
 import '../data/home_repository.dart';
 import '../domain/home_snapshot.dart';
+import 'home_header_time.dart';
 import 'money_formatter.dart';
 import 'widgets/app_header.dart';
 import 'widgets/balance_card.dart';
@@ -30,6 +33,7 @@ class HomePage extends ConsumerStatefulWidget {
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
     required this.onSignOutRequested,
+    this.localClock,
   });
 
   final VoidCallback onOpenSettings;
@@ -38,18 +42,63 @@ class HomePage extends ConsumerStatefulWidget {
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
   final VoidCallback onSignOutRequested;
+  final DateTime Function()? localClock;
 
   @override
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> {
+class _HomePageState extends ConsumerState<HomePage>
+    with WidgetsBindingObserver {
+  Timer? _clockTimer;
+  late DateTime _localNow;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _localNow = _readLocalNow();
+    _scheduleClockUpdate();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(homeControllerProvider.notifier).load();
     });
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _updateClock();
+    }
+  }
+
+  DateTime _readLocalNow() => widget.localClock?.call() ?? DateTime.now();
+
+  void _scheduleClockUpdate() {
+    _clockTimer?.cancel();
+    final nextMinute = DateTime(
+      _localNow.year,
+      _localNow.month,
+      _localNow.day,
+      _localNow.hour,
+      _localNow.minute + 1,
+    );
+    final delay = nextMinute.difference(_localNow);
+    _clockTimer = Timer(delay, _updateClock);
+  }
+
+  void _updateClock() {
+    if (!mounted) return;
+    setState(() {
+      _localNow = _readLocalNow();
+    });
+    _scheduleClockUpdate();
   }
 
   @override
@@ -57,8 +106,12 @@ class _HomePageState extends ConsumerState<HomePage> {
     final l10n = AppLocalizations.of(context);
     final homeState = ref.watch(homeControllerProvider);
     final settings = ref.watch(appSettingsControllerProvider);
-    final userName =
-        homeState.retainedSnapshot?.userName ?? l10n.defaultUserName;
+    final userName = switch (homeState) {
+      HomeEmpty(:final data) => data.userName,
+      _ => homeState.retainedSnapshot?.userName ?? l10n.defaultUserName,
+    };
+    final materialL10n = MaterialLocalizations.of(context);
+    final dateLabel = sentenceCase(materialL10n.formatFullDate(_localNow));
 
     return SafeArea(
       bottom: false,
@@ -78,8 +131,12 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
               children: [
                 AppHeader(
-                  greeting: l10n.greeting(userName),
-                  dateLabel: l10n.homeDate,
+                  greeting: localizedHomeGreeting(
+                    l10n,
+                    userName: userName,
+                    localNow: _localNow,
+                  ),
+                  dateLabel: dateLabel,
                   notificationsLabel: l10n.notificationsLabel,
                   settingsLabel: l10n.openSettingsLabel,
                   avatarInitial: userName.characters.first.toUpperCase(),

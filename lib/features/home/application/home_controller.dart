@@ -248,7 +248,10 @@ class HomeController extends Notifier<HomeState> {
     switch (result) {
       case HomeDataResult(:final snapshot):
         _authRefreshAttempted = false;
-        state = snapshot == null ? const HomeEmpty() : HomeReady(snapshot);
+        state = HomeReady(snapshot);
+      case HomeFirstUseResult(:final data):
+        _authRefreshAttempted = false;
+        state = HomeEmpty(data);
       case HomePartialResult(:final snapshot, :final blockFailures):
         _authRefreshAttempted = false;
         state = HomePartial(snapshot: snapshot, blockFailures: blockFailures);

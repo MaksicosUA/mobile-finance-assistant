@@ -22,7 +22,9 @@ final class HomeLoading extends HomeState {
 }
 
 final class HomeEmpty extends HomeState {
-  const HomeEmpty();
+  const HomeEmpty(this.data);
+
+  final HomeFirstUseData data;
 }
 
 final class HomeReady extends HomeState {
