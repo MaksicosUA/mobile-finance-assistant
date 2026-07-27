@@ -2,6 +2,13 @@ import '../domain/home_snapshot.dart';
 import 'home_dto.dart';
 
 abstract final class HomeMapper {
+  static HomeFirstUseData toFirstUseData(HomeDto dto) {
+    return HomeFirstUseData(
+      userName: dto.user.displayName,
+      availableActions: dto.availableActions.map(_homeAction).toSet(),
+    );
+  }
+
   static HomeSnapshot toDomain(HomeDto dto) {
     final baseCurrency = dto.baseCurrency;
     return HomeSnapshot(

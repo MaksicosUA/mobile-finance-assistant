@@ -44,8 +44,13 @@ sealed class HomeRepositoryResult {
 final class HomeDataResult extends HomeRepositoryResult {
   const HomeDataResult(this.snapshot);
 
-  /// Null represents a first-use account without financial operations.
-  final HomeSnapshot? snapshot;
+  final HomeSnapshot snapshot;
+}
+
+final class HomeFirstUseResult extends HomeRepositoryResult {
+  const HomeFirstUseResult(this.data);
+
+  final HomeFirstUseData data;
 }
 
 final class HomePartialResult extends HomeRepositoryResult {

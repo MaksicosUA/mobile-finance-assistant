@@ -1,14 +1,34 @@
 {
   "@@locale": "ru",
   "appTitle": "Мои финансы",
-  "defaultUserName": "Пользователь",
-  "greeting": "Доброе утро, {userName}",
-  "@greeting": {
+  "greetingMorningNeutral": "Доброе утро",
+  "greetingDayNeutral": "Добрый день",
+  "greetingEveningNeutral": "Добрый вечер",
+  "greetingNightNeutral": "Доброй ночи",
+  "greetingMorning": "Доброе утро, {userName}",
+  "@greetingMorning": {
     "placeholders": {
       "userName": {"type": "String"}
     }
   },
-  "homeDate": "Пятница, 11 июля",
+  "greetingDay": "Добрый день, {userName}",
+  "@greetingDay": {
+    "placeholders": {
+      "userName": {"type": "String"}
+    }
+  },
+  "greetingEvening": "Добрый вечер, {userName}",
+  "@greetingEvening": {
+    "placeholders": {
+      "userName": {"type": "String"}
+    }
+  },
+  "greetingNight": "Доброй ночи, {userName}",
+  "@greetingNight": {
+    "placeholders": {
+      "userName": {"type": "String"}
+    }
+  },
   "notificationsLabel": "Уведомления, есть новые",
   "notificationsTitle": "Уведомления",
   "notificationsStubDescription": "Центр уведомлений будет подключён на следующем этапе.",

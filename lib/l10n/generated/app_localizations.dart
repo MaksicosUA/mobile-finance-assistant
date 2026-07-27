@@ -100,23 +100,53 @@ abstract class AppLocalizations {
   /// **'Мои финансы'**
   String get appTitle;
 
-  /// No description provided for @defaultUserName.
+  /// No description provided for @greetingMorningNeutral.
   ///
   /// In ru, this message translates to:
-  /// **'Пользователь'**
-  String get defaultUserName;
+  /// **'Доброе утро'**
+  String get greetingMorningNeutral;
 
-  /// No description provided for @greeting.
+  /// No description provided for @greetingDayNeutral.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добрый день'**
+  String get greetingDayNeutral;
+
+  /// No description provided for @greetingEveningNeutral.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добрый вечер'**
+  String get greetingEveningNeutral;
+
+  /// No description provided for @greetingNightNeutral.
+  ///
+  /// In ru, this message translates to:
+  /// **'Доброй ночи'**
+  String get greetingNightNeutral;
+
+  /// No description provided for @greetingMorning.
   ///
   /// In ru, this message translates to:
   /// **'Доброе утро, {userName}'**
-  String greeting(String userName);
+  String greetingMorning(String userName);
 
-  /// No description provided for @homeDate.
+  /// No description provided for @greetingDay.
   ///
   /// In ru, this message translates to:
-  /// **'Пятница, 11 июля'**
-  String get homeDate;
+  /// **'Добрый день, {userName}'**
+  String greetingDay(String userName);
+
+  /// No description provided for @greetingEvening.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добрый вечер, {userName}'**
+  String greetingEvening(String userName);
+
+  /// No description provided for @greetingNight.
+  ///
+  /// In ru, this message translates to:
+  /// **'Доброй ночи, {userName}'**
+  String greetingNight(String userName);
 
   /// No description provided for @notificationsLabel.
   ///

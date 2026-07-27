@@ -132,7 +132,7 @@ async def current_user(
     except Exception:
         sanitized_error = HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication temporarily unavailable",
+            detail={"code": "AUTHENTICATION_UNAVAILABLE", "issues": []},
         )
     else:
         return authenticated_user

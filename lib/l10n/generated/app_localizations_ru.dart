@@ -12,15 +12,36 @@ class AppLocalizationsRu extends AppLocalizations {
   String get appTitle => 'Мои финансы';
 
   @override
-  String get defaultUserName => 'Пользователь';
+  String get greetingMorningNeutral => 'Доброе утро';
 
   @override
-  String greeting(String userName) {
+  String get greetingDayNeutral => 'Добрый день';
+
+  @override
+  String get greetingEveningNeutral => 'Добрый вечер';
+
+  @override
+  String get greetingNightNeutral => 'Доброй ночи';
+
+  @override
+  String greetingMorning(String userName) {
     return 'Доброе утро, $userName';
   }
 
   @override
-  String get homeDate => 'Пятница, 11 июля';
+  String greetingDay(String userName) {
+    return 'Добрый день, $userName';
+  }
+
+  @override
+  String greetingEvening(String userName) {
+    return 'Добрый вечер, $userName';
+  }
+
+  @override
+  String greetingNight(String userName) {
+    return 'Доброй ночи, $userName';
+  }
 
   @override
   String get notificationsLabel => 'Уведомления, есть новые';

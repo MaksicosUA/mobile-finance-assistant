@@ -1,34 +1,51 @@
-"""Persistent first-use Home adapter for authenticated PostgreSQL accounts."""
+"""Account-scoped PostgreSQL adapter for the versioned Home read model."""
 
 from __future__ import annotations
 
 import calendar
-from collections.abc import Callable
-from datetime import UTC, date, datetime, time
+from collections.abc import Callable, Sequence
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import AuthenticatedUser
 from .database import AsyncSessionFactory
-from .db_models import UserRow
+from .db_models import (
+    HomeProjectionActionRow,
+    HomeProjectionGoalRow,
+    HomeProjectionPaymentRow,
+    HomeProjectionSnapshotRow,
+    HomeProjectionTransactionRow,
+    HomeProjectionTrendPointRow,
+    HomeProjectionWarningRow,
+    UserRow,
+)
 from .models import (
     HomeBalance,
+    HomeGoal,
     HomeMonthSummary,
+    HomePayment,
     HomeResponse,
     HomeState,
+    HomeTransaction,
     HomeTrend,
+    HomeTrendPoint,
     HomeUser,
+    HomeWarning,
 )
 from .repository import HomeQuery
 
 
-class PostgresEmptyHomeRepository:
-    """Return an authoritative empty Home for a persistent active account.
+class PostgresHomeRepository:
+    """Read the newest immutable projection for the requested local month.
 
-    This adapter intentionally contains no financial tables or writes. A later
-    Finance Core read adapter can replace it without changing the HTTP contract.
+    A user with no lifetime projection is a first-use account. Once any
+    projection exists, a missing current month is treated as projection lag or
+    data loss and fails closed instead of presenting a misleading empty Home.
     """
 
     def __init__(
@@ -46,10 +63,20 @@ class PostgresEmptyHomeRepository:
         user: AuthenticatedUser,
         query: HomeQuery,
     ) -> HomeResponse:
+        if query.period != "current_month":
+            raise ValueError("unsupported Home period")
         try:
             user_id = UUID(user.subject)
         except ValueError as error:
             raise RuntimeError("Invalid authenticated account subject") from error
+
+        now = _aware_utc(self._clock())
+        local_date = now.astimezone(query.timezone).date()
+        timezone_name = query.timezone.key
+        month_start = local_date.replace(day=1)
+        month_end = local_date.replace(
+            day=calendar.monthrange(local_date.year, local_date.month)[1]
+        )
 
         async with self._session_factory() as database:
             profile = await database.scalar(
@@ -58,30 +85,212 @@ class PostgresEmptyHomeRepository:
                     UserRow.disabled_at.is_(None),
                 )
             )
-        if profile is None:
-            raise RuntimeError("Authenticated account is unavailable")
+            if profile is None:
+                raise RuntimeError("Authenticated account is unavailable")
 
-        now = _aware_utc(self._clock())
-        local_date = now.astimezone(query.timezone).date()
-        month_start = local_date.replace(day=1)
-        month_end = local_date.replace(
-            day=calendar.monthrange(local_date.year, local_date.month)[1]
-        )
-        # Home is content-addressed with a strong ETag. Keep the representation
-        # stable within a month unless the persistent profile changes.
-        period_started_at = datetime.combine(
-            month_start,
-            time.min,
-            tzinfo=query.timezone,
-        ).astimezone(UTC)
-        snapshot_at = max(_aware_utc(profile.updated_at), period_started_at)
-        return _empty_home(
+            snapshot = await database.scalar(
+                select(HomeProjectionSnapshotRow)
+                .where(
+                    HomeProjectionSnapshotRow.user_id == user_id,
+                    HomeProjectionSnapshotRow.timezone_name == timezone_name,
+                    HomeProjectionSnapshotRow.period_start == month_start,
+                )
+                .order_by(HomeProjectionSnapshotRow.revision.desc())
+                .limit(1)
+            )
+            if snapshot is None:
+                if await _has_projection_history(database, user_id):
+                    raise RuntimeError("Current Home projection is unavailable")
+                return _empty_home(
+                    display_name=profile.display_name,
+                    base_currency=profile.base_currency,
+                    generated_at=_empty_snapshot_time(
+                        profile_updated_at=profile.updated_at,
+                        month_start=month_start,
+                        timezone=query.timezone,
+                    ),
+                    month_start=month_start,
+                    month_end=month_end,
+                )
+
+            if (
+                snapshot.period_end != month_end
+                or snapshot.base_currency != profile.base_currency
+                or _validated_timezone(snapshot.timezone_name) != timezone_name
+            ):
+                raise RuntimeError("Home projection metadata is inconsistent")
+
+            newest_trend_points = tuple(
+                (
+                    await database.scalars(
+                        select(HomeProjectionTrendPointRow)
+                        .where(HomeProjectionTrendPointRow.snapshot_id == snapshot.id)
+                        .order_by(HomeProjectionTrendPointRow.point_date.desc())
+                        .limit(30)
+                    )
+                ).all()
+            )
+            trend_points = tuple(reversed(newest_trend_points))
+            goal = await database.scalar(
+                select(HomeProjectionGoalRow).where(
+                    HomeProjectionGoalRow.snapshot_id == snapshot.id
+                )
+            )
+            payments = tuple(
+                (
+                    await database.scalars(
+                        select(HomeProjectionPaymentRow)
+                        .where(HomeProjectionPaymentRow.snapshot_id == snapshot.id)
+                        .order_by(
+                            HomeProjectionPaymentRow.due_at.asc(),
+                            HomeProjectionPaymentRow.payment_id.asc(),
+                        )
+                        .limit(3)
+                    )
+                ).all()
+            )
+            transactions = tuple(
+                (
+                    await database.scalars(
+                        select(HomeProjectionTransactionRow)
+                        .where(
+                            HomeProjectionTransactionRow.snapshot_id == snapshot.id,
+                            HomeProjectionTransactionRow.status == "confirmed",
+                        )
+                        .order_by(
+                            HomeProjectionTransactionRow.occurred_at.desc(),
+                            HomeProjectionTransactionRow.transaction_id.asc(),
+                        )
+                        .limit(3)
+                    )
+                ).all()
+            )
+            actions = tuple(
+                (
+                    await database.scalars(
+                        select(HomeProjectionActionRow)
+                        .where(HomeProjectionActionRow.snapshot_id == snapshot.id)
+                        .order_by(HomeProjectionActionRow.position.asc())
+                        .limit(16)
+                    )
+                ).all()
+            )
+            warnings = tuple(
+                (
+                    await database.scalars(
+                        select(HomeProjectionWarningRow)
+                        .where(HomeProjectionWarningRow.snapshot_id == snapshot.id)
+                        .order_by(HomeProjectionWarningRow.position.asc())
+                        .limit(16)
+                    )
+                ).all()
+            )
+
+            _validate_temporal_projection(
+                snapshot=snapshot,
+                timezone=query.timezone,
+                trend_points=trend_points,
+                transactions=transactions,
+            )
+
+        return _projected_home(
+            snapshot=snapshot,
             display_name=profile.display_name,
-            base_currency=profile.base_currency,
-            generated_at=snapshot_at,
-            month_start=month_start,
-            month_end=month_end,
+            trend_points=trend_points,
+            goal=goal,
+            payments=payments,
+            transactions=transactions,
+            actions=actions,
+            warnings=warnings,
         )
+
+
+async def _has_projection_history(database: AsyncSession, user_id: UUID) -> bool:
+    value = await database.scalar(
+        select(exists().where(HomeProjectionSnapshotRow.user_id == user_id))
+    )
+    return bool(value)
+
+
+def _projected_home(
+    *,
+    snapshot: HomeProjectionSnapshotRow,
+    display_name: str,
+    trend_points: Sequence[HomeProjectionTrendPointRow],
+    goal: HomeProjectionGoalRow | None,
+    payments: Sequence[HomeProjectionPaymentRow],
+    transactions: Sequence[HomeProjectionTransactionRow],
+    actions: Sequence[HomeProjectionActionRow],
+    warnings: Sequence[HomeProjectionWarningRow],
+) -> HomeResponse:
+    return HomeResponse(
+        generated_at=snapshot.generated_at,
+        data_as_of=snapshot.data_as_of,
+        base_currency=snapshot.base_currency,
+        home_state=HomeState.READY,
+        user=HomeUser(display_name=display_name),
+        balance=HomeBalance(
+            amount=snapshot.balance_amount,
+            delta_amount=snapshot.balance_delta_amount,
+            delta_percent=snapshot.balance_delta_percent,
+        ),
+        month_summary=HomeMonthSummary(
+            from_=snapshot.period_start,
+            to=snapshot.period_end,
+            income=snapshot.month_income,
+            expense=snapshot.month_expense,
+            net_flow=snapshot.month_net_flow,
+        ),
+        trend=HomeTrend(
+            metric=snapshot.trend_metric,
+            period=snapshot.trend_period,
+            total=snapshot.trend_total,
+            points=tuple(
+                HomeTrendPoint(date=row.point_date, amount=row.amount)
+                for row in trend_points
+            ),
+        ),
+        primary_goal=(
+            None
+            if goal is None
+            else HomeGoal(
+                id=goal.goal_id,
+                title=goal.title,
+                current=goal.current_amount,
+                target=goal.target_amount,
+                currency=goal.currency,
+                due_date=goal.due_date,
+                progress_percent=goal.progress_percent,
+                monthly_contribution=goal.monthly_contribution,
+            )
+        ),
+        upcoming_payments=tuple(
+            HomePayment(
+                id=row.payment_id,
+                title=row.title,
+                due_at=row.due_at,
+                amount=row.amount,
+                currency=row.currency,
+                status=row.status,
+            )
+            for row in payments
+        ),
+        recent_transactions=tuple(
+            HomeTransaction(
+                id=row.transaction_id,
+                title=row.title,
+                category=row.category,
+                occurred_at=row.occurred_at,
+                amount=row.amount,
+                currency=row.currency,
+                direction=row.direction,
+                status="confirmed",
+            )
+            for row in transactions
+        ),
+        available_actions=tuple(row.action for row in actions),
+        warnings=tuple(HomeWarning(code=row.code, block=row.block) for row in warnings),
+    )
 
 
 def _empty_home(
@@ -125,11 +334,64 @@ def _empty_home(
     )
 
 
+def _empty_snapshot_time(
+    *,
+    profile_updated_at: datetime,
+    month_start: date,
+    timezone: ZoneInfo,
+) -> datetime:
+    period_started_at = datetime.combine(
+        month_start,
+        time.min,
+        tzinfo=timezone,
+    ).astimezone(UTC)
+    return max(_aware_utc(profile_updated_at), period_started_at)
+
+
 def _aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("A timezone-aware clock is required")
     return value.astimezone(UTC)
 
 
+def _validated_timezone(value: str) -> str:
+    try:
+        return ZoneInfo(value).key
+    except (ValueError, ZoneInfoNotFoundError) as error:
+        raise RuntimeError("Home projection timezone is invalid") from error
+
+
+def _validate_temporal_projection(
+    *,
+    snapshot: HomeProjectionSnapshotRow,
+    timezone: ZoneInfo,
+    trend_points: Sequence[HomeProjectionTrendPointRow],
+    transactions: Sequence[HomeProjectionTransactionRow],
+) -> None:
+    data_as_of = _aware_utc(snapshot.data_as_of)
+    if any(_aware_utc(row.occurred_at) > data_as_of for row in transactions):
+        raise RuntimeError("Home projection transaction is newer than its snapshot")
+
+    local_data_date = data_as_of.astimezone(timezone).date()
+    if snapshot.trend_metric == "expense" and any(
+        row.amount < 0 for row in trend_points
+    ):
+        raise RuntimeError("Home projection expense trend is invalid")
+    horizon_days = {"7d": 7, "30d": 30}.get(snapshot.trend_period)
+    if horizon_days is None:
+        return
+    earliest_date = local_data_date - timedelta(days=horizon_days - 1)
+    if any(
+        row.point_date < earliest_date or row.point_date > local_data_date
+        for row in trend_points
+    ):
+        raise RuntimeError("Home projection trend horizon is invalid")
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+# Compatibility for code embedding the previous empty-only adapter. New
+# runtime wiring uses PostgresHomeRepository explicitly.
+PostgresEmptyHomeRepository = PostgresHomeRepository

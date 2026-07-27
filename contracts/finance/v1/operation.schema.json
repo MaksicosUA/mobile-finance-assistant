@@ -1,0 +1,576 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobile-finance-assistant.local/contracts/finance/v1/operation.schema.json",
+  "title": "Finance operation v1 messages",
+  "description": "Strict messages for deterministic evaluation and idempotent confirmed commit.",
+  "$defs": {
+    "CommitOperationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "draft": {
+          "$ref": "#/$defs/OperationDraft"
+        },
+        "draftHash": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Drafthash",
+          "type": "string"
+        },
+        "confirmedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Confirmedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "draft",
+        "draftHash",
+        "confirmedAt"
+      ],
+      "title": "CommitOperationRequest",
+      "type": "object"
+    },
+    "CommitOperationResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "decision": {
+          "const": "ACCEPT",
+          "default": "ACCEPT",
+          "title": "Decision",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "operation": {
+          "$ref": "#/$defs/CommittedOperation"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "operation"
+      ],
+      "title": "CommitOperationResponse",
+      "type": "object"
+    },
+    "CommittedOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "operationId": {
+          "format": "uuid",
+          "title": "Operationid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "title": "Userid",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "expense",
+            "income"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "amount": {
+          "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "accountId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Accountid"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "merchant": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Merchant"
+        },
+        "capturedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Capturedat",
+          "type": "string"
+        },
+        "capturedTimezone": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Capturedtimezone",
+          "type": "string"
+        },
+        "sourceExpression": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourceexpression"
+        },
+        "dateResolverVersion": {
+          "const": "calendar-relative-v1",
+          "title": "Dateresolverversion",
+          "type": "string"
+        },
+        "occurredOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Occurredon",
+          "type": "string"
+        },
+        "occurredAt": {
+          "anyOf": [
+            {
+              "description": "Timezone-aware instant normalized to UTC.",
+              "format": "date-time",
+              "formatMaximum": "2100-12-31T23:59:59.999999Z",
+              "formatMinimum": "1900-01-01T00:00:00Z",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Occurredat"
+        },
+        "source": {
+          "enum": [
+            "manual_text",
+            "voice"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "const": "confirmed",
+          "title": "Status",
+          "type": "string"
+        },
+        "confirmedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Confirmedat",
+          "type": "string"
+        },
+        "createdAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Createdat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operationId",
+        "userId",
+        "commandId",
+        "type",
+        "amount",
+        "currency",
+        "accountId",
+        "category",
+        "merchant",
+        "capturedAt",
+        "capturedTimezone",
+        "sourceExpression",
+        "dateResolverVersion",
+        "occurredOn",
+        "occurredAt",
+        "source",
+        "status",
+        "confirmedAt",
+        "createdAt"
+      ],
+      "title": "CommittedOperation",
+      "type": "object"
+    },
+    "EvaluateOperationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "draft": {
+          "$ref": "#/$defs/OperationDraft"
+        }
+      },
+      "required": [
+        "draft"
+      ],
+      "title": "EvaluateOperationRequest",
+      "type": "object"
+    },
+    "EvaluateOperationResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "REJECT",
+            "NEEDS_CONFIRMATION"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "draft": {
+          "$ref": "#/$defs/OperationDraft"
+        },
+        "draftHash": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Drafthash"
+        },
+        "issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OperationIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decision",
+        "draft",
+        "draftHash"
+      ],
+      "title": "EvaluateOperationResponse",
+      "type": "object"
+    },
+    "OperationDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "expense",
+            "income"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "amount": {
+          "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "accountId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accountid"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "merchant": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merchant"
+        },
+        "capturedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Capturedat",
+          "type": "string"
+        },
+        "capturedTimezone": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Capturedtimezone",
+          "type": "string"
+        },
+        "sourceExpression": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sourceexpression"
+        },
+        "dateResolverVersion": {
+          "const": "calendar-relative-v1",
+          "title": "Dateresolverversion",
+          "type": "string"
+        },
+        "occurredOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Occurredon",
+          "type": "string"
+        },
+        "occurredAt": {
+          "anyOf": [
+            {
+              "description": "Timezone-aware instant normalized to UTC.",
+              "format": "date-time",
+              "formatMaximum": "2100-12-31T23:59:59.999999Z",
+              "formatMinimum": "1900-01-01T00:00:00Z",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurredat"
+        },
+        "source": {
+          "enum": [
+            "manual_text",
+            "voice"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "type",
+        "amount",
+        "currency",
+        "capturedAt",
+        "capturedTimezone",
+        "dateResolverVersion",
+        "occurredOn",
+        "source"
+      ],
+      "title": "OperationDraft",
+      "type": "object"
+    },
+    "OperationErrorDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "MALFORMED_OPERATION",
+            "CONFIRMATION_MISMATCH",
+            "COMMAND_CONFLICT",
+            "OPERATION_REJECTED",
+            "AUTHENTICATION_UNAVAILABLE",
+            "FINANCE_PERSISTENCE_UNAVAILABLE"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OperationIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "OperationErrorDetail",
+      "type": "object"
+    },
+    "OperationErrorResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "$ref": "#/$defs/OperationErrorDetail"
+        }
+      },
+      "required": [
+        "detail"
+      ],
+      "title": "OperationErrorResponse",
+      "type": "object"
+    },
+    "OperationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "ACCOUNT_UNAVAILABLE",
+            "FUTURE_OCCURRED_DATE",
+            "RELATIVE_DATE_MISMATCH",
+            "OCCURRED_AT_DATE_MISMATCH",
+            "CONFIRMATION_BEFORE_CAPTURE",
+            "UNSUPPORTED_DATE_EXPRESSION",
+            "UNSUPPORTED_CURRENCY"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "accountId",
+            "occurredOn",
+            "occurredAt",
+            "confirmedAt",
+            "sourceExpression",
+            "currency"
+          ],
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "field"
+      ],
+      "title": "OperationIssue",
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/EvaluateOperationRequest"
+    },
+    {
+      "$ref": "#/$defs/EvaluateOperationResponse"
+    },
+    {
+      "$ref": "#/$defs/CommitOperationRequest"
+    },
+    {
+      "$ref": "#/$defs/CommitOperationResponse"
+    },
+    {
+      "$ref": "#/$defs/OperationErrorResponse"
+    }
+  ]
+}

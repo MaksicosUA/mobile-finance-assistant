@@ -15,14 +15,30 @@ sealed class HomeState {
     HomeAuthRequired(:final snapshot) => snapshot,
     HomeLoading() || HomeEmpty() || HomeFailure() => null,
   };
+
+  String? get knownUserName => switch (this) {
+    HomeLoading(:final userName) || HomeFailure(:final userName) => userName,
+    HomeEmpty(:final data) => data.userName,
+    HomeReady(:final snapshot) ||
+    HomeRefreshing(:final snapshot) ||
+    HomePartial(:final snapshot) ||
+    HomeOffline(:final snapshot) ||
+    HomeRefreshFailure(:final snapshot) => snapshot.userName,
+    HomeAuthRequired(:final snapshot, :final userName) =>
+      snapshot?.userName ?? userName,
+  };
 }
 
 final class HomeLoading extends HomeState {
-  const HomeLoading();
+  const HomeLoading({this.userName});
+
+  final String? userName;
 }
 
 final class HomeEmpty extends HomeState {
-  const HomeEmpty();
+  const HomeEmpty(this.data);
+
+  final HomeFirstUseData data;
 }
 
 final class HomeReady extends HomeState {
@@ -69,15 +85,25 @@ final class HomeRefreshFailure extends HomeState {
 }
 
 final class HomeAuthRequired extends HomeState {
-  const HomeAuthRequired({required this.requestId, this.snapshot});
+  const HomeAuthRequired({
+    required this.requestId,
+    this.snapshot,
+    this.userName,
+  });
 
   final String requestId;
   final HomeSnapshot? snapshot;
+  final String? userName;
 }
 
 final class HomeFailure extends HomeState {
-  const HomeFailure({required this.type, required this.requestId});
+  const HomeFailure({
+    required this.type,
+    required this.requestId,
+    this.userName,
+  });
 
   final HomeFailureType type;
   final String requestId;
+  final String? userName;
 }

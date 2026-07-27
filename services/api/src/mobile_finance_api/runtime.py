@@ -10,9 +10,11 @@ from .auth import PostgresCurrentUserAuthenticator
 from .auth_service import PostgresAuthenticationService
 from .config import require_runtime_settings
 from .database import create_database
+from .finance_core import FinanceCore
 from .main import create_app
 from .passwords import PasswordService
-from .postgres_home_repository import PostgresEmptyHomeRepository
+from .postgres_finance_repository import PostgresFinanceOperationRepository
+from .postgres_home_repository import PostgresHomeRepository
 from .tokens import AccessTokenCodec
 
 settings = require_runtime_settings()
@@ -24,7 +26,7 @@ access_tokens = AccessTokenCodec(
 )
 
 app = create_app(
-    home_repository=PostgresEmptyHomeRepository(
+    home_repository=PostgresHomeRepository(
         session_factory=session_factory,
     ),
     current_user_authenticator=PostgresCurrentUserAuthenticator(
@@ -35,6 +37,11 @@ app = create_app(
         session_factory=session_factory,
         password_service=PasswordService(),
         access_tokens=access_tokens,
+    ),
+    finance_core=FinanceCore(
+        repository=PostgresFinanceOperationRepository(
+            session_factory=session_factory,
+        )
     ),
     database_engine=engine,
 )
