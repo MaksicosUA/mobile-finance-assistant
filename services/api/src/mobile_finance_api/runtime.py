@@ -6,6 +6,7 @@ runtime auth configuration and fails immediately when secrets are absent.
 
 from __future__ import annotations
 
+from .account_core import AccountCore
 from .auth import PostgresCurrentUserAuthenticator
 from .auth_service import PostgresAuthenticationService
 from .config import require_runtime_settings
@@ -13,6 +14,7 @@ from .database import create_database
 from .finance_core import FinanceCore
 from .main import create_app
 from .passwords import PasswordService
+from .postgres_finance_account_repository import PostgresFinanceAccountRepository
 from .postgres_finance_repository import PostgresFinanceOperationRepository
 from .postgres_home_repository import PostgresHomeRepository
 from .tokens import AccessTokenCodec
@@ -23,6 +25,9 @@ access_tokens = AccessTokenCodec(
     secret=settings.jwt_secret,
     issuer=settings.jwt_issuer,
     audience=settings.jwt_audience,
+)
+finance_accounts = PostgresFinanceAccountRepository(
+    session_factory=session_factory,
 )
 
 app = create_app(
@@ -38,10 +43,12 @@ app = create_app(
         password_service=PasswordService(),
         access_tokens=access_tokens,
     ),
+    account_core=AccountCore(repository=finance_accounts),
     finance_core=FinanceCore(
         repository=PostgresFinanceOperationRepository(
             session_factory=session_factory,
-        )
+        ),
+        account_directory=finance_accounts,
     ),
     database_engine=engine,
 )

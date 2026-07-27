@@ -524,7 +524,10 @@
       "properties": {
         "code": {
           "enum": [
+            "ACCOUNT_REQUIRED",
             "ACCOUNT_UNAVAILABLE",
+            "ACCOUNT_CURRENCY_MISMATCH",
+            "OPERATION_BEFORE_ACCOUNT_BASELINE",
             "FUTURE_OCCURRED_DATE",
             "RELATIVE_DATE_MISMATCH",
             "OCCURRED_AT_DATE_MISMATCH",

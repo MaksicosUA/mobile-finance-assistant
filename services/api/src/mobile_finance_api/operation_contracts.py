@@ -8,7 +8,6 @@ from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal, Self
 from uuid import UUID
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     AfterValidator,
@@ -22,6 +21,8 @@ from pydantic import (
     WithJsonSchema,
     model_validator,
 )
+
+from .timezones import validated_iana_timezone_key
 
 _POSITIVE_DECIMAL_PATTERN = (
     r"^(?:[1-9][0-9]{0,19}(?:\.[0-9]{1,18})?"
@@ -79,17 +80,7 @@ def _utc_timestamp(value: datetime) -> str:
 
 
 def _timezone_name(value: str) -> str:
-    if value != value.strip() or any(
-        ord(character) < 0x20 or ord(character) == 0x7F for character in value
-    ):
-        raise ValueError("invalid IANA timezone")
-    try:
-        timezone = ZoneInfo(value)
-    except (ValueError, ZoneInfoNotFoundError) as error:
-        raise ValueError("invalid IANA timezone") from error
-    if timezone.key != value:
-        raise ValueError("timezone must use its canonical IANA name")
-    return value
+    return validated_iana_timezone_key(value)
 
 
 def _operation_date(value: date) -> date:
@@ -212,7 +203,10 @@ class OperationDraft(OperationApiModel):
 
 class OperationIssue(OperationApiModel):
     code: Literal[
+        "ACCOUNT_REQUIRED",
         "ACCOUNT_UNAVAILABLE",
+        "ACCOUNT_CURRENCY_MISMATCH",
+        "OPERATION_BEFORE_ACCOUNT_BASELINE",
         "FUTURE_OCCURRED_DATE",
         "RELATIVE_DATE_MISMATCH",
         "OCCURRED_AT_DATE_MISMATCH",

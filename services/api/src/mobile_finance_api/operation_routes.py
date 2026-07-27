@@ -56,10 +56,16 @@ CurrentUserDependency = Annotated[AuthenticatedUser, Depends(current_user)]
 async def evaluate_operation(
     body: EvaluateOperationRequest,
     core: FinanceCoreDependency,
-    _: CurrentUserDependency,
+    user: CurrentUserDependency,
 ) -> EvaluateOperationResponse:
     try:
-        return core.evaluate(body.draft)
+        user_id = UUID(user.subject)
+    except ValueError:
+        raise _unavailable() from None
+    try:
+        return await core.evaluate(user_id=user_id, draft=body.draft)
+    except FinancePersistenceUnavailable:
+        public_error = _unavailable()
     except Exception:
         public_error = _unavailable()
     raise public_error
