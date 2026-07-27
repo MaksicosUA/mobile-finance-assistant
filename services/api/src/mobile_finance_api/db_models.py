@@ -20,6 +20,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -156,6 +157,207 @@ class AuthRefreshTokenRow(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+
+class FinanceOperationRow(Base):
+    """Authoritative confirmed income/expense operation."""
+
+    __tablename__ = "finance_operations"
+    __table_args__ = (
+        CheckConstraint(
+            "operation_type IN ('expense', 'income')",
+            name="ck_finance_operations_type",
+        ),
+        CheckConstraint(
+            "schema_version = '1'",
+            name="ck_finance_operations_schema_version",
+        ),
+        CheckConstraint(
+            "status = 'confirmed'",
+            name="ck_finance_operations_status",
+        ),
+        CheckConstraint(
+            "amount > 0 AND amount NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_finance_operations_positive_finite_amount",
+        ),
+        CheckConstraint(
+            "currency = 'EUR'",
+            name="ck_finance_operations_v1_currency",
+        ),
+        CheckConstraint(
+            "account_id IS NULL",
+            name="ck_finance_operations_v1_unallocated_account",
+        ),
+        CheckConstraint(
+            "captured_timezone = btrim(captured_timezone) AND "
+            "captured_timezone <> '' AND captured_timezone !~ '[[:cntrl:]]'",
+            name="ck_finance_operations_captured_timezone",
+        ),
+        CheckConstraint(
+            "(category IS NULL OR (category = btrim(category) AND "
+            "category <> '' AND category !~ '[[:cntrl:]]')) AND "
+            "(merchant IS NULL OR (merchant = btrim(merchant) AND "
+            "merchant <> '' AND merchant !~ '[[:cntrl:]]')) AND "
+            "(source_expression IS NULL OR "
+            "(source_expression = btrim(source_expression) AND "
+            "source_expression <> '' AND "
+            "source_expression !~ '[[:cntrl:]]'))",
+            name="ck_finance_operations_optional_text",
+        ),
+        CheckConstraint(
+            "date_resolver_version = 'calendar-relative-v1'",
+            name="ck_finance_operations_date_resolver",
+        ),
+        CheckConstraint(
+            "source IN ('manual_text', 'voice')",
+            name="ck_finance_operations_source",
+        ),
+        CheckConstraint(
+            "confirmed_at >= captured_at",
+            name="ck_finance_operations_timestamp_order",
+        ),
+        CheckConstraint(
+            "occurred_on BETWEEN DATE '1900-01-01' AND DATE '2100-12-31' "
+            "AND captured_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND captured_at < TIMESTAMPTZ '2101-01-01 00:00:00+00' "
+            "AND confirmed_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND confirmed_at < TIMESTAMPTZ '2101-01-01 00:00:00+00' "
+            "AND (occurred_at IS NULL OR "
+            "(occurred_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND occurred_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'))",
+            name="ck_finance_operations_supported_dates",
+        ),
+        CheckConstraint(
+            "occurred_at IS NULL OR "
+            "(occurred_at AT TIME ZONE captured_timezone)::date = occurred_on",
+            name="ck_finance_operations_occurred_local_date",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_finance_operations_payload_hash_length",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "command_id",
+            name="uq_finance_operations_user_command",
+        ),
+        Index("ix_finance_operations_user_occurred", "user_id", "occurred_on"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    operation_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    account_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    merchant: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    captured_timezone: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_expression: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    date_resolver_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
+    occurred_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class FinanceOperationAuditRow(Base):
+    __tablename__ = "finance_operation_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type = 'operation_accepted' AND actor_type = 'user'",
+            name="ck_finance_operation_audit_accept_event",
+        ),
+        CheckConstraint(
+            "octet_length(payload_hash) = 32",
+            name="ck_finance_operation_audit_hash_length",
+        ),
+        UniqueConstraint(
+            "operation_id",
+            "event_type",
+            name="uq_finance_operation_audit_operation_event",
+        ),
+        Index("ix_finance_operation_audit_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    operation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("finance_operations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class FinanceOutboxEventRow(Base):
+    __tablename__ = "finance_outbox_events"
+    __table_args__ = (
+        CheckConstraint(
+            "aggregate_type = 'finance_operation'",
+            name="ck_finance_outbox_aggregate_type",
+        ),
+        CheckConstraint(
+            "event_type = 'finance.operation.accepted.v1'",
+            name="ck_finance_outbox_event_type",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0",
+            name="ck_finance_outbox_attempt_count",
+        ),
+        UniqueConstraint(
+            "aggregate_id",
+            "event_type",
+            name="uq_finance_outbox_aggregate_event",
+        ),
+        Index("ix_finance_outbox_unpublished", "published_at", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    aggregate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    aggregate_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("finance_operations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    attempt_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
 
 _FINITE_SNAPSHOT_DECIMALS = (

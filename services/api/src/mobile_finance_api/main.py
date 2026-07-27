@@ -1,4 +1,4 @@
-"""FastAPI application factory for authentication and read-only Home v1."""
+"""FastAPI factory for auth, read-only Home, and Finance Core operations."""
 
 from __future__ import annotations
 
@@ -27,7 +27,9 @@ from .auth import (
 )
 from .auth_routes import router as auth_router
 from .auth_service import AuthenticationService, UnavailableAuthenticationService
+from .finance_core import FinanceCore, UnavailableFinanceOperationRepository
 from .models import HomeResponse
+from .operation_routes import router as operation_router
 from .repository import HomeQuery, HomeRepository, UnavailableHomeRepository
 
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
@@ -70,7 +72,8 @@ class RequestIdMiddleware:
                         headers["Vary"] = (
                             f"{vary}, Authorization" if vary else "Authorization"
                         )
-                if str(scope.get("path", "")).startswith("/api/v1/auth/"):
+                path = str(scope.get("path", ""))
+                if path.startswith(("/api/v1/auth/", "/api/v1/operations/")):
                     headers["Cache-Control"] = "no-store"
                     headers["Pragma"] = "no-cache"
             await send(message)
@@ -180,6 +183,7 @@ def create_app(
     home_repository: HomeRepository | None = None,
     current_user_authenticator: CurrentUserAuthenticator | None = None,
     authentication_service: AuthenticationService | None = None,
+    finance_core: FinanceCore | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
@@ -210,12 +214,22 @@ def create_app(
         if authentication_service is not None
         else UnavailableAuthenticationService()
     )
+    application.state.finance_core = (
+        finance_core
+        if finance_core is not None
+        else FinanceCore(repository=UnavailableFinanceOperationRepository())
+    )
 
     @application.exception_handler(RequestValidationError)
     async def redacted_request_validation_error(
         request: Request,
         error: RequestValidationError,
     ) -> Response:
+        if request.url.path.startswith("/api/v1/operations/"):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": {"code": "MALFORMED_OPERATION", "issues": []}},
+            )
         if not request.url.path.startswith("/api/v1/auth/"):
             return await request_validation_exception_handler(request, error)
         safe_errors = [
@@ -233,6 +247,7 @@ def create_app(
 
     application.add_middleware(RequestIdMiddleware)
     application.include_router(auth_router)
+    application.include_router(operation_router)
     application.include_router(router)
     return application
 
