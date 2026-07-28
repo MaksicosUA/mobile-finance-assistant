@@ -12,6 +12,8 @@ class HomeEmptyView extends StatelessWidget {
     required this.voiceLabel,
     required this.voiceSemanticsLabel,
     required this.onVoicePressed,
+    required this.manualLabel,
+    required this.onManualPressed,
   });
 
   final String title;
@@ -19,6 +21,8 @@ class HomeEmptyView extends StatelessWidget {
   final String voiceLabel;
   final String voiceSemanticsLabel;
   final VoidCallback? onVoicePressed;
+  final String manualLabel;
+  final VoidCallback? onManualPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +70,15 @@ class HomeEmptyView extends StatelessWidget {
             semanticsLabel: voiceSemanticsLabel,
             onPressed: onVoicePressed,
           ),
+          if (onManualPressed != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            OutlinedButton.icon(
+              key: const Key('home-empty-manual-entry'),
+              onPressed: onManualPressed,
+              icon: const Icon(Icons.edit_outlined),
+              label: Text(manualLabel),
+            ),
+          ],
         ],
       ),
     );

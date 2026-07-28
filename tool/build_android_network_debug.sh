@@ -17,9 +17,14 @@ if [[ ${1:-} == "--install" ]]; then
   install_after_build=true
 fi
 
-if [[ ! $api_base_url =~ ^https://[^[:space:]]+$ ]] &&
-  [[ ! $api_base_url =~ ^http://(127\.0\.0\.1|localhost|\[::1\]|10\.0\.2\.2)(:[0-9]+)?(/.*)?$ ]]; then
-  echo "API_BASE_URL must use HTTPS or a debug-only Android host address." >&2
+if [[ $api_base_url =~ [[:space:]@?#] ]]; then
+  echo "API_BASE_URL must not contain whitespace, userinfo, query, or fragment." >&2
+  exit 64
+fi
+
+if [[ ! $api_base_url =~ ^https://[^/]+(/.*)?$ ]] &&
+  [[ ! $api_base_url =~ ^http://(127\.0\.0\.1|localhost|\[::1\])(:[0-9]+)?(/.*)?$ ]]; then
+  echo "API_BASE_URL must use HTTPS or loopback with adb reverse." >&2
   exit 64
 fi
 

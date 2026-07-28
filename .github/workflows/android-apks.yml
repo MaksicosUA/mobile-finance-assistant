@@ -1,0 +1,124 @@
+name: Android debug APKs
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.44.8
+  FLUTTER_REVISION: 058e0af2c2b57e369d905a03ac9748b0ebf543c6
+
+jobs:
+  checks-and-build:
+    name: Checks and Android debug builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: 17.0.20+8
+          check-latest: false
+          verify-signature: true
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: false
+          pub-cache: false
+
+      - name: Verify Flutter revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_revision="$(flutter --version --machine | jq -er '.frameworkRevision')"
+          if [[ "$actual_revision" != "$FLUTTER_REVISION" ]]; then
+            echo "Unexpected Flutter revision: $actual_revision" >&2
+            exit 1
+          fi
+          flutter config --no-analytics
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;28.2.13676358"
+
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Verify generated localization
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter gen-l10n
+          git diff --exit-code -- lib/l10n/generated
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze Flutter source
+        run: flutter analyze
+
+      - name: Build fixture debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --debug
+          install -m 0644 \
+            build/app/outputs/flutter-apk/app-debug.apk \
+            build/app/outputs/flutter-apk/mobile-finance-assistant-fixture-debug.apk
+
+      - name: Build authenticated network debug APK
+        shell: bash
+        env:
+          API_BASE_URL: ${{ vars.ANDROID_DEBUG_API_BASE_URL || 'http://127.0.0.1:8000' }}
+          HOME_API_TIMEZONE: ${{ vars.HOME_API_TIMEZONE || 'Europe/Berlin' }}
+        run: tool/build_android_network_debug.sh
+
+      - name: Create APK checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/app/outputs/flutter-apk
+          sha256sum mobile-finance-assistant-fixture-debug.apk \
+            > mobile-finance-assistant-fixture-debug.apk.sha256
+          sha256sum mobile-finance-assistant-network-debug.apk \
+            > mobile-finance-assistant-network-debug.apk.sha256
+
+      - name: Upload fixture debug APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-finance-assistant-fixture-debug-${{ github.sha }}
+          path: |
+            build/app/outputs/flutter-apk/mobile-finance-assistant-fixture-debug.apk
+            build/app/outputs/flutter-apk/mobile-finance-assistant-fixture-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload authenticated network debug APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-finance-assistant-network-debug-${{ github.sha }}
+          path: |
+            build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk
+            build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
