@@ -66,7 +66,6 @@ class PostgresFinanceOperationRepository:
         payload_hash: bytes,
         confirmed_at: datetime,
     ) -> OperationWriteResult:
-        created_at = _aware_utc(self._clock())
         operation_id = uuid4()
         account_id = draft.account_id
         if account_id is None:
@@ -87,6 +86,11 @@ class PostgresFinanceOperationRepository:
                     raise OperationAccountUnavailable
                 if draft.occurred_on < account.opening_balance_on:
                     raise OperationBeforeAccountBaseline
+                # Assign the source timestamp only after acquiring the same
+                # account lock used by the Home projector. A writer that waited
+                # behind a completed projection must therefore be newer than
+                # that projection's cutoff instead of carrying a pre-lock time.
+                created_at = _aware_utc(self._clock())
                 inserted_id = await database.scalar(
                     insert(FinanceOperationRow)
                     .values(

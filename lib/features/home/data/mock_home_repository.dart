@@ -12,7 +12,7 @@ class MockHomeRepository implements HomeRepository {
   MockHomeRepository({
     this.outcome = MockHomeOutcome.populated,
     this.delay = const Duration(milliseconds: 350),
-    this.fixtureAsset = 'assets/fixtures/home/v1/populated.json',
+    this.fixtureAsset = 'assets/fixtures/home/v2/populated.json',
     AssetBundle? assetBundle,
   }) : _assetBundle = assetBundle ?? rootBundle;
 

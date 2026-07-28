@@ -26,3 +26,4 @@ flutter:
   generate: true
   assets:
     - assets/fixtures/home/v1/
+    - assets/fixtures/home/v2/

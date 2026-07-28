@@ -36,7 +36,7 @@ class BalanceSummary {
     required this.deltaAmount,
     required this.deltaPercent,
   }) {
-    if (!_decimalPattern.hasMatch(deltaPercent)) {
+    if (deltaPercent != null && !_decimalPattern.hasMatch(deltaPercent!)) {
       throw const FormatException(
         'Balance delta percent must be a decimal string.',
       );
@@ -45,7 +45,10 @@ class BalanceSummary {
 
   final Money total;
   final Money deltaAmount;
-  final String deltaPercent;
+
+  /// Null when a meaningful percentage cannot be calculated, for example
+  /// when the comparison balance is zero.
+  final String? deltaPercent;
 }
 
 @immutable
@@ -148,6 +151,7 @@ class RecentTransaction {
     required this.id,
     required this.title,
     required this.category,
+    required this.occurredOn,
     required this.occurredAt,
     required this.amount,
     required this.direction,
@@ -155,9 +159,15 @@ class RecentTransaction {
   });
 
   final String id;
-  final String title;
-  final String category;
-  final DateTime occurredAt;
+  final String? title;
+  final String? category;
+
+  /// Canonical calendar date represented at UTC midnight for display only.
+  /// It is not an exact occurrence instant.
+  final DateTime occurredOn;
+
+  /// Exact authoritative UTC instant when one was captured; never synthesized.
+  final DateTime? occurredAt;
   final Money amount;
   final TransactionDirection direction;
   final TransactionStatus status;

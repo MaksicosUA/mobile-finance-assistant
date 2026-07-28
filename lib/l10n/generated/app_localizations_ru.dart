@@ -69,6 +69,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get monthDelta => 'за месяц';
 
   @override
+  String get balanceDeltaUnavailable => 'Динамика за месяц недоступна';
+
+  @override
   String get activeAccounts => 'Все активные счета';
 
   @override
@@ -195,6 +198,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noRecentTransactions => 'Подтверждённых операций пока нет';
+
+  @override
+  String get transactionCategoryUnavailable => 'Без категории';
 
   @override
   String transactionMetadata(String category, String date) {

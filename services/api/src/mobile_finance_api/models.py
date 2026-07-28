@@ -1,4 +1,4 @@
-"""Validated Home v1 API models.
+"""Validated Home v2 models plus the frozen Home v1 compatibility DTO.
 
 Money remains ``Decimal`` inside the service and is serialized as a JSON
 string at the HTTP boundary. Timestamps are normalized to UTC and serialized
@@ -23,6 +23,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from .decimal_math import wide_decimal_context
 
 DECIMAL_PATTERN = r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$"
 CURRENCY_PATTERN = r"^[A-Z]{3}$"
@@ -117,7 +119,7 @@ OpenHomeState = Annotated[
             "type": "string",
             "minLength": 1,
             "description": (
-                "Open enum. Known v1 values: ready, first_use_empty. "
+                "Open enum. Known values: ready, first_use_empty. "
                 "first_use_empty contains no financial data or warnings."
             ),
         },
@@ -130,7 +132,7 @@ ConfirmedStatus = Annotated[
         {
             "type": "string",
             "minLength": 1,
-            "description": "Open enum. Home v1 emits confirmed transactions.",
+            "description": "Open enum. Home emits confirmed transactions.",
         },
         mode="serialization",
     ),
@@ -144,7 +146,7 @@ class HomeUser(ApiModel):
 class HomeBalance(ApiModel):
     amount: DecimalString
     delta_amount: DecimalString = Field(alias="deltaAmount")
-    delta_percent: DecimalString = Field(alias="deltaPercent")
+    delta_percent: DecimalString | None = Field(alias="deltaPercent")
 
 
 class HomeMonthSummary(ApiModel):
@@ -160,7 +162,9 @@ class HomeMonthSummary(ApiModel):
             raise ValueError("month summary end precedes its start")
         if self.income < 0 or self.expense < 0:
             raise ValueError("month income and expense cannot be negative")
-        if self.net_flow != self.income - self.expense:
+        with wide_decimal_context():
+            expected_net_flow = self.income - self.expense
+        if self.net_flow != expected_net_flow:
             raise ValueError("month net flow must equal income minus expense")
         return self
 
@@ -221,9 +225,10 @@ class HomePayment(ApiModel):
 
 class HomeTransaction(ApiModel):
     id: OpaqueId
-    title: NonEmptyText
-    category: NonEmptyText
-    occurred_at: UtcTimestamp = Field(alias="occurredAt")
+    title: NonEmptyText | None
+    category: NonEmptyText | None
+    occurred_on: date = Field(alias="occurredOn")
+    occurred_at: UtcTimestamp | None = Field(alias="occurredAt")
     amount: DecimalString
     currency: CurrencyCode
     direction: OpenEnumValue
@@ -244,6 +249,8 @@ class HomeWarning(ApiModel):
 
 
 class HomeResponse(ApiModel):
+    """Home v2 response preserving unknown authoritative operation fields."""
+
     generated_at: UtcTimestamp = Field(alias="generatedAt")
     data_as_of: UtcTimestamp = Field(alias="dataAsOf")
     base_currency: CurrencyCode = Field(alias="baseCurrency")
@@ -282,7 +289,6 @@ class HomeResponse(ApiModel):
             monetary_values = (
                 self.balance.amount,
                 self.balance.delta_amount,
-                self.balance.delta_percent,
                 self.month_summary.income,
                 self.month_summary.expense,
                 self.month_summary.net_flow,
@@ -290,6 +296,7 @@ class HomeResponse(ApiModel):
             )
             if (
                 any(value != 0 for value in monetary_values)
+                or self.balance.delta_percent not in {None, Decimal(0)}
                 or self.trend.points
                 or self.primary_goal is not None
                 or self.upcoming_payments
@@ -301,3 +308,144 @@ class HomeResponse(ApiModel):
                     "or partial warnings"
                 )
         return self
+
+
+class HomeV1Balance(ApiModel):
+    """Original non-null Home v1 balance shape."""
+
+    amount: DecimalString
+    delta_amount: DecimalString = Field(alias="deltaAmount")
+    delta_percent: DecimalString = Field(alias="deltaPercent")
+
+
+class HomeV1Transaction(ApiModel):
+    """Original Home v1 transaction shape without date-only semantics."""
+
+    id: OpaqueId
+    title: NonEmptyText
+    category: NonEmptyText
+    occurred_at: UtcTimestamp = Field(alias="occurredAt")
+    amount: DecimalString
+    currency: CurrencyCode
+    direction: OpenEnumValue
+    status: ConfirmedStatus
+
+    @model_validator(mode="after")
+    def amount_matches_known_direction(self) -> Self:
+        if self.direction == "income" and self.amount < 0:
+            raise ValueError("income transaction amount cannot be negative")
+        if self.direction == "expense" and self.amount > 0:
+            raise ValueError("expense transaction amount cannot be positive")
+        return self
+
+
+class HomeV1Response(ApiModel):
+    """Frozen compatibility contract for already-installed v1 clients."""
+
+    generated_at: UtcTimestamp = Field(alias="generatedAt")
+    data_as_of: UtcTimestamp = Field(alias="dataAsOf")
+    base_currency: CurrencyCode = Field(alias="baseCurrency")
+    home_state: OpenHomeState = Field(default=HomeState.READY, alias="homeState")
+    user: HomeUser
+    balance: HomeV1Balance
+    month_summary: HomeMonthSummary = Field(alias="monthSummary")
+    trend: HomeTrend
+    primary_goal: HomeGoal | None = Field(alias="primaryGoal")
+    upcoming_payments: tuple[HomePayment, ...] = Field(
+        alias="upcomingPayments",
+        max_length=3,
+    )
+    recent_transactions: tuple[HomeV1Transaction, ...] = Field(
+        alias="recentTransactions",
+        max_length=3,
+    )
+    available_actions: tuple[OpenEnumValue, ...] = Field(alias="availableActions")
+    warnings: tuple[HomeWarning, ...] = Field(default_factory=tuple, max_length=16)
+
+    @classmethod
+    def from_v2(cls, home: HomeResponse) -> HomeV1Response:
+        """Convert only facts representable by the original v1 wire contract."""
+
+        if home.balance.delta_percent is None:
+            raise ValueError("Home revision cannot be represented by v1")
+        return cls(
+            generated_at=home.generated_at,
+            data_as_of=home.data_as_of,
+            base_currency=home.base_currency,
+            home_state=home.home_state,
+            user=home.user,
+            balance=HomeV1Balance(
+                amount=home.balance.amount,
+                delta_amount=home.balance.delta_amount,
+                delta_percent=home.balance.delta_percent,
+            ),
+            month_summary=home.month_summary,
+            trend=home.trend,
+            primary_goal=home.primary_goal,
+            upcoming_payments=home.upcoming_payments,
+            recent_transactions=tuple(
+                _home_v1_transaction(transaction)
+                for transaction in home.recent_transactions
+            ),
+            available_actions=home.available_actions,
+            warnings=home.warnings,
+        )
+
+    @field_validator("available_actions")
+    @classmethod
+    def actions_are_unique(
+        cls,
+        value: tuple[OpenEnumValue, ...],
+    ) -> tuple[OpenEnumValue, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("available actions must be unique")
+        return value
+
+    @model_validator(mode="after")
+    def timestamps_and_state_are_consistent(self) -> Self:
+        if self.data_as_of > self.generated_at:
+            raise ValueError("dataAsOf cannot be later than generatedAt")
+        if self.home_state is HomeState.FIRST_USE_EMPTY and (
+            any(
+                value != 0
+                for value in (
+                    self.balance.amount,
+                    self.balance.delta_amount,
+                    self.balance.delta_percent,
+                    self.month_summary.income,
+                    self.month_summary.expense,
+                    self.month_summary.net_flow,
+                    self.trend.total,
+                )
+            )
+            or self.trend.points
+            or self.primary_goal is not None
+            or self.upcoming_payments
+            or self.recent_transactions
+            or self.warnings
+        ):
+            raise ValueError(
+                "first-use empty responses cannot contain financial data "
+                "or partial warnings"
+            )
+        return self
+
+
+def _home_v1_transaction(transaction: HomeTransaction) -> HomeV1Transaction:
+    if (
+        transaction.title is None
+        or transaction.category is None
+        or transaction.occurred_at is None
+        or transaction.occurred_at.date() != transaction.occurred_on
+    ):
+        raise ValueError("Home revision cannot be represented by v1")
+    return HomeV1Transaction(
+        id=transaction.id,
+        title=transaction.title,
+        category=transaction.category,
+        occurred_at=transaction.occurred_at,
+        amount=transaction.amount,
+        currency=transaction.currency,
+        direction=transaction.direction,
+        status=transaction.status,
+    )

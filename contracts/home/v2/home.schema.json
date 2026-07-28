@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobile-finance-assistant.local/contracts/home/v2/home.schema.json",
+  "title": "Home v2 response",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "generatedAt",
+    "dataAsOf",
+    "baseCurrency",
+    "user",
+    "balance",
+    "monthSummary",
+    "trend",
+    "primaryGoal",
+    "upcomingPayments",
+    "recentTransactions",
+    "availableActions"
+  ],
+  "properties": {
+    "homeState": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Open enum. Known v2 values: ready, first_use_empty. Absent or unknown values are interpreted as ready by v2 clients."
+    },
+    "generatedAt": { "$ref": "#/$defs/utcTimestamp" },
+    "dataAsOf": { "$ref": "#/$defs/utcTimestamp" },
+    "baseCurrency": { "$ref": "#/$defs/currency" },
+    "user": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["displayName"],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "balance": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["amount", "deltaAmount", "deltaPercent"],
+      "properties": {
+        "amount": { "$ref": "#/$defs/decimal" },
+        "deltaAmount": { "$ref": "#/$defs/decimal" },
+        "deltaPercent": {
+          "description": "Nullable when a meaningful percentage cannot be calculated, including a zero comparison balance.",
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/decimal" }
+          ]
+        }
+      }
+    },
+    "monthSummary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["from", "to", "income", "expense", "netFlow"],
+      "properties": {
+        "from": { "$ref": "#/$defs/date" },
+        "to": { "$ref": "#/$defs/date" },
+        "income": { "$ref": "#/$defs/decimal" },
+        "expense": { "$ref": "#/$defs/decimal" },
+        "netFlow": { "$ref": "#/$defs/decimal" }
+      }
+    },
+    "trend": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["metric", "period", "total", "points"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Open enum. Known v2 values: expense, balance."
+        },
+        "period": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Open enum. Known v2 values: 7d, 30d."
+        },
+        "total": { "$ref": "#/$defs/decimal" },
+        "points": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["date", "amount"],
+            "properties": {
+              "date": { "$ref": "#/$defs/date" },
+              "amount": { "$ref": "#/$defs/decimal" }
+            }
+          }
+        }
+      }
+    },
+    "primaryGoal": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "id",
+            "title",
+            "current",
+            "target",
+            "currency",
+            "dueDate",
+            "progressPercent",
+            "monthlyContribution"
+          ],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "title": { "type": "string", "minLength": 1 },
+            "current": { "$ref": "#/$defs/decimal" },
+            "target": { "$ref": "#/$defs/decimal" },
+            "currency": { "$ref": "#/$defs/currency" },
+            "dueDate": { "$ref": "#/$defs/date" },
+            "progressPercent": { "$ref": "#/$defs/decimal" },
+            "monthlyContribution": { "$ref": "#/$defs/decimal" }
+          }
+        }
+      ]
+    },
+    "upcomingPayments": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "title", "dueAt", "amount", "currency", "status"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "dueAt": { "$ref": "#/$defs/utcTimestamp" },
+          "amount": { "$ref": "#/$defs/decimal" },
+          "currency": { "$ref": "#/$defs/currency" },
+          "status": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Open enum. Known v2 values: scheduled, overdue."
+          }
+        }
+      }
+    },
+    "recentTransactions": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "title",
+          "category",
+          "occurredOn",
+          "occurredAt",
+          "amount",
+          "currency",
+          "direction",
+          "status"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "string", "minLength": 1 }
+            ]
+          },
+          "category": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "string", "minLength": 1 }
+            ]
+          },
+          "occurredOn": {
+            "$ref": "#/$defs/date",
+            "description": "Authoritative calendar date in the operation's captured timezone. Clients display this date without deriving it from occurredAt."
+          },
+          "occurredAt": {
+            "description": "Optional exact UTC instant. Null means no exact occurrence time was captured; clients must not synthesize one.",
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/$defs/utcTimestamp" }
+            ]
+          },
+          "amount": { "$ref": "#/$defs/decimal" },
+          "currency": { "$ref": "#/$defs/currency" },
+          "direction": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Open enum. Known v2 values: income, expense, transfer."
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Open enum. Home v2 emits confirmed transactions."
+          }
+        }
+      }
+    },
+    "availableActions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Open enum. Known v2 values: voice_entry, analytics, goals, telegram."
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["code", "block"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Open warning code interpreted by the affected block."
+          },
+          "block": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Open enum. Known v2 values include balance, balanceDelta, balanceDeltaPercent, monthSummary, trend, primaryGoal, upcomingPayments, recentTransactions."
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["homeState"],
+        "properties": { "homeState": { "const": "first_use_empty" } }
+      },
+      "then": {
+        "properties": {
+          "balance": {
+            "properties": {
+              "amount": { "$ref": "#/$defs/zeroDecimal" },
+              "deltaAmount": { "$ref": "#/$defs/zeroDecimal" },
+              "deltaPercent": {
+                "oneOf": [
+                  { "type": "null" },
+                  { "$ref": "#/$defs/zeroDecimal" }
+                ]
+              }
+            }
+          },
+          "monthSummary": {
+            "properties": {
+              "income": { "$ref": "#/$defs/zeroDecimal" },
+              "expense": { "$ref": "#/$defs/zeroDecimal" },
+              "netFlow": { "$ref": "#/$defs/zeroDecimal" }
+            }
+          },
+          "trend": {
+            "properties": {
+              "total": { "$ref": "#/$defs/zeroDecimal" },
+              "points": { "maxItems": 0 }
+            }
+          },
+          "primaryGoal": { "type": "null" },
+          "upcomingPayments": { "maxItems": 0 },
+          "recentTransactions": { "maxItems": 0 },
+          "warnings": { "maxItems": 0 }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "zeroDecimal": {
+      "type": "string",
+      "pattern": "^-?0(\\.0+)?$"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    }
+  }
+}

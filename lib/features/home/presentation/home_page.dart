@@ -396,14 +396,17 @@ class _PopulatedHome extends StatelessWidget {
 
     final transactionItems = snapshot.recentTransactions
         .map((transaction) {
-          final date = materialL10n.formatMediumDate(transaction.occurredAt);
           final kind = switch (transaction.direction) {
             TransactionDirection.income => l10n.transactionIncome,
             TransactionDirection.expense => l10n.transactionExpense,
             TransactionDirection.transfer => l10n.transactionTransfer,
             TransactionDirection.unknown => l10n.transactionUnknown,
           };
-          final metadata = l10n.transactionMetadata(transaction.category, date);
+          final title = transaction.title ?? kind;
+          final category =
+              transaction.category ?? l10n.transactionCategoryUnavailable;
+          final date = materialL10n.formatMediumDate(transaction.occurredOn);
+          final metadata = l10n.transactionMetadata(category, date);
           final amount = MoneyFormatter.format(
             transaction.amount,
             locale: locale,
@@ -413,13 +416,13 @@ class _PopulatedHome extends StatelessWidget {
           );
           return TransactionListItem(
             keyValue: transaction.id,
-            title: transaction.title,
+            title: title,
             metadata: metadata,
             amount: amount,
             kindLabel: kind,
             semanticsLabel: l10n.transactionSemantics(
-              transaction.title,
-              transaction.category,
+              title,
+              category,
               date,
               amount,
               kind,
@@ -446,19 +449,26 @@ class _PopulatedHome extends StatelessWidget {
               locale: locale,
               privacy: privacyEnabled,
             ),
-            delta: MoneyFormatter.format(
-              balance.deltaAmount,
-              locale: locale,
-              privacy: privacyEnabled,
-              showPositiveSign: true,
-            ),
-            deltaPercent: MoneyFormatter.formatPercent(
-              balance.deltaPercent,
-              locale: locale,
-              privacy: privacyEnabled,
-              showPositiveSign: true,
-            ),
+            delta: blockFailed(HomeBlock.balanceDelta)
+                ? null
+                : MoneyFormatter.format(
+                    balance.deltaAmount,
+                    locale: locale,
+                    privacy: privacyEnabled,
+                    showPositiveSign: true,
+                  ),
+            deltaPercent:
+                blockFailed(HomeBlock.balanceDelta) ||
+                    balance.deltaPercent == null
+                ? null
+                : MoneyFormatter.formatPercent(
+                    balance.deltaPercent!,
+                    locale: locale,
+                    privacy: privacyEnabled,
+                    showPositiveSign: true,
+                  ),
             monthDeltaLabel: l10n.monthDelta,
+            deltaUnavailableLabel: l10n.balanceDeltaUnavailable,
             accountsLabel: l10n.activeAccounts,
             privacyLabel: privacyEnabled ? l10n.showAmounts : l10n.hideAmounts,
             privacyEnabled: privacyEnabled,

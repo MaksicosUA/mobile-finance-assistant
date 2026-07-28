@@ -196,6 +196,12 @@ abstract class AppLocalizations {
   /// **'за месяц'**
   String get monthDelta;
 
+  /// No description provided for @balanceDeltaUnavailable.
+  ///
+  /// In ru, this message translates to:
+  /// **'Динамика за месяц недоступна'**
+  String get balanceDeltaUnavailable;
+
   /// No description provided for @activeAccounts.
   ///
   /// In ru, this message translates to:
@@ -410,6 +416,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Подтверждённых операций пока нет'**
   String get noRecentTransactions;
+
+  /// No description provided for @transactionCategoryUnavailable.
+  ///
+  /// In ru, this message translates to:
+  /// **'Без категории'**
+  String get transactionCategoryUnavailable;
 
   /// No description provided for @transactionMetadata.
   ///

@@ -24,8 +24,9 @@ outside it.
 - Self-hosted FastAPI authentication backed by PostgreSQL
 - Argon2id password hashing, ten-minute access JWTs, rotating opaque refresh
   tokens, replay detection, and immediate server-side session revocation
-- Authenticated `GET /api/v1/home` returning a persistent first-use empty state
-  or the newest account-scoped PostgreSQL Home projection
+- Authenticated `GET /api/v2/home` returning a persistent first-use empty state
+  or the newest account-scoped PostgreSQL Home projection; `/api/v1/home`
+  remains a fail-closed compatibility contract for representable revisions
 - Immutable, versioned Home read-model tables keyed by exact IANA timezone,
   with Decimal money, explicit month boundaries, Finance consistency checks,
   ordered child blocks, and stable ETag representations
@@ -39,18 +40,19 @@ outside it.
   on the authenticated user profile
 - Owned-account allocation for every new operation, protected by database
   ownership/currency constraints and commit-time revalidation
+- Deterministic PostgreSQL outbox consumer that rebuilds immutable Home
+  revisions from the opening baseline and confirmed allocated operations
 - Alembic migrations for accounts, authentication sessions, Home read
   projections, and authoritative finance operations
 
 The repository contains no production credential or real user financial data.
 The default Flutter build uses synthetic Home fixtures and does not require an
 account. Network builds enable the real authentication gate. The API exposes
-bounded first-account and confirmed-operation write paths, but the Flutter UI
-does not yet call them, and the API does not yet consume either server outbox.
-A future deterministic projector will derive Home balances from the immutable
-opening baseline plus confirmed operations. Home balance projection, mobile
-account/operation entry, offline command storage, bank synchronization,
-speech-to-text, and full chat are not part of this slice.
+bounded first-account and confirmed-operation write paths, and the standalone
+projector consumes both server outboxes. The Flutter UI does not yet call the
+account or operation endpoints. Mobile account/operation entry, offline command
+storage, bank synchronization, speech-to-text, and full chat are not part of
+this slice.
 
 ## Project layout
 
@@ -59,7 +61,9 @@ speech-to-text, and full chat are not part of this slice.
 - `lib/features/home/` — Home domain, API/cache, application, and presentation
 - `lib/l10n/` — localization source and generated delegates
 - `assets/fixtures/` — synthetic runtime Home fixture
-- `contracts/home/v1/` — versioned Home response schema
+- `contracts/home/v1/` — frozen original Home compatibility schema
+- `contracts/home/v2/` — current Home schema with authoritative date-only and
+  nullable operation facts
 - `contracts/finance/v1/` — versioned Finance account and operation schemas
 - `services/api/` — FastAPI service, PostgreSQL adapters, and Alembic migrations
 - `android/` and `ios/` — native Flutter hosts
@@ -104,6 +108,25 @@ uv run --project services/api \
 `mobile_finance_api.runtime:app` refuses to start without both required
 environment variables. The library entrypoint `mobile_finance_api.main:app`
 remains deliberately fail-closed for adapter-based tests and embedding.
+
+Run the projector as a separate process; do not attach it to the FastAPI
+lifespan. It needs only `MFA_DATABASE_URL`, recalculates each affected Home from
+authoritative rows, and publishes the revision plus outbox acknowledgements in
+one transaction.
+
+```bash
+PYTHONPATH=services/api/src uv run --project services/api \
+  python -m mobile_finance_api.projector_runtime --once
+
+# Or poll continuously under a process supervisor:
+PYTHONPATH=services/api/src uv run --project services/api \
+  python -m mobile_finance_api.projector_runtime
+```
+
+The reconciliation pass creates at most one revision per canonical local day,
+so the seven-day trend and month boundary advance without a new operation.
+Outbox payloads remain identifier-only; the projector reloads all money and
+dates from PostgreSQL rather than applying event deltas.
 
 An authenticated user first creates the only v1 Finance account through an
 explicit review-and-confirm flow:

@@ -37,6 +37,7 @@
   "hideAmounts": "Скрыть суммы",
   "showAmounts": "Показать суммы",
   "monthDelta": "за месяц",
+  "balanceDeltaUnavailable": "Динамика за месяц недоступна",
   "activeAccounts": "Все активные счета",
   "addByVoice": "Добавить голосом",
   "voiceEntryLabel": "Добавить операцию голосом",
@@ -114,6 +115,7 @@
   },
   "recentTransactionsTitle": "Последние операции",
   "noRecentTransactions": "Подтверждённых операций пока нет",
+  "transactionCategoryUnavailable": "Без категории",
   "transactionMetadata": "{category} · {date}",
   "@transactionMetadata": {
     "placeholders": {

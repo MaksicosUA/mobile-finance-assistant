@@ -253,6 +253,7 @@ class SyntheticHomeRepository:
                     id="transaction_synthetic_1",
                     title="Продуктовый магазин",
                     category="Продукты",
+                    occurred_on=date(2026, 7, 10),
                     occurred_at=datetime(
                         2026,
                         7,
@@ -270,6 +271,7 @@ class SyntheticHomeRepository:
                     id="transaction_synthetic_2",
                     title="Зарплата",
                     category="Доход",
+                    occurred_on=date(2026, 7, 5),
                     occurred_at=datetime(2026, 7, 5, 8, tzinfo=UTC),
                     amount=Decimal("1930.00"),
                     currency="EUR",
@@ -280,6 +282,7 @@ class SyntheticHomeRepository:
                     id="transaction_synthetic_3",
                     title="Дивиденды ETF",
                     category="Инвестиционный доход",
+                    occurred_on=date(2026, 7, 3),
                     occurred_at=datetime(2026, 7, 3, 14, 20, tzinfo=UTC),
                     amount=Decimal("55.00"),
                     currency="USD",
