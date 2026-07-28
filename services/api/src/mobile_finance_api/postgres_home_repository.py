@@ -78,13 +78,7 @@ class PostgresHomeRepository:
         except ValueError as error:
             raise RuntimeError("Invalid authenticated account subject") from error
 
-        now = _aware_utc(self._clock())
-        local_date = now.astimezone(query.timezone).date()
         timezone_name = query.timezone.key
-        month_start = local_date.replace(day=1)
-        month_end = local_date.replace(
-            day=calendar.monthrange(local_date.year, local_date.month)[1]
-        )
 
         async with self._session_factory() as database:
             profile = await database.scalar(
@@ -109,6 +103,15 @@ class PostgresHomeRepository:
                         .with_for_update(read=True)
                     )
                 ).all()
+            )
+            # The request's calendar boundary belongs after the shared
+            # user -> account locks. A request that waited through canonical
+            # midnight must not select yesterday's (or last month's) revision.
+            now = _aware_utc(self._clock())
+            local_date = now.astimezone(query.timezone).date()
+            month_start = local_date.replace(day=1)
+            month_end = local_date.replace(
+                day=calendar.monthrange(local_date.year, local_date.month)[1]
             )
             if accounts and (
                 len(accounts) != 1

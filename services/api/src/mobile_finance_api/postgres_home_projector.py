@@ -64,18 +64,23 @@ class PostgresHomeProjector:
     async def consume_next(self) -> bool:
         """Consume one user's pending source events; return false when idle."""
 
-        candidate = await self._next_candidate()
-        if candidate is None:
-            return False
-        try:
-            projected = await self._project_user(
-                candidate.user_id,
-                require_pending=True,
-            )
-        except Exception:
-            await self._record_failed_attempt(candidate)
-            raise
-        return projected
+        while True:
+            candidate = await self._next_candidate()
+            if candidate is None:
+                return False
+            try:
+                projected = await self._project_user(
+                    candidate.user_id,
+                    require_pending=True,
+                )
+            except Exception:
+                await self._record_failed_attempt(candidate)
+                raise
+            if projected:
+                return True
+            # Another worker acknowledged this candidate after selection.
+            # Re-scan before reporting global idle so pending users are not
+            # delayed until the next polling cycle.
 
     async def drain_pending(self, *, max_cycles: int | None = None) -> int:
         """Drain bounded pending work without hiding the first projection error."""

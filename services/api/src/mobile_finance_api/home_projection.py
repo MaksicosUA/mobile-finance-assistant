@@ -267,12 +267,7 @@ def _build_current_home_revision(
 
     recent_operations = sorted(
         effective,
-        key=lambda operation: (
-            operation.occurred_on,
-            operation.occurred_at or datetime.min.replace(tzinfo=UTC),
-            operation.created_at,
-            operation.operation_id.int,
-        ),
+        key=_recent_sort_key,
         reverse=True,
     )[:3]
     recent_transactions = tuple(
@@ -297,11 +292,20 @@ def _build_current_home_revision(
         and account.opening_balance_on <= operation.occurred_on <= cutoff_local_date
     )
     if relevant_legacy:
-        affected_blocks = ["balance", "recentTransactions"]
+        affected_blocks = ["balance"]
         if any(operation.occurred_on >= period_start for operation in relevant_legacy):
             affected_blocks.append("monthSummary")
         if any(operation.occurred_on >= trend_start for operation in relevant_legacy):
             affected_blocks.append("trend")
+        if any(
+            operation.account_id is None
+            for operation in sorted(
+                (*effective, *relevant_legacy),
+                key=_recent_sort_key,
+                reverse=True,
+            )[:3]
+        ):
+            affected_blocks.append("recentTransactions")
         warnings.extend(
             ProjectedWarning(
                 code="legacy_unallocated_operations_excluded",
@@ -411,6 +415,17 @@ def _validated_operation(
 def _signed_amount(operation: ProjectionOperation) -> Decimal:
     return (
         operation.amount if operation.operation_type == "income" else -operation.amount
+    )
+
+
+def _recent_sort_key(
+    operation: ProjectionOperation,
+) -> tuple[date, datetime, datetime, int]:
+    return (
+        operation.occurred_on,
+        operation.occurred_at or datetime.min.replace(tzinfo=UTC),
+        operation.created_at,
+        operation.operation_id.int,
     )
 
 
