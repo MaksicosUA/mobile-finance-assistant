@@ -54,7 +54,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install \
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$sdk_root" ]]; then
+            echo "ANDROID_SDK_ROOT/ANDROID_HOME is not configured." >&2
+            exit 1
+          fi
+          sdkmanager_bin="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager_bin" ]]; then
+            echo "sdkmanager is not executable at $sdkmanager_bin." >&2
+            exit 1
+          fi
+          "$sdkmanager_bin" --install \
             "platforms;android-36" \
             "build-tools;36.0.0" \
             "ndk;28.2.13676358"
