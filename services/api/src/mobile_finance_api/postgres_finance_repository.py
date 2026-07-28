@@ -11,11 +11,17 @@ from sqlalchemy.dialects.postgresql import insert
 
 from .database import AsyncSessionFactory
 from .db_models import (
+    FinanceAccountRow,
     FinanceOperationAuditRow,
     FinanceOperationRow,
     FinanceOutboxEventRow,
 )
-from .finance_core import OperationCommandConflict, OperationWriteResult
+from .finance_core import (
+    OperationAccountUnavailable,
+    OperationBeforeAccountBaseline,
+    OperationCommandConflict,
+    OperationWriteResult,
+)
 from .operation_contracts import CommittedOperation, OperationDraft
 
 
@@ -29,6 +35,29 @@ class PostgresFinanceOperationRepository:
         self._session_factory = session_factory
         self._clock = clock or _utc_now
 
+    async def replay_existing(
+        self,
+        *,
+        user_id: UUID,
+        command_id: UUID,
+        payload_hash: bytes,
+    ) -> OperationWriteResult | None:
+        async with self._session_factory() as database:
+            existing = await database.scalar(
+                select(FinanceOperationRow).where(
+                    FinanceOperationRow.user_id == user_id,
+                    FinanceOperationRow.command_id == command_id,
+                )
+            )
+        if existing is None:
+            return None
+        if existing.command_payload_hash != payload_hash:
+            raise OperationCommandConflict
+        return OperationWriteResult(
+            operation=_to_contract(existing),
+            idempotent_replay=True,
+        )
+
     async def commit(
         self,
         *,
@@ -39,9 +68,25 @@ class PostgresFinanceOperationRepository:
     ) -> OperationWriteResult:
         created_at = _aware_utc(self._clock())
         operation_id = uuid4()
+        account_id = draft.account_id
+        if account_id is None:
+            raise OperationAccountUnavailable
 
         async with self._session_factory() as database:
             async with database.begin():
+                account = await database.scalar(
+                    select(FinanceAccountRow)
+                    .where(
+                        FinanceAccountRow.id == account_id,
+                        FinanceAccountRow.user_id == user_id,
+                        FinanceAccountRow.status == "active",
+                    )
+                    .with_for_update()
+                )
+                if account is None or account.currency != draft.currency:
+                    raise OperationAccountUnavailable
+                if draft.occurred_on < account.opening_balance_on:
+                    raise OperationBeforeAccountBaseline
                 inserted_id = await database.scalar(
                     insert(FinanceOperationRow)
                     .values(
@@ -53,7 +98,7 @@ class PostgresFinanceOperationRepository:
                         operation_type=draft.operation_type,
                         amount=draft.amount,
                         currency=draft.currency,
-                        account_id=None,
+                        account_id=account_id,
                         category=draft.category,
                         merchant=draft.merchant,
                         captured_at=draft.captured_at,
@@ -95,7 +140,7 @@ class PostgresFinanceOperationRepository:
                     operation_type=draft.operation_type,
                     amount=draft.amount,
                     currency=draft.currency,
-                    account_id=None,
+                    account_id=account_id,
                     category=draft.category,
                     merchant=draft.merchant,
                     captured_at=draft.captured_at,

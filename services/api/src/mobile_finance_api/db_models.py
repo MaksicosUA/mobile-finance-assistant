@@ -8,10 +8,12 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     LargeBinary,
     Numeric,
@@ -19,6 +21,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -35,6 +38,15 @@ class UserRow(Base):
             "base_currency ~ '^[A-Z]{3}$'",
             name="ck_users_base_currency_iso_shape",
         ),
+        CheckConstraint(
+            "(timezone_revision = 0 AND canonical_timezone IS NULL) OR "
+            "(timezone_revision = 1 AND "
+            "canonical_timezone = btrim(canonical_timezone) AND "
+            "canonical_timezone <> '' AND "
+            "canonical_timezone !~ '[[:cntrl:]]' AND "
+            "canonical_timezone NOT IN ('Factory', 'localtime', 'posixrules'))",
+            name="ck_users_canonical_timezone_revision",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -49,6 +61,15 @@ class UserRow(Base):
         String(3),
         nullable=False,
         default="EUR",
+    )
+    canonical_timezone: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+    )
+    timezone_revision: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+        default=0,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -159,6 +180,189 @@ class AuthRefreshTokenRow(Base):
     )
 
 
+class FinanceAccountRow(Base):
+    """Authoritative v1 account and its immutable opening baseline."""
+
+    __tablename__ = "finance_accounts"
+    __table_args__ = (
+        CheckConstraint(
+            "schema_version = '1'",
+            name="ck_finance_accounts_schema_version",
+        ),
+        CheckConstraint(
+            "name = btrim(name) AND name <> '' AND name !~ '[[:cntrl:]]'",
+            name="ck_finance_accounts_name",
+        ),
+        CheckConstraint(
+            "currency = 'EUR'",
+            name="ck_finance_accounts_v1_currency",
+        ),
+        CheckConstraint(
+            "opening_balance NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_finance_accounts_finite_opening_balance",
+        ),
+        CheckConstraint(
+            "opening_balance_on BETWEEN DATE '1900-01-01' AND DATE '2100-12-31'",
+            name="ck_finance_accounts_opening_date",
+        ),
+        CheckConstraint(
+            "opening_timezone = btrim(opening_timezone) AND "
+            "opening_timezone <> '' AND "
+            "opening_timezone !~ '[[:cntrl:]]' AND "
+            "opening_timezone NOT IN ('Factory', 'localtime', 'posixrules')",
+            name="ck_finance_accounts_opening_timezone",
+        ),
+        CheckConstraint(
+            "status = 'active' AND is_default IS TRUE",
+            name="ck_finance_accounts_v1_state",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_finance_accounts_payload_hash_length",
+        ),
+        CheckConstraint(
+            "confirmed_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' AND "
+            "confirmed_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_accounts_confirmed_at_range",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "command_id",
+            name="uq_finance_accounts_user_command",
+        ),
+        UniqueConstraint(
+            "id",
+            "user_id",
+            name="uq_finance_accounts_id_user",
+        ),
+        UniqueConstraint(
+            "id",
+            "user_id",
+            "currency",
+            name="uq_finance_accounts_id_user_currency",
+        ),
+        Index(
+            "uq_finance_accounts_default_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_default IS TRUE"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    opening_balance: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    opening_balance_on: Mapped[date] = mapped_column(Date, nullable=False)
+    opening_timezone: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceAccountAuditRow(Base):
+    __tablename__ = "finance_account_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type = 'account_opened' AND actor_type = 'user'",
+            name="ck_finance_account_audit_open_event",
+        ),
+        CheckConstraint(
+            "octet_length(payload_hash) = 32",
+            name="ck_finance_account_audit_hash_length",
+        ),
+        ForeignKeyConstraint(
+            ["account_id", "user_id"],
+            ["finance_accounts.id", "finance_accounts.user_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "account_id",
+            "event_type",
+            name="uq_finance_account_audit_account_event",
+        ),
+        Index("ix_finance_account_audit_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceAccountOutboxEventRow(Base):
+    __tablename__ = "finance_account_outbox_events"
+    __table_args__ = (
+        CheckConstraint(
+            "aggregate_type = 'finance_account'",
+            name="ck_finance_account_outbox_aggregate_type",
+        ),
+        CheckConstraint(
+            "event_type = 'finance.account.opened.v1'",
+            name="ck_finance_account_outbox_event_type",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0",
+            name="ck_finance_account_outbox_attempt_count",
+        ),
+        ForeignKeyConstraint(
+            ["aggregate_id", "user_id"],
+            ["finance_accounts.id", "finance_accounts.user_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "aggregate_id",
+            "event_type",
+            name="uq_finance_account_outbox_aggregate_event",
+        ),
+        Index(
+            "ix_finance_account_outbox_unpublished",
+            "published_at",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    aggregate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    aggregate_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    attempt_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
 class FinanceOperationRow(Base):
     """Authoritative confirmed income/expense operation."""
 
@@ -184,10 +388,6 @@ class FinanceOperationRow(Base):
         CheckConstraint(
             "currency = 'EUR'",
             name="ck_finance_operations_v1_currency",
-        ),
-        CheckConstraint(
-            "account_id IS NULL",
-            name="ck_finance_operations_v1_unallocated_account",
         ),
         CheckConstraint(
             "captured_timezone = btrim(captured_timezone) AND "
@@ -242,7 +442,22 @@ class FinanceOperationRow(Base):
             "command_id",
             name="uq_finance_operations_user_command",
         ),
+        ForeignKeyConstraint(
+            ["account_id", "user_id", "currency"],
+            [
+                "finance_accounts.id",
+                "finance_accounts.user_id",
+                "finance_accounts.currency",
+            ],
+            name="fk_finance_operations_owned_account_currency",
+        ),
         Index("ix_finance_operations_user_occurred", "user_id", "occurred_on"),
+        Index(
+            "ix_finance_operations_user_account_occurred",
+            "user_id",
+            "account_id",
+            "occurred_on",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)

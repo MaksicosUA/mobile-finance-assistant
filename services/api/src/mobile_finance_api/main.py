@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal, cast
 from uuid import uuid4
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
@@ -19,6 +19,8 @@ from starlette.datastructures import MutableHeaders
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from .account_core import AccountCore, UnavailableFinanceAccountRepository
+from .account_routes import router as account_router
 from .auth import (
     AuthenticatedUser,
     CurrentUserAuthenticator,
@@ -30,7 +32,13 @@ from .auth_service import AuthenticationService, UnavailableAuthenticationServic
 from .finance_core import FinanceCore, UnavailableFinanceOperationRepository
 from .models import HomeResponse
 from .operation_routes import router as operation_router
-from .repository import HomeQuery, HomeRepository, UnavailableHomeRepository
+from .repository import (
+    HomeCanonicalTimezoneMismatch,
+    HomeQuery,
+    HomeRepository,
+    UnavailableHomeRepository,
+)
+from .timezones import validated_iana_timezone
 
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _CACHE_HEADERS = {
@@ -73,7 +81,9 @@ class RequestIdMiddleware:
                             f"{vary}, Authorization" if vary else "Authorization"
                         )
                 path = str(scope.get("path", ""))
-                if path.startswith(("/api/v1/auth/", "/api/v1/operations/")):
+                if path.startswith(
+                    ("/api/v1/auth/", "/api/v1/accounts", "/api/v1/operations/")
+                ):
                     headers["Cache-Control"] = "no-store"
                     headers["Pragma"] = "no-cache"
             await send(message)
@@ -98,16 +108,9 @@ async def _home_repository(request: Request) -> HomeRepository:
 
 
 def _iana_timezone(value: str) -> ZoneInfo:
-    if (
-        not value
-        or len(value) > 128
-        or value != value.strip()
-        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
-    ):
-        raise HTTPException(status_code=422, detail="Invalid IANA timezone")
     try:
-        return ZoneInfo(value)
-    except (ValueError, ZoneInfoNotFoundError) as error:
+        return validated_iana_timezone(value)
+    except ValueError as error:
         raise HTTPException(status_code=422, detail="Invalid IANA timezone") from error
 
 
@@ -141,6 +144,7 @@ router = APIRouter()
     responses={
         200: {"description": "Validated Home aggregate"},
         304: {"description": "The authenticated representation is unchanged"},
+        409: {"description": "Requested timezone conflicts with the profile"},
         401: {"description": "Authentication is required"},
         422: {"description": "Unsupported period or invalid IANA timezone"},
         503: {"description": "The Home projection is temporarily unavailable"},
@@ -158,6 +162,11 @@ async def get_home(
         raw_home = await repository.get_home(user=user, query=query)
         home = HomeResponse.model_validate(raw_home)
         content = home.model_dump_json(by_alias=True).encode("utf-8")
+    except HomeCanonicalTimezoneMismatch:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": {"code": "CANONICAL_TIMEZONE_MISMATCH"}},
+        )
     except Exception:
         # Return a sanitized response instead of chaining an exception whose
         # locals may contain a future financial Home snapshot.
@@ -183,6 +192,7 @@ def create_app(
     home_repository: HomeRepository | None = None,
     current_user_authenticator: CurrentUserAuthenticator | None = None,
     authentication_service: AuthenticationService | None = None,
+    account_core: AccountCore | None = None,
     finance_core: FinanceCore | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
@@ -214,10 +224,19 @@ def create_app(
         if authentication_service is not None
         else UnavailableAuthenticationService()
     )
+    unavailable_accounts = UnavailableFinanceAccountRepository()
+    application.state.account_core = (
+        account_core
+        if account_core is not None
+        else AccountCore(repository=unavailable_accounts)
+    )
     application.state.finance_core = (
         finance_core
         if finance_core is not None
-        else FinanceCore(repository=UnavailableFinanceOperationRepository())
+        else FinanceCore(
+            repository=UnavailableFinanceOperationRepository(),
+            account_directory=unavailable_accounts,
+        )
     )
 
     @application.exception_handler(RequestValidationError)
@@ -247,6 +266,7 @@ def create_app(
 
     application.add_middleware(RequestIdMiddleware)
     application.include_router(auth_router)
+    application.include_router(account_router)
     application.include_router(operation_router)
     application.include_router(router)
     return application

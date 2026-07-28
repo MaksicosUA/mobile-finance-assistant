@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .auth import AuthenticatedUser
 from .database import AsyncSessionFactory
 from .db_models import (
+    FinanceAccountRow,
+    FinanceOperationRow,
     HomeProjectionActionRow,
     HomeProjectionGoalRow,
     HomeProjectionPaymentRow,
@@ -37,7 +39,8 @@ from .models import (
     HomeUser,
     HomeWarning,
 )
-from .repository import HomeQuery
+from .repository import HomeCanonicalTimezoneMismatch, HomeQuery
+from .timezones import validated_iana_timezone_key
 
 
 class PostgresHomeRepository:
@@ -87,6 +90,10 @@ class PostgresHomeRepository:
             )
             if profile is None:
                 raise RuntimeError("Authenticated account is unavailable")
+            if profile.canonical_timezone is not None:
+                canonical_timezone = _validated_timezone(profile.canonical_timezone)
+                if canonical_timezone != timezone_name:
+                    raise HomeCanonicalTimezoneMismatch
 
             snapshot = await database.scalar(
                 select(HomeProjectionSnapshotRow)
@@ -99,7 +106,10 @@ class PostgresHomeRepository:
                 .limit(1)
             )
             if snapshot is None:
-                if await _has_projection_history(database, user_id):
+                if await _has_projection_history(
+                    database,
+                    user_id,
+                ) or await _has_authoritative_financial_state(database, user_id):
                     raise RuntimeError("Current Home projection is unavailable")
                 return _empty_home(
                     display_name=profile.display_name,
@@ -112,6 +122,13 @@ class PostgresHomeRepository:
                     month_start=month_start,
                     month_end=month_end,
                 )
+
+            if await _has_financial_state_after(
+                database,
+                user_id=user_id,
+                data_as_of=snapshot.data_as_of,
+            ):
+                raise RuntimeError("Current Home projection is behind financial state")
 
             if (
                 snapshot.period_end != month_end
@@ -210,6 +227,48 @@ async def _has_projection_history(database: AsyncSession, user_id: UUID) -> bool
         select(exists().where(HomeProjectionSnapshotRow.user_id == user_id))
     )
     return bool(value)
+
+
+async def _has_authoritative_financial_state(
+    database: AsyncSession,
+    user_id: UUID,
+) -> bool:
+    account_exists = await database.scalar(
+        select(exists().where(FinanceAccountRow.user_id == user_id))
+    )
+    if account_exists:
+        return True
+    operation_exists = await database.scalar(
+        select(exists().where(FinanceOperationRow.user_id == user_id))
+    )
+    return bool(operation_exists)
+
+
+async def _has_financial_state_after(
+    database: AsyncSession,
+    *,
+    user_id: UUID,
+    data_as_of: datetime,
+) -> bool:
+    account_is_newer = await database.scalar(
+        select(
+            exists().where(
+                FinanceAccountRow.user_id == user_id,
+                FinanceAccountRow.created_at > data_as_of,
+            )
+        )
+    )
+    if account_is_newer:
+        return True
+    operation_is_newer = await database.scalar(
+        select(
+            exists().where(
+                FinanceOperationRow.user_id == user_id,
+                FinanceOperationRow.created_at > data_as_of,
+            )
+        )
+    )
+    return bool(operation_is_newer)
 
 
 def _projected_home(
@@ -356,8 +415,8 @@ def _aware_utc(value: datetime) -> datetime:
 
 def _validated_timezone(value: str) -> str:
     try:
-        return ZoneInfo(value).key
-    except (ValueError, ZoneInfoNotFoundError) as error:
+        return validated_iana_timezone_key(value)
+    except ValueError as error:
         raise RuntimeError("Home projection timezone is invalid") from error
 
 

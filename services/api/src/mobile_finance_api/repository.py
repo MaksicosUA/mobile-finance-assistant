@@ -42,6 +42,10 @@ class HomeRepository(Protocol):
         """Return a validated aggregate for one authenticated account."""
 
 
+class HomeCanonicalTimezoneMismatch(Exception):
+    """The requested projection timezone differs from the financial profile."""
+
+
 class UnavailableHomeRepository:
     """Fail-closed default until a deployment configures a data adapter."""
 

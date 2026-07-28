@@ -34,17 +34,23 @@ outside it.
 - Deterministic Finance Core validation with account-scoped command
   idempotency, authoritative PostgreSQL operations, audit events, and a
   transactional server outbox
+- Explicit first-account bootstrap with an immutable signed opening balance,
+  one authoritative default EUR account, and a canonical IANA timezone stored
+  on the authenticated user profile
+- Owned-account allocation for every new operation, protected by database
+  ownership/currency constraints and commit-time revalidation
 - Alembic migrations for accounts, authentication sessions, Home read
   projections, and authoritative finance operations
 
 The repository contains no production credential or real user financial data.
 The default Flutter build uses synthetic Home fixtures and does not require an
-account. Network builds enable the real authentication gate. The API exposes a
-bounded confirmed-operation write path, but it does not expose a projection
-seeder and does not yet consume its server outbox. A future deterministic
-projector will publish Home revisions. Account allocation, Home balance
-projection, mobile operation entry, offline command storage, bank
-synchronization, speech-to-text, and full chat are not part of this slice.
+account. Network builds enable the real authentication gate. The API exposes
+bounded first-account and confirmed-operation write paths, but the Flutter UI
+does not yet call them, and the API does not yet consume either server outbox.
+A future deterministic projector will derive Home balances from the immutable
+opening baseline plus confirmed operations. Home balance projection, mobile
+account/operation entry, offline command storage, bank synchronization,
+speech-to-text, and full chat are not part of this slice.
 
 ## Project layout
 
@@ -54,7 +60,7 @@ synchronization, speech-to-text, and full chat are not part of this slice.
 - `lib/l10n/` — localization source and generated delegates
 - `assets/fixtures/` — synthetic runtime Home fixture
 - `contracts/home/v1/` — versioned Home response schema
-- `contracts/finance/v1/` — versioned Finance operation message schema
+- `contracts/finance/v1/` — versioned Finance account and operation schemas
 - `services/api/` — FastAPI service, PostgreSQL adapters, and Alembic migrations
 - `android/` and `ios/` — native Flutter hosts
 
@@ -99,7 +105,28 @@ uv run --project services/api \
 environment variables. The library entrypoint `mobile_finance_api.main:app`
 remains deliberately fail-closed for adapter-based tests and embedding.
 
-Authenticated operation writes use two endpoints:
+An authenticated user first creates the only v1 Finance account through an
+explicit review-and-confirm flow:
+
+- `GET /api/v1/accounts` returns the authoritative setup state;
+- `POST /api/v1/accounts/evaluate` validates a strict account draft and returns
+  `REJECT` or a canonical `NEEDS_CONFIRMATION` draft hash;
+- `POST /api/v1/accounts/commit` atomically stores the account, the user's
+  canonical timezone, a hash-only audit event, and a minimal outbox event. An
+  exact retry returns the same account with `idempotentReplay: true`.
+
+Account v1 supports exactly one active default account in `EUR`. Its signed
+decimal-string `openingBalance` is the account stock at the start of
+`openingBalanceOn` in `canonicalTimezone`; it is immutable and is never treated
+as income, expense, or a recent operation. Registration remains identity-only.
+The checked-in account contract is regenerated with:
+
+```bash
+PYTHONPATH=services/api/src uv run --project services/api \
+  python services/api/tool/generate_account_contract.py
+```
+
+Authenticated operation writes then use two endpoints:
 
 - `POST /api/v1/operations/evaluate` returns `REJECT` or a canonical
   `NEEDS_CONFIRMATION` draft hash without writing financial state;
@@ -109,10 +136,12 @@ Authenticated operation writes use two endpoints:
 Operation v1 accepts only positive decimal-string `expense` and `income`
 amounts in `EUR`; other currencies fail closed until a verified ISO registry
 and exchange-rate policy exist. It resolves `today`/`yesterday` from the
-captured UTC instant and IANA timezone. Until an owned-account registry exists,
-only an explicitly unallocated operation (`accountId: null`) is accepted; such
-operations are not used to claim an authoritative account balance. The
-checked-in contract is regenerated with:
+captured UTC instant and captured IANA timezone, which remains distinct from
+the user's canonical timezone while travelling. Every new operation requires
+an explicit active `accountId` owned by the authenticated user; the server
+never substitutes a default implicitly. Legacy unallocated rows remain
+auditable and replayable but are excluded from authoritative balances. The
+checked-in operation contract is regenerated with:
 
 ```bash
 PYTHONPATH=services/api/src uv run --project services/api \
