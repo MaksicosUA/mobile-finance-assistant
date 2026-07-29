@@ -220,11 +220,17 @@ abstract class AppLocalizations {
   /// **'Добавить операцию голосом'**
   String get voiceEntryLabel;
 
+  /// No description provided for @setupAccountAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настроить счёт'**
+  String get setupAccountAction;
+
   /// No description provided for @monthSummaryTitle.
   ///
   /// In ru, this message translates to:
-  /// **'Итоги июля'**
-  String get monthSummaryTitle;
+  /// **'Итоги за {month}'**
+  String monthSummaryTitle(String month);
 
   /// No description provided for @income.
   ///
@@ -992,6 +998,306 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Отмена'**
   String get cancelAction;
+
+  /// No description provided for @financeEntryTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Финансовая операция'**
+  String get financeEntryTitle;
+
+  /// No description provided for @financeEntryLoading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверяем финансовый счёт'**
+  String get financeEntryLoading;
+
+  /// No description provided for @financeEntryLoadFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось открыть ввод операции'**
+  String get financeEntryLoadFailed;
+
+  /// No description provided for @accountSetupTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настройте первый счёт'**
+  String get accountSetupTitle;
+
+  /// No description provided for @accountSetupDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите фактический остаток и дату, с которой начинается учёт. Перед сохранением вы проверите все данные.'**
+  String get accountSetupDescription;
+
+  /// No description provided for @accountNameField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Название счёта'**
+  String get accountNameField;
+
+  /// No description provided for @accountNameHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Например, Основной счёт'**
+  String get accountNameHint;
+
+  /// No description provided for @accountNameRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Укажите название счёта'**
+  String get accountNameRequired;
+
+  /// No description provided for @openingBalanceField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Начальный остаток'**
+  String get openingBalanceField;
+
+  /// No description provided for @openingBalanceHelp.
+  ///
+  /// In ru, this message translates to:
+  /// **'Это исходный остаток, а не доход или расход.'**
+  String get openingBalanceHelp;
+
+  /// No description provided for @openingBalanceDateField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата начального остатка'**
+  String get openingBalanceDateField;
+
+  /// No description provided for @canonicalTimezoneLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Часовой пояс учёта'**
+  String get canonicalTimezoneLabel;
+
+  /// No description provided for @continueToReviewAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверить данные'**
+  String get continueToReviewAction;
+
+  /// No description provided for @accountReviewTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверьте настройки счёта'**
+  String get accountReviewTitle;
+
+  /// No description provided for @reviewBeforeConfirmDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Финансовые данные сохранятся только после явного подтверждения.'**
+  String get reviewBeforeConfirmDescription;
+
+  /// No description provided for @confirmFinanceAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтвердить и сохранить'**
+  String get confirmFinanceAction;
+
+  /// No description provided for @editAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменить'**
+  String get editAction;
+
+  /// No description provided for @accountCreatedNotice.
+  ///
+  /// In ru, this message translates to:
+  /// **'Счёт подтверждён. Теперь добавьте первую операцию.'**
+  String get accountCreatedNotice;
+
+  /// No description provided for @manualOperationTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавьте операцию вручную'**
+  String get manualOperationTitle;
+
+  /// No description provided for @manualOperationDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Заполните структурированные поля. Голос и автоматическое распознавание пока не используются.'**
+  String get manualOperationDescription;
+
+  /// No description provided for @accountLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Счёт'**
+  String get accountLabel;
+
+  /// No description provided for @operationExpense.
+  ///
+  /// In ru, this message translates to:
+  /// **'Расход'**
+  String get operationExpense;
+
+  /// No description provided for @operationIncome.
+  ///
+  /// In ru, this message translates to:
+  /// **'Доход'**
+  String get operationIncome;
+
+  /// No description provided for @operationTypeLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Тип операции'**
+  String get operationTypeLabel;
+
+  /// No description provided for @operationAmountField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сумма'**
+  String get operationAmountField;
+
+  /// No description provided for @merchantField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Место или получатель, необязательно'**
+  String get merchantField;
+
+  /// No description provided for @categoryField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Категория, необязательно'**
+  String get categoryField;
+
+  /// No description provided for @operationDateField.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата операции'**
+  String get operationDateField;
+
+  /// No description provided for @operationReviewTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверьте операцию'**
+  String get operationReviewTitle;
+
+  /// No description provided for @addAnotherOperationAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить ещё одну'**
+  String get addAnotherOperationAction;
+
+  /// No description provided for @moneyInputInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите корректную сумму, например 1250,50 или -20'**
+  String get moneyInputInvalid;
+
+  /// No description provided for @positiveMoneyInputInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите сумму больше нуля, например 35 или 35,50'**
+  String get positiveMoneyInputInvalid;
+
+  /// No description provided for @financeInvalidInput.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверьте заполненные поля и попробуйте снова.'**
+  String get financeInvalidInput;
+
+  /// No description provided for @financeValidationRejected.
+  ///
+  /// In ru, this message translates to:
+  /// **'Данные не прошли проверку. Проверьте поля перед повторной отправкой.'**
+  String get financeValidationRejected;
+
+  /// No description provided for @financeDateRejected.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата не может быть позже сегодняшнего дня.'**
+  String get financeDateRejected;
+
+  /// No description provided for @operationBeforeOpeningDateError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата операции не может быть раньше даты начального остатка.'**
+  String get operationBeforeOpeningDateError;
+
+  /// No description provided for @financeAccountUnavailable.
+  ///
+  /// In ru, this message translates to:
+  /// **'Счёт недоступен для этой операции. Обновите экран и попробуйте снова.'**
+  String get financeAccountUnavailable;
+
+  /// No description provided for @financeConflictError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Команда конфликтует с уже обработанной записью. Измените данные и создайте новое подтверждение.'**
+  String get financeConflictError;
+
+  /// No description provided for @financeOfflineError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось связаться с сервером. Проверьте подключение к API и повторите попытку.'**
+  String get financeOfflineError;
+
+  /// No description provided for @financeTimeoutError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер не ответил вовремя. Подтверждение можно безопасно повторить.'**
+  String get financeTimeoutError;
+
+  /// No description provided for @financeServiceError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервис финансовых операций временно недоступен. Попробуйте снова позже.'**
+  String get financeServiceError;
+
+  /// No description provided for @financeUnexpectedError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Получен некорректный ответ. Финансовые данные не были изменены клиентом.'**
+  String get financeUnexpectedError;
+
+  /// No description provided for @financeSessionChanged.
+  ///
+  /// In ru, this message translates to:
+  /// **'Защищённая сессия обновилась. Повторите действие; подтверждение будет отправлено с теми же данными.'**
+  String get financeSessionChanged;
+
+  /// No description provided for @operationAcceptedTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция сохранена'**
+  String get operationAcceptedTitle;
+
+  /// No description provided for @operationAcceptedUpdatingHome.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция принята. Ждём новую версию главного экрана.'**
+  String get operationAcceptedUpdatingHome;
+
+  /// No description provided for @operationAcceptedHomeUpdated.
+  ///
+  /// In ru, this message translates to:
+  /// **'Главный экран обновлён по новой авторитетной версии.'**
+  String get operationAcceptedHomeUpdated;
+
+  /// No description provided for @operationAcceptedProjectionDelayed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция уже сохранена, но обновление главного экрана задерживается. Повторно подтверждать её не нужно.'**
+  String get operationAcceptedProjectionDelayed;
+
+  /// No description provided for @operationAcceptedAuthRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция уже сохранена, но для обновления главного экрана потребуется снова войти.'**
+  String get operationAcceptedAuthRequired;
+
+  /// No description provided for @operationAcceptedSessionChanged.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция уже сохранена, но сессия изменилась во время обновления. Откройте главный экран ещё раз.'**
+  String get operationAcceptedSessionChanged;
+
+  /// No description provided for @operationAcceptedRefreshFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция уже сохранена. Главный экран можно обновить позже.'**
+  String get operationAcceptedRefreshFailed;
 }
 
 class _AppLocalizationsDelegate

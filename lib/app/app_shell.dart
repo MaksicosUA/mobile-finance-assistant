@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/home/application/home_controller.dart';
 import '../features/home/presentation/home_page.dart';
 import '../features/auth/application/auth_controller.dart';
+import '../features/finance_entry/presentation/finance_entry_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
 import 'settings/settings_page.dart';
@@ -34,6 +35,13 @@ class _AppShellState extends ConsumerState<AppShell> {
     setState(() {
       _section = AppSection.chat;
       _voiceEntryRequested = true;
+    });
+  }
+
+  void _openManualEntry() {
+    setState(() {
+      _section = AppSection.chat;
+      _voiceEntryRequested = false;
     });
   }
 
@@ -98,17 +106,28 @@ class _AppShellState extends ConsumerState<AppShell> {
             onOpenSettings: _openSettings,
             onNotificationsPressed: _openNotifications,
             onVoicePressed: _openVoiceEntry,
+            onManualEntryPressed: isNetworkBackendConfigured
+                ? _openManualEntry
+                : null,
             onAnalyticsPressed: () => _selectSection(AppSection.analytics),
             onGoalPressed: () => _selectSection(AppSection.goals),
             onSignOutRequested: _openSessionExpired,
           ),
-          StubPage(
-            title: _voiceEntryRequested ? l10n.voiceStubTitle : l10n.chatTab,
-            description: _voiceEntryRequested
-                ? l10n.voiceStubDescription
-                : l10n.stubDescription,
-            onBackHome: () => _selectSection(AppSection.home),
-          ),
+          if (isNetworkBackendConfigured &&
+              _section == AppSection.chat &&
+              !_voiceEntryRequested)
+            FinanceEntryPage(
+              onBackHome: () => _selectSection(AppSection.home),
+              onSignInRequested: _openSessionExpired,
+            )
+          else
+            StubPage(
+              title: _voiceEntryRequested ? l10n.voiceStubTitle : l10n.chatTab,
+              description: _voiceEntryRequested
+                  ? l10n.voiceStubDescription
+                  : l10n.stubDescription,
+              onBackHome: () => _selectSection(AppSection.home),
+            ),
           StubPage(
             title: l10n.analyticsTab,
             description: l10n.stubDescription,

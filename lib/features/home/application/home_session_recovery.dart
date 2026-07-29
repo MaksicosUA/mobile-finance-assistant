@@ -42,7 +42,7 @@ final class AuthHomeSessionRecovery implements HomeSessionRecovery {
 final homeSessionRecoveryProvider = Provider<HomeSessionRecovery>(
   (ref) => isNetworkBackendConfigured
       ? AuthHomeSessionRecovery(
-          ref.read(authControllerProvider.notifier).recoverSessionForHome,
+          ref.read(authControllerProvider.notifier).recoverSession,
         )
       : const ScenarioHomeSessionRecovery(),
 );

@@ -33,6 +33,7 @@ class HomePage extends ConsumerStatefulWidget {
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
     required this.onSignOutRequested,
+    this.onManualEntryPressed,
     this.localClock,
   });
 
@@ -42,6 +43,7 @@ class HomePage extends ConsumerStatefulWidget {
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
   final VoidCallback onSignOutRequested;
+  final VoidCallback? onManualEntryPressed;
   final DateTime Function()? localClock;
 
   @override
@@ -103,6 +105,12 @@ class _HomePageState extends ConsumerState<HomePage>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(authSessionEpochProvider, (previous, next) {
+      if (previous == null || previous == next) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.read(homeControllerProvider.notifier).load();
+      });
+    });
     final l10n = AppLocalizations.of(context);
     final homeState = ref.watch(homeControllerProvider);
     final settings = ref.watch(appSettingsControllerProvider);
@@ -148,6 +156,7 @@ class _HomePageState extends ConsumerState<HomePage>
                       .read(appSettingsControllerProvider.notifier)
                       .togglePrivacyMode,
                   onVoicePressed: widget.onVoicePressed,
+                  onManualEntryPressed: widget.onManualEntryPressed,
                   onAnalyticsPressed: widget.onAnalyticsPressed,
                   onGoalPressed: widget.onGoalPressed,
                   onRetry: ref.read(homeControllerProvider.notifier).retry,
@@ -168,6 +177,7 @@ class _HomeStateBody extends StatelessWidget {
     required this.privacyEnabled,
     required this.onTogglePrivacy,
     required this.onVoicePressed,
+    required this.onManualEntryPressed,
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
     required this.onRetry,
@@ -178,6 +188,7 @@ class _HomeStateBody extends StatelessWidget {
   final bool privacyEnabled;
   final VoidCallback onTogglePrivacy;
   final VoidCallback onVoicePressed;
+  final VoidCallback? onManualEntryPressed;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
   final Future<void> Function() onRetry;
@@ -196,6 +207,8 @@ class _HomeStateBody extends StatelessWidget {
         description: l10n.emptyDescription,
         voiceLabel: l10n.addByVoice,
         voiceSemanticsLabel: l10n.voiceEntryLabel,
+        manualLabel: l10n.setupAccountAction,
+        onManualPressed: onManualEntryPressed,
         onVoicePressed: data.availableActions.contains(HomeAction.voiceEntry)
             ? onVoicePressed
             : null,
@@ -488,7 +501,9 @@ class _PopulatedHome extends StatelessWidget {
           )
         else
           MonthlySummary(
-            title: l10n.monthSummaryTitle,
+            title: l10n.monthSummaryTitle(
+              materialL10n.formatMonthYear(month.from),
+            ),
             incomeLabel: l10n.income,
             incomeValue: MoneyFormatter.format(
               month.income,

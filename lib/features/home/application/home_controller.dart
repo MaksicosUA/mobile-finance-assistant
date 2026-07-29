@@ -29,10 +29,37 @@ const _homeScenario = String.fromEnvironment(
   'HOME_SCENARIO',
   defaultValue: 'populated',
 );
-const _homeApiTimezone = String.fromEnvironment(
-  'HOME_API_TIMEZONE',
-  defaultValue: 'Europe/Berlin',
+typedef AcceptedWriteHomeDelay = Future<void> Function(Duration duration);
+
+enum AcceptedWriteHomeConvergenceResult {
+  updated,
+  projectionDelayed,
+  authenticationRequired,
+  sessionChanged,
+  failed,
+}
+
+final acceptedWriteHomeDelayProvider = Provider<AcceptedWriteHomeDelay>(
+  (_) =>
+      (duration) => Future<void>.delayed(duration),
 );
+
+const _acceptedWriteRetryDelays = <Duration>[
+  Duration(seconds: 1),
+  Duration(seconds: 2),
+  Duration(seconds: 4),
+];
+
+enum _HomeRequestOutcome {
+  updated,
+  firstUse,
+  offline,
+  serviceUnavailable,
+  authenticationRequired,
+  sessionChanged,
+  otherFailure,
+  skipped,
+}
 
 final homeRepositoryProvider = Provider<HomeRepository>((ref) {
   if (isNetworkBackendConfigured) {
@@ -42,7 +69,7 @@ final homeRepositoryProvider = Provider<HomeRepository>((ref) {
       api: HomeApi(
         dio: dio,
         baseUri: Uri.parse(configuredApiBaseUrl),
-        timezone: _homeApiTimezone,
+        timezone: configuredHomeApiTimezone,
       ),
       cache: ref.watch(homeCacheProvider),
       sessionProvider: ref.watch(homeSessionStoreProvider).readSession,
@@ -66,6 +93,7 @@ final homeControllerProvider = NotifierProvider<HomeController, HomeState>(
 
 class HomeController extends Notifier<HomeState> {
   var _requestInFlight = false;
+  Completer<void>? _requestCompletion;
   int? _activeRequestEpoch;
   var _reloadAfterInFlight = false;
   var _authRefreshAttempted = false;
@@ -134,10 +162,18 @@ class HomeController extends Notifier<HomeState> {
     }
   }
 
-  /// Called by the confirmation flow once Finance Core accepts an operation.
-  Future<void> invalidateAfterConfirmedOperation() async {
+  /// Converges Home after Finance Core has already accepted a financial write.
+  ///
+  /// A temporary service-unavailable response is expected while the standalone
+  /// projector consumes its outbox event. The encrypted cache is invalidated
+  /// once, and every poll is unconditional. Other failures are not retried here
+  /// because the authoritative write has already succeeded and must never be
+  /// presented as rejected merely because its read model is delayed.
+  Future<AcceptedWriteHomeConvergenceResult>
+  convergeAfterAcceptedWrite() async {
     final sessionEpoch = _sessionEpoch;
     final repository = ref.read(homeRepositoryProvider);
+    var retained = state.retainedSnapshot;
     if (repository case final HomeCacheInvalidator invalidator) {
       try {
         await invalidator.invalidateHomeCache();
@@ -146,16 +182,62 @@ class HomeController extends Notifier<HomeState> {
         // details are exposed through logs or state.
       }
     }
-    if (sessionEpoch != _sessionEpoch) return;
+    if (sessionEpoch != _sessionEpoch) {
+      return AcceptedWriteHomeConvergenceResult.sessionChanged;
+    }
 
-    final retained = state.retainedSnapshot;
-    await _request(
-      forceRefresh: true,
-      retainedSnapshot: retained,
-      showRetainedRefresh: retained != null,
-      readCacheFirst: false,
-    );
+    final delay = ref.read(acceptedWriteHomeDelayProvider);
+    var retryIndex = 0;
+    while (true) {
+      await _waitForActiveRequest();
+      if (sessionEpoch != _sessionEpoch) {
+        return AcceptedWriteHomeConvergenceResult.sessionChanged;
+      }
+
+      retained = state.retainedSnapshot ?? retained;
+      final outcome = await _request(
+        forceRefresh: true,
+        retainedSnapshot: retained,
+        showRetainedRefresh: retained != null,
+        readCacheFirst: false,
+      );
+
+      switch (outcome) {
+        case _HomeRequestOutcome.updated:
+          return AcceptedWriteHomeConvergenceResult.updated;
+        case _HomeRequestOutcome.authenticationRequired:
+          return AcceptedWriteHomeConvergenceResult.authenticationRequired;
+        case _HomeRequestOutcome.sessionChanged:
+          return AcceptedWriteHomeConvergenceResult.sessionChanged;
+        case _HomeRequestOutcome.serviceUnavailable:
+          if (retryIndex >= _acceptedWriteRetryDelays.length) {
+            return AcceptedWriteHomeConvergenceResult.projectionDelayed;
+          }
+          try {
+            await delay(_acceptedWriteRetryDelays[retryIndex]);
+          } catch (_) {
+            return AcceptedWriteHomeConvergenceResult.failed;
+          }
+          retryIndex += 1;
+          if (sessionEpoch != _sessionEpoch) {
+            return AcceptedWriteHomeConvergenceResult.sessionChanged;
+          }
+          continue;
+        case _HomeRequestOutcome.skipped:
+          // A regular Home request won the race after the wait above. Wait for
+          // it without consuming the bounded projector retry schedule, then
+          // issue the required unconditional post-write request.
+          continue;
+        case _HomeRequestOutcome.firstUse ||
+            _HomeRequestOutcome.offline ||
+            _HomeRequestOutcome.otherFailure:
+          return AcceptedWriteHomeConvergenceResult.failed;
+      }
+    }
   }
+
+  Future<AcceptedWriteHomeConvergenceResult>
+  invalidateAfterConfirmedOperation() => convergeAfterAcceptedWrite();
 
   /// Clears credentials and encrypted Home data before leaving the session.
   Future<bool> clearSessionForSignOut() async {
@@ -174,7 +256,7 @@ class HomeController extends Notifier<HomeState> {
     }
   }
 
-  Future<void> _request({
+  Future<_HomeRequestOutcome> _request({
     required bool forceRefresh,
     required HomeSnapshot? retainedSnapshot,
     required bool showRetainedRefresh,
@@ -184,9 +266,11 @@ class HomeController extends Notifier<HomeState> {
       if (_activeRequestEpoch != _sessionEpoch) {
         _reloadAfterInFlight = true;
       }
-      return;
+      return _HomeRequestOutcome.skipped;
     }
     _requestInFlight = true;
+    final requestCompletion = Completer<void>();
+    _requestCompletion = requestCompletion;
     final sessionEpoch = _sessionEpoch;
     _activeRequestEpoch = sessionEpoch;
     var effectiveSnapshot = retainedSnapshot;
@@ -207,7 +291,9 @@ class HomeController extends Notifier<HomeState> {
           }
         }
       }
-      if (sessionEpoch != _sessionEpoch) return;
+      if (sessionEpoch != _sessionEpoch) {
+        return _HomeRequestOutcome.sessionChanged;
+      }
 
       if (effectiveSnapshot != null &&
           (showRetainedRefresh || readCacheFirst)) {
@@ -217,8 +303,10 @@ class HomeController extends Notifier<HomeState> {
       }
 
       final result = await repository.fetchHome(forceRefresh: forceRefresh);
-      if (sessionEpoch != _sessionEpoch) return;
-      await _applyResult(
+      if (sessionEpoch != _sessionEpoch) {
+        return _HomeRequestOutcome.sessionChanged;
+      }
+      return await _applyResult(
         result,
         retainedSnapshot: effectiveSnapshot,
         retainedUserName: effectiveUserName,
@@ -226,16 +314,23 @@ class HomeController extends Notifier<HomeState> {
         sessionEpoch: sessionEpoch,
       );
     } catch (_) {
-      if (sessionEpoch != _sessionEpoch) return;
+      if (sessionEpoch != _sessionEpoch) {
+        return _HomeRequestOutcome.sessionChanged;
+      }
       _showFailure(
         type: HomeFailureType.unknown,
         requestId: 'req_local_unexpected',
         retainedSnapshot: effectiveSnapshot,
         retainedUserName: effectiveUserName,
       );
+      return _HomeRequestOutcome.otherFailure;
     } finally {
       _requestInFlight = false;
       _activeRequestEpoch = null;
+      if (identical(_requestCompletion, requestCompletion)) {
+        _requestCompletion = null;
+      }
+      if (!requestCompletion.isCompleted) requestCompletion.complete();
       if (_reloadAfterInFlight) {
         _reloadAfterInFlight = false;
         unawaited(load());
@@ -243,27 +338,33 @@ class HomeController extends Notifier<HomeState> {
     }
   }
 
-  Future<void> _applyResult(
+  Future<_HomeRequestOutcome> _applyResult(
     HomeRepositoryResult result, {
     required HomeSnapshot? retainedSnapshot,
     required String? retainedUserName,
     required bool forceRefresh,
     required int sessionEpoch,
   }) async {
-    if (sessionEpoch != _sessionEpoch) return;
+    if (sessionEpoch != _sessionEpoch) {
+      return _HomeRequestOutcome.sessionChanged;
+    }
     switch (result) {
       case HomeDataResult(:final snapshot):
         _authRefreshAttempted = false;
         state = HomeReady(snapshot);
+        return _HomeRequestOutcome.updated;
       case HomeFirstUseResult(:final data):
         _authRefreshAttempted = false;
         state = HomeEmpty(data);
+        return _HomeRequestOutcome.firstUse;
       case HomePartialResult(:final snapshot, :final blockFailures):
         _authRefreshAttempted = false;
         state = HomePartial(snapshot: snapshot, blockFailures: blockFailures);
+        return _HomeRequestOutcome.updated;
       case HomeOfflineResult(:final snapshot):
         _authRefreshAttempted = false;
         state = HomeOffline(snapshot);
+        return _HomeRequestOutcome.offline;
       case HomeFailureResult(:final type, :final requestId):
         _showFailure(
           type: type,
@@ -271,8 +372,11 @@ class HomeController extends Notifier<HomeState> {
           retainedSnapshot: retainedSnapshot,
           retainedUserName: retainedUserName,
         );
+        return type == HomeFailureType.serviceUnavailable
+            ? _HomeRequestOutcome.serviceUnavailable
+            : _HomeRequestOutcome.otherFailure;
       case HomeAuthExpiredResult(:final requestId):
-        await _recoverAuthentication(
+        return _recoverAuthentication(
           requestId: requestId,
           retainedSnapshot: retainedSnapshot,
           retainedUserName: retainedUserName,
@@ -282,19 +386,23 @@ class HomeController extends Notifier<HomeState> {
     }
   }
 
-  Future<void> _recoverAuthentication({
+  Future<_HomeRequestOutcome> _recoverAuthentication({
     required String requestId,
     required HomeSnapshot? retainedSnapshot,
     required String? retainedUserName,
     required bool forceRefresh,
     required int sessionEpoch,
   }) async {
-    if (sessionEpoch != _sessionEpoch) return;
+    if (sessionEpoch != _sessionEpoch) {
+      return _HomeRequestOutcome.sessionChanged;
+    }
     var authRequestId = requestId;
     if (!_authRefreshAttempted) {
       _authRefreshAttempted = true;
       final sessionBeforeRecovery = await _readSessionSafely();
-      if (sessionEpoch != _sessionEpoch) return;
+      if (sessionEpoch != _sessionEpoch) {
+        return _HomeRequestOutcome.sessionChanged;
+      }
       HomeSessionRecoveryResult recoveryResult;
       try {
         recoveryResult = await ref
@@ -307,28 +415,31 @@ class HomeController extends Notifier<HomeState> {
 
       if (recoveryResult == HomeSessionRecoveryResult.recovered) {
         if (!_isSameAccount(sessionBeforeRecovery, sessionAfterRecovery)) {
-          return;
+          return _HomeRequestOutcome.sessionChanged;
         }
         final retryEpoch = _sessionEpoch;
         final retryResult = await ref
             .read(homeRepositoryProvider)
             .fetchHome(forceRefresh: forceRefresh);
-        if (retryEpoch != _sessionEpoch) return;
+        if (retryEpoch != _sessionEpoch) {
+          return _HomeRequestOutcome.sessionChanged;
+        }
         if (retryResult is! HomeAuthExpiredResult) {
-          await _applyResult(
+          return await _applyResult(
             retryResult,
             retainedSnapshot: retainedSnapshot,
             retainedUserName: retainedUserName,
             forceRefresh: forceRefresh,
             sessionEpoch: retryEpoch,
           );
-          return;
         }
         authRequestId = retryResult.requestId;
-        if (retryEpoch != _sessionEpoch) return;
+        if (retryEpoch != _sessionEpoch) {
+          return _HomeRequestOutcome.sessionChanged;
+        }
       } else if (recoveryResult == HomeSessionRecoveryResult.signOutRequired) {
         if (!_isSameSession(sessionBeforeRecovery, sessionAfterRecovery)) {
-          return;
+          return _HomeRequestOutcome.sessionChanged;
         }
       } else {
         _authRefreshAttempted = false;
@@ -338,7 +449,7 @@ class HomeController extends Notifier<HomeState> {
           retainedSnapshot: retainedSnapshot,
           retainedUserName: retainedUserName,
         );
-        return;
+        return _HomeRequestOutcome.otherFailure;
       }
     }
 
@@ -347,6 +458,15 @@ class HomeController extends Notifier<HomeState> {
       snapshot: retainedSnapshot,
       userName: retainedUserName,
     );
+    return _HomeRequestOutcome.authenticationRequired;
+  }
+
+  Future<void> _waitForActiveRequest() async {
+    while (_requestInFlight) {
+      final completion = _requestCompletion;
+      if (completion == null) return;
+      await completion.future;
+    }
   }
 
   Future<HomeSessionSnapshot?> _readSessionSafely() async {

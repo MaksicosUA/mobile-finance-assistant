@@ -50,7 +50,24 @@ final authSessionEpochProvider = NotifierProvider<AuthSessionEpoch, int>(
   AuthSessionEpoch.new,
 );
 
+/// Changes only when the signed-in account boundary changes.
+///
+/// Access/refresh-token rotation advances [authSessionEpochProvider] but must
+/// not discard an in-progress, explicitly reviewed Finance command for the
+/// same account. Login, logout, account replacement, and fail-closed session
+/// deletion advance both epochs.
+final authAccountEpochProvider = NotifierProvider<AuthAccountEpoch, int>(
+  AuthAccountEpoch.new,
+);
+
 class AuthSessionEpoch extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void advance() => state += 1;
+}
+
+class AuthAccountEpoch extends Notifier<int> {
   @override
   int build() => 0;
 
@@ -62,6 +79,7 @@ final authSessionStoreProvider = Provider<AuthSessionStore>((ref) {
   return SecureAuthSessionStore(
     beforeSessionChange: () async {
       ref.read(authSessionEpochProvider.notifier).advance();
+      ref.read(authAccountEpochProvider.notifier).advance();
       await cache.clear();
     },
     afterTokenRotation: () async {
@@ -153,7 +171,7 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  Future<AuthRefreshResult> recoverSessionForHome() async {
+  Future<AuthRefreshResult> recoverSession() async {
     if (state is! AuthSignedIn) return AuthRefreshResult.sessionChanged;
     final intentEpoch = _intentEpoch;
     final result = await ref.read(authRepositoryProvider).refreshSession();
@@ -162,6 +180,8 @@ class AuthController extends Notifier<AuthState> {
     }
     return _applyRefreshResult(result, expectedIntentEpoch: intentEpoch);
   }
+
+  Future<AuthRefreshResult> recoverSessionForHome() => recoverSession();
 
   Future<void> signOut() async {
     if (state is AuthSigningOut) return;
