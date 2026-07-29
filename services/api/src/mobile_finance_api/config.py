@@ -14,6 +14,17 @@ class RuntimeSettings:
     jwt_audience: str
 
 
+def require_database_url() -> str:
+    """Return the validated PostgreSQL URL needed by non-HTTP workers."""
+
+    database_url = os.environ.get("MFA_DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("MFA_DATABASE_URL is required")
+    if not database_url.startswith("postgresql+asyncpg://"):
+        raise RuntimeError("MFA_DATABASE_URL must use postgresql+asyncpg")
+    return database_url
+
+
 def load_runtime_settings() -> RuntimeSettings | None:
     """Load production adapters, or keep the module app deliberately unavailable.
 

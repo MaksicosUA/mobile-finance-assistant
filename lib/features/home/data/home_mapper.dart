@@ -76,7 +76,10 @@ abstract final class HomeMapper {
               id: transaction.id,
               title: transaction.title,
               category: transaction.category,
-              occurredAt: DateTime.parse(transaction.occurredAt),
+              occurredOn: _date(transaction.occurredOn),
+              occurredAt: transaction.occurredAt == null
+                  ? null
+                  : DateTime.parse(transaction.occurredAt!),
               amount: Money(
                 amount: transaction.amount,
                 currency: transaction.currency,

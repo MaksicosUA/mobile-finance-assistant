@@ -1,5 +1,9 @@
 const _primaryApiBaseUrl = String.fromEnvironment('API_BASE_URL');
 const _legacyHomeApiBaseUrl = String.fromEnvironment('HOME_API_BASE_URL');
+const configuredHomeApiTimezone = String.fromEnvironment(
+  'HOME_API_TIMEZONE',
+  defaultValue: 'Europe/Berlin',
+);
 
 /// Shared backend location for authentication and financial API clients.
 ///

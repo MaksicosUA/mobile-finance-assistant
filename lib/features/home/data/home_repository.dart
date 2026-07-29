@@ -4,6 +4,7 @@ import '../domain/home_snapshot.dart';
 
 enum HomeBlock {
   balance,
+  balanceDelta,
   monthSummary,
   trend,
   primaryGoal,
@@ -14,10 +15,11 @@ enum HomeBlock {
 /// Maps the open contract enum to blocks understood by this client version.
 ///
 /// Unknown future values are ignored so additive backend changes cannot hide
-/// otherwise usable v1 data.
+/// otherwise usable v2 data.
 HomeBlock? homeBlockFromContract(String value) {
   return switch (value) {
     'balance' => HomeBlock.balance,
+    'balanceDelta' => HomeBlock.balanceDelta,
     'monthSummary' => HomeBlock.monthSummary,
     'trend' => HomeBlock.trend,
     'primaryGoal' => HomeBlock.primaryGoal,

@@ -24,8 +24,9 @@ outside it.
 - Self-hosted FastAPI authentication backed by PostgreSQL
 - Argon2id password hashing, ten-minute access JWTs, rotating opaque refresh
   tokens, replay detection, and immediate server-side session revocation
-- Authenticated `GET /api/v1/home` returning a persistent first-use empty state
-  or the newest account-scoped PostgreSQL Home projection
+- Authenticated `GET /api/v2/home` returning a persistent first-use empty state
+  or the newest account-scoped PostgreSQL Home projection; `/api/v1/home`
+  remains a fail-closed compatibility contract for representable revisions
 - Immutable, versioned Home read-model tables keyed by exact IANA timezone,
   with Decimal money, explicit month boundaries, Finance consistency checks,
   ordered child blocks, and stable ETag representations
@@ -37,29 +38,37 @@ outside it.
 - Explicit first-account bootstrap with an immutable signed opening balance,
   one authoritative default EUR account, and a canonical IANA timezone stored
   on the authenticated user profile
+- Native Flutter review-and-confirm flow for first-account setup and structured
+  online income/expense entry, with exact command retries and bounded Home
+  projection convergence
 - Owned-account allocation for every new operation, protected by database
   ownership/currency constraints and commit-time revalidation
+- Deterministic PostgreSQL outbox consumer that rebuilds immutable Home
+  revisions from the opening baseline and confirmed allocated operations
 - Alembic migrations for accounts, authentication sessions, Home read
   projections, and authoritative finance operations
 
 The repository contains no production credential or real user financial data.
 The default Flutter build uses synthetic Home fixtures and does not require an
 account. Network builds enable the real authentication gate. The API exposes
-bounded first-account and confirmed-operation write paths, but the Flutter UI
-does not yet call them, and the API does not yet consume either server outbox.
-A future deterministic projector will derive Home balances from the immutable
-opening baseline plus confirmed operations. Home balance projection, mobile
-account/operation entry, offline command storage, bank synchronization,
-speech-to-text, and full chat are not part of this slice.
+bounded first-account and confirmed-operation write paths, and the standalone
+projector consumes both server outboxes. The network Flutter build calls the
+account and operation endpoints through an explicit manual review flow. Offline
+command storage, bank synchronization, speech-to-text, AI extraction, and full
+chat are not part of this slice.
 
 ## Project layout
 
 - `lib/app/` — application shell, themes, settings, and privacy bridge
 - `lib/features/auth/` — authentication application, data, domain, and UI
+- `lib/features/finance_entry/` — online account and operation review/confirm
+  flow
 - `lib/features/home/` — Home domain, API/cache, application, and presentation
 - `lib/l10n/` — localization source and generated delegates
 - `assets/fixtures/` — synthetic runtime Home fixture
-- `contracts/home/v1/` — versioned Home response schema
+- `contracts/home/v1/` — frozen original Home compatibility schema
+- `contracts/home/v2/` — current Home schema with authoritative date-only and
+  nullable operation facts
 - `contracts/finance/v1/` — versioned Finance account and operation schemas
 - `services/api/` — FastAPI service, PostgreSQL adapters, and Alembic migrations
 - `android/` and `ios/` — native Flutter hosts
@@ -105,6 +114,25 @@ uv run --project services/api \
 environment variables. The library entrypoint `mobile_finance_api.main:app`
 remains deliberately fail-closed for adapter-based tests and embedding.
 
+Run the projector as a separate process; do not attach it to the FastAPI
+lifespan. It needs only `MFA_DATABASE_URL`, recalculates each affected Home from
+authoritative rows, and publishes the revision plus outbox acknowledgements in
+one transaction.
+
+```bash
+PYTHONPATH=services/api/src uv run --project services/api \
+  python -m mobile_finance_api.projector_runtime --once
+
+# Or poll continuously under a process supervisor:
+PYTHONPATH=services/api/src uv run --project services/api \
+  python -m mobile_finance_api.projector_runtime
+```
+
+The reconciliation pass creates at most one revision per canonical local day,
+so the seven-day trend and month boundary advance without a new operation.
+Outbox payloads remain identifier-only; the projector reloads all money and
+dates from PostgreSQL rather than applying event deltas.
+
 An authenticated user first creates the only v1 Finance account through an
 explicit review-and-confirm flow:
 
@@ -140,8 +168,15 @@ captured UTC instant and captured IANA timezone, which remains distinct from
 the user's canonical timezone while travelling. Every new operation requires
 an explicit active `accountId` owned by the authenticated user; the server
 never substitutes a default implicitly. Legacy unallocated rows remain
-auditable and replayable but are excluded from authoritative balances. The
-checked-in operation contract is regenerated with:
+auditable and replayable but are excluded from authoritative balances.
+
+The mobile client obtains the UTC instant, current OS IANA timezone, its local
+date, and the canonical reporting-zone date atomically through a narrow native
+Android/iOS bridge. If the platform cannot provide a strict portable timezone
+context, the client sends no Finance command and never falls back to the
+canonical reporting timezone.
+
+The checked-in operation contract is regenerated with:
 
 ```bash
 PYTHONPATH=services/api/src uv run --project services/api \
@@ -169,6 +204,25 @@ distinct artifact
 `build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk`.
 Running a plain `flutter build apk` intentionally creates the fixture build and
 must not be installed over an account-testing build.
+
+## GitHub Actions APKs
+
+Every push, and each manual workflow run, performs the locked dependency,
+localization, formatting, and analysis checks before building two separate
+14-day artifacts. The `fixture-debug` APK uses synthetic Home data. The
+`network-debug` APK enables authentication and the real API, and includes a
+SHA-256 checksum alongside each APK.
+
+The network build reads the non-secret repository variables
+`ANDROID_DEBUG_API_BASE_URL` and `HOME_API_TIMEZONE`. Without them it uses
+`http://127.0.0.1:8000` and `Europe/Berlin`, suitable for `adb reverse`. Never
+put credentials, tokens, or other secrets in these variables or Dart defines:
+their values are compiled into the APK.
+
+GitHub-hosted runners generate an ephemeral debug signing key. APKs from
+different workflow runs therefore cannot be assumed to support
+`adb install -r`; a stable CI-only key stored in GitHub encrypted secrets is
+required before relying on in-place upgrades that retain application data.
 
 Access and refresh tokens, their expiry metadata, the opaque account cache
 scope, and a session revision are stored as one versioned value in platform

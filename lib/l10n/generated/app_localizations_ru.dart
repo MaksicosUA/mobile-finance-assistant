@@ -69,6 +69,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get monthDelta => 'за месяц';
 
   @override
+  String get balanceDeltaUnavailable => 'Динамика за месяц недоступна';
+
+  @override
   String get activeAccounts => 'Все активные счета';
 
   @override
@@ -78,7 +81,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get voiceEntryLabel => 'Добавить операцию голосом';
 
   @override
-  String get monthSummaryTitle => 'Итоги июля';
+  String get setupAccountAction => 'Настроить счёт';
+
+  @override
+  String monthSummaryTitle(String month) {
+    return 'Итоги за $month';
+  }
 
   @override
   String get income => 'Доходы';
@@ -195,6 +203,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noRecentTransactions => 'Подтверждённых операций пока нет';
+
+  @override
+  String get transactionCategoryUnavailable => 'Без категории';
 
   @override
   String transactionMetadata(String category, String date) {
@@ -512,4 +523,178 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get cancelAction => 'Отмена';
+
+  @override
+  String get financeEntryTitle => 'Финансовая операция';
+
+  @override
+  String get financeEntryLoading => 'Проверяем финансовый счёт';
+
+  @override
+  String get financeEntryLoadFailed => 'Не удалось открыть ввод операции';
+
+  @override
+  String get accountSetupTitle => 'Настройте первый счёт';
+
+  @override
+  String get accountSetupDescription =>
+      'Укажите фактический остаток и дату, с которой начинается учёт. Перед сохранением вы проверите все данные.';
+
+  @override
+  String get accountNameField => 'Название счёта';
+
+  @override
+  String get accountNameHint => 'Например, Основной счёт';
+
+  @override
+  String get accountNameRequired => 'Укажите название счёта';
+
+  @override
+  String get openingBalanceField => 'Начальный остаток';
+
+  @override
+  String get openingBalanceHelp =>
+      'Это исходный остаток, а не доход или расход.';
+
+  @override
+  String get openingBalanceDateField => 'Дата начального остатка';
+
+  @override
+  String get canonicalTimezoneLabel => 'Часовой пояс учёта';
+
+  @override
+  String get continueToReviewAction => 'Проверить данные';
+
+  @override
+  String get accountReviewTitle => 'Проверьте настройки счёта';
+
+  @override
+  String get reviewBeforeConfirmDescription =>
+      'Финансовые данные сохранятся только после явного подтверждения.';
+
+  @override
+  String get confirmFinanceAction => 'Подтвердить и сохранить';
+
+  @override
+  String get editAction => 'Изменить';
+
+  @override
+  String get accountCreatedNotice =>
+      'Счёт подтверждён. Теперь добавьте первую операцию.';
+
+  @override
+  String get manualOperationTitle => 'Добавьте операцию вручную';
+
+  @override
+  String get manualOperationDescription =>
+      'Заполните структурированные поля. Голос и автоматическое распознавание пока не используются.';
+
+  @override
+  String get accountLabel => 'Счёт';
+
+  @override
+  String get operationExpense => 'Расход';
+
+  @override
+  String get operationIncome => 'Доход';
+
+  @override
+  String get operationTypeLabel => 'Тип операции';
+
+  @override
+  String get operationAmountField => 'Сумма';
+
+  @override
+  String get merchantField => 'Место или получатель, необязательно';
+
+  @override
+  String get categoryField => 'Категория, необязательно';
+
+  @override
+  String get operationDateField => 'Дата операции';
+
+  @override
+  String get operationReviewTitle => 'Проверьте операцию';
+
+  @override
+  String get addAnotherOperationAction => 'Добавить ещё одну';
+
+  @override
+  String get moneyInputInvalid =>
+      'Введите корректную сумму, например 1250,50 или -20';
+
+  @override
+  String get positiveMoneyInputInvalid =>
+      'Введите сумму больше нуля, например 35 или 35,50';
+
+  @override
+  String get financeInvalidInput =>
+      'Проверьте заполненные поля и попробуйте снова.';
+
+  @override
+  String get financeValidationRejected =>
+      'Данные не прошли проверку. Проверьте поля перед повторной отправкой.';
+
+  @override
+  String get financeDateRejected =>
+      'Дата не может быть позже сегодняшнего дня.';
+
+  @override
+  String get operationBeforeOpeningDateError =>
+      'Дата операции не может быть раньше даты начального остатка.';
+
+  @override
+  String get financeAccountUnavailable =>
+      'Счёт недоступен для этой операции. Обновите экран и попробуйте снова.';
+
+  @override
+  String get financeConflictError =>
+      'Команда конфликтует с уже обработанной записью. Измените данные и создайте новое подтверждение.';
+
+  @override
+  String get financeOfflineError =>
+      'Не удалось связаться с сервером. Проверьте подключение к API и повторите попытку.';
+
+  @override
+  String get financeTimeoutError =>
+      'Сервер не ответил вовремя. Подтверждение можно безопасно повторить.';
+
+  @override
+  String get financeServiceError =>
+      'Сервис финансовых операций временно недоступен. Попробуйте снова позже.';
+
+  @override
+  String get financeUnexpectedError =>
+      'Получен некорректный ответ. Финансовые данные не были изменены клиентом.';
+
+  @override
+  String get financeSessionChanged =>
+      'Защищённая сессия обновилась. Повторите действие; подтверждение будет отправлено с теми же данными.';
+
+  @override
+  String get operationAcceptedTitle => 'Операция сохранена';
+
+  @override
+  String get operationAcceptedUpdatingHome =>
+      'Операция принята. Ждём новую версию главного экрана.';
+
+  @override
+  String get operationAcceptedHomeUpdated =>
+      'Главный экран обновлён по новой авторитетной версии.';
+
+  @override
+  String get operationAcceptedProjectionDelayed =>
+      'Операция уже сохранена, но обновление главного экрана задерживается. Повторно подтверждать её не нужно.';
+
+  @override
+  String get operationAcceptedAuthRequired =>
+      'Операция уже сохранена, но для обновления главного экрана потребуется снова войти.';
+
+  @override
+  String get operationAcceptedSessionChanged =>
+      'Операция уже сохранена, но сессия изменилась во время обновления. Откройте главный экран ещё раз.';
+
+  @override
+  String get operationAcceptedRefreshFailed =>
+      'Операция уже сохранена. Главный экран можно обновить позже.';
 }

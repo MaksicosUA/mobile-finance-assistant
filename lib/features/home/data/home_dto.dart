@@ -113,13 +113,14 @@ bool _isConsistentFirstUseEmpty(HomeDto dto) {
   final monetaryValues = <String>[
     dto.balance.amount,
     dto.balance.deltaAmount,
-    dto.balance.deltaPercent,
     dto.monthSummary.income,
     dto.monthSummary.expense,
     dto.monthSummary.netFlow,
     dto.trend.total,
   ];
   return monetaryValues.every(_isZeroDecimal) &&
+      (dto.balance.deltaPercent == null ||
+          _isZeroDecimal(dto.balance.deltaPercent!)) &&
       dto.trend.points.isEmpty &&
       dto.primaryGoal == null &&
       dto.upcomingPayments.isEmpty &&
@@ -161,13 +162,17 @@ class HomeBalanceDto {
     return HomeBalanceDto(
       amount: _decimal(json['amount'], r'$.balance.amount'),
       deltaAmount: _decimal(json['deltaAmount'], r'$.balance.deltaAmount'),
-      deltaPercent: _decimal(json['deltaPercent'], r'$.balance.deltaPercent'),
+      deltaPercent: _requiredNullableDecimal(
+        json,
+        'deltaPercent',
+        r'$.balance.deltaPercent',
+      ),
     );
   }
 
   final String amount;
   final String deltaAmount;
-  final String deltaPercent;
+  final String? deltaPercent;
 }
 
 @immutable
@@ -333,6 +338,7 @@ class HomeTransactionDto {
     required this.id,
     required this.title,
     required this.category,
+    required this.occurredOn,
     required this.occurredAt,
     required this.amount,
     required this.currency,
@@ -343,13 +349,23 @@ class HomeTransactionDto {
   factory HomeTransactionDto.fromJson(Map<String, Object?> json) {
     return HomeTransactionDto(
       id: _nonEmptyString(json['id'], r'$.recentTransactions[].id'),
-      title: _nonEmptyString(json['title'], r'$.recentTransactions[].title'),
-      category: _nonEmptyString(
-        json['category'],
+      title: _requiredNullableNonEmptyString(
+        json,
+        'title',
+        r'$.recentTransactions[].title',
+      ),
+      category: _requiredNullableNonEmptyString(
+        json,
+        'category',
         r'$.recentTransactions[].category',
       ),
-      occurredAt: _utcTimestamp(
-        json['occurredAt'],
+      occurredOn: _date(
+        json['occurredOn'],
+        r'$.recentTransactions[].occurredOn',
+      ),
+      occurredAt: _requiredNullableUtcTimestamp(
+        json,
+        'occurredAt',
         r'$.recentTransactions[].occurredAt',
       ),
       amount: _decimal(json['amount'], r'$.recentTransactions[].amount'),
@@ -363,9 +379,10 @@ class HomeTransactionDto {
   }
 
   final String id;
-  final String title;
-  final String category;
-  final String occurredAt;
+  final String? title;
+  final String? category;
+  final String occurredOn;
+  final String? occurredAt;
   final String amount;
   final String currency;
   final String direction;
@@ -406,7 +423,7 @@ HomePayloadState _homePayloadState(Object? value) {
   final state = _nonEmptyString(value, r'$.homeState');
   return switch (state) {
     'first_use_empty' => HomePayloadState.firstUseEmpty,
-    // Home state is an open enum. Unknown future values retain the v1 ready
+    // Home state is an open enum. Unknown future values retain the v2 ready
     // behavior instead of making an otherwise valid aggregate unusable.
     _ => HomePayloadState.ready,
   };
@@ -418,6 +435,42 @@ String _decimal(Object? value, String path) {
     throw FormatException('$path must be a decimal string.');
   }
   return result;
+}
+
+String? _requiredNullableDecimal(
+  Map<String, Object?> json,
+  String key,
+  String path,
+) {
+  _requireKey(json, key, path);
+  final value = json[key];
+  return value == null ? null : _decimal(value, path);
+}
+
+String? _requiredNullableNonEmptyString(
+  Map<String, Object?> json,
+  String key,
+  String path,
+) {
+  _requireKey(json, key, path);
+  final value = json[key];
+  return value == null ? null : _nonEmptyString(value, path);
+}
+
+String? _requiredNullableUtcTimestamp(
+  Map<String, Object?> json,
+  String key,
+  String path,
+) {
+  _requireKey(json, key, path);
+  final value = json[key];
+  return value == null ? null : _utcTimestamp(value, path);
+}
+
+void _requireKey(Map<String, Object?> json, String key, String path) {
+  if (!json.containsKey(key)) {
+    throw FormatException('$path is required.');
+  }
 }
 
 String _currency(Object? value, String path) {

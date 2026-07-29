@@ -15,8 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .auth import AuthenticatedUser
 from .database import AsyncSessionFactory
 from .db_models import (
+    FinanceAccountOutboxEventRow,
     FinanceAccountRow,
     FinanceOperationRow,
+    FinanceOutboxEventRow,
     HomeProjectionActionRow,
     HomeProjectionGoalRow,
     HomeProjectionPaymentRow,
@@ -26,6 +28,7 @@ from .db_models import (
     HomeProjectionWarningRow,
     UserRow,
 )
+from .decimal_math import wide_decimal_context
 from .models import (
     HomeBalance,
     HomeGoal,
@@ -41,6 +44,8 @@ from .models import (
 )
 from .repository import HomeCanonicalTimezoneMismatch, HomeQuery
 from .timezones import validated_iana_timezone_key
+
+_PROJECTION_SCHEMA_VERSION = 2
 
 
 class PostgresHomeRepository:
@@ -73,27 +78,64 @@ class PostgresHomeRepository:
         except ValueError as error:
             raise RuntimeError("Invalid authenticated account subject") from error
 
-        now = _aware_utc(self._clock())
-        local_date = now.astimezone(query.timezone).date()
         timezone_name = query.timezone.key
-        month_start = local_date.replace(day=1)
-        month_end = local_date.replace(
-            day=calendar.monthrange(local_date.year, local_date.month)[1]
-        )
 
         async with self._session_factory() as database:
             profile = await database.scalar(
-                select(UserRow).where(
+                select(UserRow)
+                .where(
                     UserRow.id == user_id,
                     UserRow.disabled_at.is_(None),
                 )
+                .with_for_update(read=True)
             )
             if profile is None:
                 raise RuntimeError("Authenticated account is unavailable")
+            accounts = tuple(
+                (
+                    await database.scalars(
+                        select(FinanceAccountRow)
+                        .where(FinanceAccountRow.user_id == user_id)
+                        .order_by(
+                            FinanceAccountRow.created_at.asc(),
+                            FinanceAccountRow.id.asc(),
+                        )
+                        .with_for_update(read=True)
+                    )
+                ).all()
+            )
+            # The request's calendar boundary belongs after the shared
+            # user -> account locks. A request that waited through canonical
+            # midnight must not select yesterday's (or last month's) revision.
+            now = _aware_utc(self._clock())
+            local_date = now.astimezone(query.timezone).date()
+            month_start = local_date.replace(day=1)
+            month_end = local_date.replace(
+                day=calendar.monthrange(local_date.year, local_date.month)[1]
+            )
+            if accounts and (
+                len(accounts) != 1
+                or accounts[0].status != "active"
+                or not accounts[0].is_default
+            ):
+                raise RuntimeError("Authoritative account state is inconsistent")
+            canonical_timezone: str | None = None
             if profile.canonical_timezone is not None:
                 canonical_timezone = _validated_timezone(profile.canonical_timezone)
                 if canonical_timezone != timezone_name:
                     raise HomeCanonicalTimezoneMismatch
+            if accounts:
+                account = accounts[0]
+                if (
+                    profile.timezone_revision != 1
+                    or canonical_timezone is None
+                    or _validated_timezone(account.opening_timezone)
+                    != canonical_timezone
+                    or account.currency != profile.base_currency
+                ):
+                    raise RuntimeError("Authoritative account profile is inconsistent")
+            elif profile.timezone_revision != 0 or canonical_timezone is not None:
+                raise RuntimeError("Empty financial profile is inconsistent")
 
             snapshot = await database.scalar(
                 select(HomeProjectionSnapshotRow)
@@ -122,6 +164,8 @@ class PostgresHomeRepository:
                     month_start=month_start,
                     month_end=month_end,
                 )
+            if snapshot.projection_schema_version != _PROJECTION_SCHEMA_VERSION:
+                raise RuntimeError("Current Home projection schema is unavailable")
 
             if await _has_financial_state_after(
                 database,
@@ -129,6 +173,13 @@ class PostgresHomeRepository:
                 data_as_of=snapshot.data_as_of,
             ):
                 raise RuntimeError("Current Home projection is behind financial state")
+            if snapshot.generated_at.astimezone(query.timezone).date() != local_date:
+                raise RuntimeError("Current Home projection is not current for today")
+            if await _has_unpublished_projection_event(
+                database,
+                user_id=user_id,
+            ):
+                raise RuntimeError("Current Home projection has pending source events")
 
             if (
                 snapshot.period_end != month_end
@@ -143,7 +194,7 @@ class PostgresHomeRepository:
                         select(HomeProjectionTrendPointRow)
                         .where(HomeProjectionTrendPointRow.snapshot_id == snapshot.id)
                         .order_by(HomeProjectionTrendPointRow.point_date.desc())
-                        .limit(30)
+                        .limit(31)
                     )
                 ).all()
             )
@@ -162,7 +213,7 @@ class PostgresHomeRepository:
                             HomeProjectionPaymentRow.due_at.asc(),
                             HomeProjectionPaymentRow.payment_id.asc(),
                         )
-                        .limit(3)
+                        .limit(4)
                     )
                 ).all()
             )
@@ -175,10 +226,10 @@ class PostgresHomeRepository:
                             HomeProjectionTransactionRow.status == "confirmed",
                         )
                         .order_by(
-                            HomeProjectionTransactionRow.occurred_at.desc(),
+                            HomeProjectionTransactionRow.position.asc().nullslast(),
                             HomeProjectionTransactionRow.transaction_id.asc(),
                         )
-                        .limit(3)
+                        .limit(4)
                     )
                 ).all()
             )
@@ -209,6 +260,8 @@ class PostgresHomeRepository:
                 trend_points=trend_points,
                 transactions=transactions,
             )
+            if len(payments) > 3:
+                raise RuntimeError("Home projection payment limit is invalid")
 
         return _projected_home(
             snapshot=snapshot,
@@ -269,6 +322,33 @@ async def _has_financial_state_after(
         )
     )
     return bool(operation_is_newer)
+
+
+async def _has_unpublished_projection_event(
+    database: AsyncSession,
+    *,
+    user_id: UUID,
+) -> bool:
+    account_event_exists = await database.scalar(
+        select(
+            exists().where(
+                FinanceAccountOutboxEventRow.user_id == user_id,
+                FinanceAccountOutboxEventRow.published_at.is_(None),
+            )
+        )
+    )
+    if account_event_exists:
+        return True
+    operation_event_exists = await database.scalar(
+        select(
+            exists().where(
+                FinanceOutboxEventRow.aggregate_id == FinanceOperationRow.id,
+                FinanceOutboxEventRow.published_at.is_(None),
+                FinanceOperationRow.user_id == user_id,
+            )
+        )
+    )
+    return bool(operation_event_exists)
 
 
 def _projected_home(
@@ -339,6 +419,7 @@ def _projected_home(
                 id=row.transaction_id,
                 title=row.title,
                 category=row.category,
+                occurred_on=_required_occurred_on(row),
                 occurred_at=row.occurred_at,
                 amount=row.amount,
                 currency=row.currency,
@@ -427,24 +508,42 @@ def _validate_temporal_projection(
     trend_points: Sequence[HomeProjectionTrendPointRow],
     transactions: Sequence[HomeProjectionTransactionRow],
 ) -> None:
-    data_as_of = _aware_utc(snapshot.data_as_of)
-    if any(_aware_utc(row.occurred_at) > data_as_of for row in transactions):
-        raise RuntimeError("Home projection transaction is newer than its snapshot")
-
-    local_data_date = data_as_of.astimezone(timezone).date()
+    local_projection_date = (
+        _aware_utc(snapshot.generated_at).astimezone(timezone).date()
+    )
+    if [row.position for row in transactions] != list(range(len(transactions))):
+        raise RuntimeError("Home projection transaction order is invalid")
+    if any(
+        row.occurred_on is None or row.occurred_on > local_projection_date
+        for row in transactions
+    ):
+        raise RuntimeError("Home projection transaction date is in the future")
     if snapshot.trend_metric == "expense" and any(
         row.amount < 0 for row in trend_points
     ):
         raise RuntimeError("Home projection expense trend is invalid")
+    with wide_decimal_context():
+        calculated_trend_total = sum(
+            (row.amount for row in trend_points),
+            start=Decimal(0),
+        )
+    if calculated_trend_total != snapshot.trend_total:
+        raise RuntimeError("Home projection trend total is inconsistent")
     horizon_days = {"7d": 7, "30d": 30}.get(snapshot.trend_period)
     if horizon_days is None:
         return
-    earliest_date = local_data_date - timedelta(days=horizon_days - 1)
-    if any(
-        row.point_date < earliest_date or row.point_date > local_data_date
-        for row in trend_points
-    ):
+    earliest_date = local_projection_date - timedelta(days=horizon_days - 1)
+    expected_dates = tuple(
+        earliest_date + timedelta(days=offset) for offset in range(horizon_days)
+    )
+    if tuple(row.point_date for row in trend_points) != expected_dates:
         raise RuntimeError("Home projection trend horizon is invalid")
+
+
+def _required_occurred_on(row: HomeProjectionTransactionRow) -> date:
+    if row.occurred_on is None:
+        raise RuntimeError("Home projection transaction date is unavailable")
+    return row.occurred_on
 
 
 def _utc_now() -> datetime:

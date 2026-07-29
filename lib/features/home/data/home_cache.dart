@@ -134,7 +134,7 @@ final class EncryptedFileHomeCache implements HomeCache {
   }
 
   static const int _envelopeVersion = 1;
-  static const int _cacheSchemaVersion = 1;
+  static const int _cacheSchemaVersion = 2;
   static const int _nonceLength = 12;
   static const int _keyLength = 32;
   static const int _macLength = 16;

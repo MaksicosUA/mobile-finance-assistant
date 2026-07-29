@@ -127,7 +127,7 @@ final class HomeApi implements HomeApiClient {
     _dio.options.receiveTimeout = receiveTimeout;
   }
 
-  static const String _homePath = '/api/v1/home';
+  static const String _homePath = '/api/v2/home';
   static const String _correlationHeader = 'X-Correlation-ID';
   static const Duration _maximumTimeout = Duration(minutes: 1);
   static const int _maximumResponseBytes = 1024 * 1024;

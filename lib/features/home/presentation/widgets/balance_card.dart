@@ -11,6 +11,7 @@ class BalanceCard extends StatelessWidget {
     required this.delta,
     required this.deltaPercent,
     required this.monthDeltaLabel,
+    required this.deltaUnavailableLabel,
     required this.accountsLabel,
     required this.privacyLabel,
     required this.privacyEnabled,
@@ -19,9 +20,10 @@ class BalanceCard extends StatelessWidget {
 
   final String title;
   final String balance;
-  final String delta;
-  final String deltaPercent;
+  final String? delta;
+  final String? deltaPercent;
   final String monthDeltaLabel;
+  final String deltaUnavailableLabel;
   final String accountsLabel;
   final String privacyLabel;
   final bool privacyEnabled;
@@ -76,34 +78,43 @@ class BalanceCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.xs),
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: AppSpacing.xs,
-                runSpacing: AppSpacing.xs,
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.surfaceSecondary,
-                      borderRadius: BorderRadius.circular(AppRadius.pill),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
+              if (delta == null)
+                Text(
+                  deltaUnavailableLabel,
+                  key: const Key('balance-delta-unavailable'),
+                  style: theme.textTheme.bodySmall,
+                )
+              else
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceSecondary,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
                       ),
-                      child: Text(
-                        '↗ $delta  ·  $deltaPercent',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          deltaPercent == null
+                              ? '↗ $delta'
+                              : '↗ $delta  ·  $deltaPercent',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Text(monthDeltaLabel, style: theme.textTheme.bodySmall),
-                ],
-              ),
+                    Text(monthDeltaLabel, style: theme.textTheme.bodySmall),
+                  ],
+                ),
               const SizedBox(height: 10),
               Divider(height: 1, color: colors.border),
               const SizedBox(height: 10),

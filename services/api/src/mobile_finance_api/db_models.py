@@ -598,6 +598,10 @@ class HomeProjectionSnapshotRow(Base):
             name="ck_home_projection_snapshots_revision_positive",
         ),
         CheckConstraint(
+            "projection_schema_version > 0",
+            name="ck_home_projection_snapshots_schema_version",
+        ),
+        CheckConstraint(
             "data_as_of <= generated_at",
             name="ck_home_projection_snapshots_timestamp_order",
         ),
@@ -649,6 +653,11 @@ class HomeProjectionSnapshotRow(Base):
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    projection_schema_version: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+        server_default="1",
+    )
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -663,9 +672,9 @@ class HomeProjectionSnapshotRow(Base):
         Numeric(38, 18),
         nullable=False,
     )
-    balance_delta_percent: Mapped[Decimal] = mapped_column(
+    balance_delta_percent: Mapped[Decimal | None] = mapped_column(
         Numeric(38, 18),
-        nullable=False,
+        nullable=True,
     )
     month_income: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
     month_expense: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
@@ -811,8 +820,10 @@ class HomeProjectionTransactionRow(Base):
     __tablename__ = "home_projection_recent_transactions"
     __table_args__ = (
         CheckConstraint(
-            "btrim(transaction_id) <> '' AND btrim(title) <> '' "
-            "AND btrim(category) <> '' AND btrim(direction) <> ''",
+            "btrim(transaction_id) <> '' "
+            "AND (title IS NULL OR btrim(title) <> '') "
+            "AND (category IS NULL OR btrim(category) <> '') "
+            "AND btrim(direction) <> ''",
             name="ck_home_projection_recent_transactions_text",
         ),
         CheckConstraint(
@@ -822,6 +833,10 @@ class HomeProjectionTransactionRow(Base):
         CheckConstraint(
             "status = 'confirmed'",
             name="ck_home_projection_recent_transactions_confirmed",
+        ),
+        CheckConstraint(
+            "position IS NULL OR position BETWEEN 0 AND 2",
+            name="ck_home_projection_recent_transactions_position",
         ),
         CheckConstraint(
             f"amount NOT IN {_FINITE_SPECIAL_VALUES} AND "
@@ -835,11 +850,10 @@ class HomeProjectionTransactionRow(Base):
             "AND amount * base_amount >= 0",
             name="ck_home_projection_recent_transactions_direction_sign",
         ),
-        Index(
-            "ix_home_projection_recent_transactions_order",
+        UniqueConstraint(
             "snapshot_id",
-            "occurred_at",
-            "transaction_id",
+            "position",
+            name="uq_home_projection_recent_transactions_position",
         ),
     )
 
@@ -849,11 +863,13 @@ class HomeProjectionTransactionRow(Base):
         primary_key=True,
     )
     transaction_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    title: Mapped[str] = mapped_column(String(160), nullable=False)
-    category: Mapped[str] = mapped_column(String(160), nullable=False)
-    occurred_at: Mapped[datetime] = mapped_column(
+    position: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    title: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    occurred_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
-        nullable=False,
+        nullable=True,
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
     base_amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)

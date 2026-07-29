@@ -30,7 +30,7 @@ from .auth import (
 from .auth_routes import router as auth_router
 from .auth_service import AuthenticationService, UnavailableAuthenticationService
 from .finance_core import FinanceCore, UnavailableFinanceOperationRepository
-from .models import HomeResponse
+from .models import HomeResponse, HomeV1Response
 from .operation_routes import router as operation_router
 from .repository import (
     HomeCanonicalTimezoneMismatch,
@@ -45,6 +45,7 @@ _CACHE_HEADERS = {
     "Cache-Control": "private, no-cache",
     "Vary": "Authorization",
 }
+_HOME_PATHS = {"/api/v1/home", "/api/v2/home"}
 
 
 class RequestIdMiddleware:
@@ -70,7 +71,7 @@ class RequestIdMiddleware:
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
                 headers["X-Request-ID"] = request_id
-                if scope.get("path") == "/api/v1/home":
+                if scope.get("path") in _HOME_PATHS:
                     headers["Cache-Control"] = _CACHE_HEADERS["Cache-Control"]
                     vary = headers.get("Vary", "")
                     vary_names = {
@@ -139,10 +140,10 @@ router = APIRouter()
 
 @router.get(
     "/api/v1/home",
-    response_model=HomeResponse,
+    response_model=HomeV1Response,
     response_model_by_alias=True,
     responses={
-        200: {"description": "Validated Home aggregate"},
+        200: {"description": "Original non-null Home v1 aggregate"},
         304: {"description": "The authenticated representation is unchanged"},
         409: {"description": "Requested timezone conflicts with the profile"},
         401: {"description": "Authentication is required"},
@@ -157,11 +158,61 @@ async def get_home(
     user: AuthenticatedUser = Depends(current_user),
     repository: HomeRepository = Depends(_home_repository),
 ) -> Response:
+    return await _get_home_response(
+        period=period,
+        timezone_name=timezone_name,
+        if_none_match=if_none_match,
+        user=user,
+        repository=repository,
+        legacy_v1=True,
+    )
+
+
+@router.get(
+    "/api/v2/home",
+    response_model=HomeResponse,
+    response_model_by_alias=True,
+    responses={
+        200: {"description": "Validated Home aggregate with date-only facts"},
+        304: {"description": "The authenticated representation is unchanged"},
+        409: {"description": "Requested timezone conflicts with the profile"},
+        401: {"description": "Authentication is required"},
+        422: {"description": "Unsupported period or invalid IANA timezone"},
+        503: {"description": "The Home projection is temporarily unavailable"},
+    },
+)
+async def get_home_v2(
+    period: Literal["current_month"] = Query(),
+    timezone_name: str = Query(alias="timezone", min_length=1, max_length=128),
+    if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+    user: AuthenticatedUser = Depends(current_user),
+    repository: HomeRepository = Depends(_home_repository),
+) -> Response:
+    return await _get_home_response(
+        period=period,
+        timezone_name=timezone_name,
+        if_none_match=if_none_match,
+        user=user,
+        repository=repository,
+        legacy_v1=False,
+    )
+
+
+async def _get_home_response(
+    *,
+    period: Literal["current_month"],
+    timezone_name: str,
+    if_none_match: str | None,
+    user: AuthenticatedUser,
+    repository: HomeRepository,
+    legacy_v1: bool,
+) -> Response:
     query = HomeQuery(period=period, timezone=_iana_timezone(timezone_name))
     try:
         raw_home = await repository.get_home(user=user, query=query)
         home = HomeResponse.model_validate(raw_home)
-        content = home.model_dump_json(by_alias=True).encode("utf-8")
+        response = HomeV1Response.from_v2(home) if legacy_v1 else home
+        content = response.model_dump_json(by_alias=True).encode("utf-8")
     except HomeCanonicalTimezoneMismatch:
         return JSONResponse(
             status_code=409,

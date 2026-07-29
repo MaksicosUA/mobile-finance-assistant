@@ -15,6 +15,7 @@ from .db_models import (
     FinanceOperationAuditRow,
     FinanceOperationRow,
     FinanceOutboxEventRow,
+    UserRow,
 )
 from .finance_core import (
     OperationAccountUnavailable,
@@ -66,7 +67,6 @@ class PostgresFinanceOperationRepository:
         payload_hash: bytes,
         confirmed_at: datetime,
     ) -> OperationWriteResult:
-        created_at = _aware_utc(self._clock())
         operation_id = uuid4()
         account_id = draft.account_id
         if account_id is None:
@@ -74,6 +74,16 @@ class PostgresFinanceOperationRepository:
 
         async with self._session_factory() as database:
             async with database.begin():
+                active_user = await database.scalar(
+                    select(UserRow)
+                    .where(
+                        UserRow.id == user_id,
+                        UserRow.disabled_at.is_(None),
+                    )
+                    .with_for_update()
+                )
+                if active_user is None:
+                    raise OperationAccountUnavailable
                 account = await database.scalar(
                     select(FinanceAccountRow)
                     .where(
@@ -87,6 +97,12 @@ class PostgresFinanceOperationRepository:
                     raise OperationAccountUnavailable
                 if draft.occurred_on < account.opening_balance_on:
                     raise OperationBeforeAccountBaseline
+                # Assign the source timestamp only after acquiring the same
+                # user -> account locks used by the Home projector. A writer
+                # that waited behind a completed projection must therefore be
+                # newer than that projection's cutoff instead of carrying a
+                # pre-lock time.
+                created_at = _aware_utc(self._clock())
                 inserted_id = await database.scalar(
                     insert(FinanceOperationRow)
                     .values(
