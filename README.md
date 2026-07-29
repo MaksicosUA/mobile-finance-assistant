@@ -126,12 +126,37 @@ PYTHONPATH=services/api/src uv run --project services/api \
 # Or poll continuously under a process supervisor:
 PYTHONPATH=services/api/src uv run --project services/api \
   python -m mobile_finance_api.projector_runtime
+
+# Privacy-safe process health: 0 healthy, 1 degraded, 2 unavailable.
+PYTHONPATH=services/api/src uv run --project services/api \
+  python -m mobile_finance_api.projector_runtime --check-health
 ```
 
 The reconciliation pass creates at most one revision per canonical local day,
 so the seven-day trend and month boundary advance without a new operation.
 Outbox payloads remain identifier-only; the projector reloads all money and
 dates from PostgreSQL rather than applying event deltas.
+
+Only one projector becomes leader through a PostgreSQL advisory lease. A
+background heartbeat guards long work and cancels it if leadership is lost.
+Strictly invalid outbox contracts use durable `2, 4, 8, ...` second retries,
+capped at five minutes, and enter an in-place dead-letter state on the eighth
+failure. The dedicated validation counter starts at zero during migration and
+never reinterprets legacy delivery attempts. A failed user stream stays
+fail-closed without preventing ready streams for other users. There is no
+operator requeue API yet.
+
+The worker also removes at most 100 eligible Home snapshot roots per cleanup
+cycle while retaining every revision younger than 30 days and the newest two
+per user/timezone/month series. Authoritative accounts, operations, audit, and
+outbox rows are never retention targets. A deployment process manager is still
+required to restart the worker and call `--check-health`.
+
+Migration `0006_projector_supervision` is intentionally not rolling-compatible
+with the old writers. For an existing local database, first stop both the API
+and projector, take and verify a PostgreSQL backup, run `alembic upgrade head`,
+and only then start the new API and projector. Do not run old application
+processes against the upgraded outbox constraints.
 
 An authenticated user first creates the only v1 Finance account through an
 explicit review-and-confirm flow:
@@ -199,11 +224,46 @@ adb reverse tcp:8000 tcp:8000
 tool/build_android_network_debug.sh --install
 ```
 
-The script always supplies the authenticated API defines and writes the
-distinct artifact
+The script requires a clean, non-shallow Git worktree, always supplies the
+authenticated API defines, and writes the distinct artifact
 `build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk`.
 Running a plain `flutter build apk` intentionally creates the fixture build and
 must not be installed over an account-testing build.
+
+To reproduce both deliverable variants from one committed revision, run:
+
+```bash
+tool/build_android_apks.sh
+```
+
+The Android SDK `apkanalyzer` must be available through `PATH`,
+`ANDROID_SDK_ROOT`/`ANDROID_HOME`, or `APKANALYZER_BIN`. The build stops unless
+both APK manifests contain the resolved version.
+
+## Android APK versioning
+
+Deliverable APK versions are derived from committed source and are never
+written back to Git by a build. The numeric component after `+` in
+`pubspec.yaml` is a version-code epoch. The resolver calculates:
+
+```text
+versionCode = pubspec epoch * 1,000,000 + reachable Git commit count
+versionName = pubspec x.y.z + "." + versionCode
+```
+
+Each deliverable commit must descend from the previous deliverable commit.
+Consequently its reachable commit count, `versionCode`, and `versionName` are
+higher. Rebuilding the same SHA produces the same version, including in local
+and GitHub builds. Fixture and network APKs are resolved once and receive the
+same version. Concurrent sibling-branch artifacts are previews and do not form
+one ordered Android upgrade chain.
+
+`tool/resolve_android_build_version.sh` rejects shallow history, an uncommitted
+worktree, malformed source versions, a build-epoch decrease anywhere in the
+reachable history, and Android version-code overflow. Push builds also require
+the new revision to descend from the preceding revision of that branch. Commit
+the intended source before producing a deliverable APK; do not replace the
+resolver with timestamps or local counters.
 
 ## GitHub Actions APKs
 
@@ -211,7 +271,12 @@ Every push, and each manual workflow run, performs the locked dependency,
 localization, formatting, and analysis checks before building two separate
 14-day artifacts. The `fixture-debug` APK uses synthetic Home data. The
 `network-debug` APK enables authentication and the real API, and includes a
-SHA-256 checksum alongside each APK.
+SHA-256 checksum alongside each APK. Checkout uses full Git history, the
+version is resolved once, and both manifests are verified before upload. Each
+artifact also contains `android-build-version.txt` with the source SHA and
+resolved version. Artifacts built from `main` use the official names; all other
+branches are explicitly prefixed with `preview-` and are not one ordered
+Android upgrade chain.
 
 The network build reads the non-secret repository variables
 `ANDROID_DEBUG_API_BASE_URL` and `HOME_API_TIMEZONE`. Without them it uses

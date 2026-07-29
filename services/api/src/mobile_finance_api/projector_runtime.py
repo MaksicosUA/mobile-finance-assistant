@@ -1,4 +1,4 @@
-"""Standalone runtime for the deterministic Home outbox consumer."""
+"""Operational runtime for the deterministic PostgreSQL Home projector."""
 
 from __future__ import annotations
 
@@ -7,29 +7,212 @@ import asyncio
 import logging
 import math
 import time
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 
 from .config import require_database_url
-from .database import create_database
+from .database import AsyncSessionFactory, create_database
 from .postgres_home_projector import PostgresHomeProjector
+from .postgres_projector_supervision import (
+    ProjectorLeaderLease,
+    acquire_projector_leadership,
+    prune_home_revisions,
+    read_projector_health,
+)
+from .projector_supervision import (
+    BoundedRuntimeBackoff,
+    EventRetryPolicy,
+    ProjectorHealth,
+    RevisionRetentionPolicy,
+)
 
 _LOGGER = logging.getLogger("mobile_finance_api.home_projector")
+_EX_TEMPFAIL = 75
 
 
-async def _run_once(*, max_cycles: int | None) -> None:
-    engine, session_factory = create_database(require_database_url())
-    projector = PostgresHomeProjector(session_factory=session_factory)
-    try:
-        # Reconcile healthy users before a poison event can make the one-shot
-        # scheduler exit non-zero. The pending user's reconciliation is
-        # intentionally skipped until its event validates.
-        reconciled = await projector.reconcile_all()
-        consumed = await projector.drain_pending(max_cycles=max_cycles)
-        _LOGGER.info(
-            "Home projector cycle complete consumed=%d reconciled=%d",
-            consumed,
-            reconciled,
+class _ProjectionCycleFailed(RuntimeError):
+    """One or more isolated projection streams failed in a bounded cycle."""
+
+
+class _LeaseHeartbeat:
+    """Serialize lease heartbeats independently from projector work."""
+
+    def __init__(
+        self,
+        *,
+        lease: ProjectorLeaderLease,
+        heartbeat_stale_seconds: float,
+    ) -> None:
+        if not math.isfinite(heartbeat_stale_seconds) or heartbeat_stale_seconds <= 0:
+            raise ValueError("heartbeat stale interval must be positive")
+        # A stalled write is detected and work is cancelled before the last
+        # successful heartbeat can become stale. Both the wait between writes
+        # and the per-write timeout are one third of the stale threshold.
+        self._interval_seconds = heartbeat_stale_seconds / 3
+        self._lease = lease
+        self._status = "starting"
+        self._status_changed = asyncio.Event()
+        self._ready = asyncio.Event()
+        self._stop_requested = False
+
+    def set_status(self, status: str) -> None:
+        self._status = status
+        self._status_changed.set()
+
+    async def wait_until_ready(self) -> None:
+        await self._ready.wait()
+
+    def request_stop(self) -> None:
+        self._stop_requested = True
+        self._status_changed.set()
+
+    async def run(self) -> None:
+        while not self._stop_requested:
+            # Clear before reading so an update concurrent with the database
+            # call remains set and triggers an immediate serialized follow-up.
+            self._status_changed.clear()
+            if self._stop_requested:
+                return
+            status = self._status
+            await asyncio.wait_for(
+                self._lease.heartbeat(status=status),
+                timeout=self._interval_seconds,
+            )
+            self._ready.set()
+            if self._stop_requested:
+                return
+            try:
+                await asyncio.wait_for(
+                    self._status_changed.wait(),
+                    timeout=self._interval_seconds,
+                )
+            except TimeoutError:
+                pass
+
+
+async def _run_guarded_leader_work[WorkResult](
+    *,
+    lease: ProjectorLeaderLease,
+    heartbeat_stale_seconds: float,
+    work: Callable[[Callable[[str], None]], Awaitable[WorkResult]],
+) -> WorkResult:
+    """Run work only while a dedicated background lease heartbeat is healthy."""
+
+    heartbeat = _LeaseHeartbeat(
+        lease=lease,
+        heartbeat_stale_seconds=heartbeat_stale_seconds,
+    )
+    heartbeat_task = asyncio.create_task(
+        heartbeat.run(),
+        name="home-projector-lease-heartbeat",
+    )
+    ready_task = asyncio.create_task(
+        heartbeat.wait_until_ready(),
+        name="home-projector-lease-heartbeat-ready",
+    )
+    work_task: asyncio.Future[WorkResult] | None = None
+
+    async def shutdown() -> None:
+        # Never cancel a healthy heartbeat while SQLAlchemy is using the
+        # dedicated lease connection: doing so can leave it in pending
+        # rollback and break the context manager's stop/unlock cleanup.
+        heartbeat.request_stop()
+        for task in (work_task, ready_task):
+            if task is not None and not task.done():
+                task.cancel()
+        await asyncio.gather(
+            *(task for task in (work_task, ready_task, heartbeat_task) if task),
+            return_exceptions=True,
         )
+
+    try:
+        ready_or_failed, _ = await asyncio.wait(
+            {heartbeat_task, ready_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if heartbeat_task in ready_or_failed:
+            await heartbeat_task
+            raise RuntimeError("projector lease heartbeat stopped unexpectedly")
+        await ready_task
+
+        work_task = asyncio.ensure_future(work(heartbeat.set_status))
+        completed, _ = await asyncio.wait(
+            {heartbeat_task, work_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if heartbeat_task in completed:
+            # The finally block cancels and awaits work before the leadership
+            # context can stop/unlock the dedicated lease connection.
+            await heartbeat_task
+            raise RuntimeError("projector lease heartbeat stopped unexpectedly")
+        result = await work_task
+    except BaseException:
+        await shutdown()
+        raise
+
+    await shutdown()
+    if heartbeat_task.cancelled():
+        raise RuntimeError("projector lease heartbeat was cancelled unexpectedly")
+    heartbeat_error = heartbeat_task.exception()
+    if heartbeat_error is not None:
+        raise heartbeat_error
+    return result
+
+
+async def _run_once(
+    *,
+    max_cycles: int,
+    heartbeat_stale_seconds: float,
+    retry_policy: EventRetryPolicy,
+    retention_policy: RevisionRetentionPolicy,
+) -> bool:
+    engine, session_factory = create_database(require_database_url())
+    projector = PostgresHomeProjector(
+        session_factory=session_factory,
+        retry_policy=retry_policy,
+    )
+    try:
+        async with acquire_projector_leadership(engine=engine) as lease:
+            if lease is None:
+                return False
+
+            async def one_shot_work(
+                set_status: Callable[[str], None],
+            ) -> None:
+                # Reconcile healthy users before processing event streams.
+                reconciliation = await projector.reconcile_all()
+                projection = await projector.drain_available(max_candidates=max_cycles)
+                pruned = await prune_home_revisions(
+                    session_factory=session_factory,
+                    policy=retention_policy,
+                )
+                failures_present = (
+                    reconciliation.failures_present or projection.failures_present
+                )
+                if failures_present:
+                    set_status("degraded")
+                elif reconciliation.published or projection.published:
+                    set_status("published")
+                else:
+                    set_status("idle")
+                _LOGGER.info(
+                    "Home projector cycle complete consumed=%d "
+                    "reconciled=%d pruned=%d failures=%s",
+                    projection.published,
+                    reconciliation.published,
+                    pruned,
+                    failures_present,
+                )
+                if failures_present:
+                    raise _ProjectionCycleFailed(
+                        "one or more projection streams failed"
+                    )
+
+            await _run_guarded_leader_work(
+                lease=lease,
+                heartbeat_stale_seconds=heartbeat_stale_seconds,
+                work=one_shot_work,
+            )
+            return True
     finally:
         await engine.dispose()
 
@@ -39,107 +222,364 @@ async def _run_forever(
     poll_seconds: float,
     reconcile_seconds: float,
     max_cycles: int,
+    leader_retry_seconds: float,
+    runtime_backoff_initial_seconds: float,
+    runtime_backoff_maximum_seconds: float,
+    health_seconds: float,
+    heartbeat_stale_seconds: float,
+    maximum_lag_seconds: float,
+    retention_seconds: float,
+    retry_policy: EventRetryPolicy,
+    retention_policy: RevisionRetentionPolicy,
 ) -> None:
     engine, session_factory = create_database(require_database_url())
-    projector = PostgresHomeProjector(session_factory=session_factory)
-    next_reconciliation = 0.0
+    projector = PostgresHomeProjector(
+        session_factory=session_factory,
+        retry_policy=retry_policy,
+    )
+    leadership_backoff = BoundedRuntimeBackoff(
+        initial_seconds=runtime_backoff_initial_seconds,
+        maximum_seconds=runtime_backoff_maximum_seconds,
+    )
     try:
         while True:
-            consumed = 0
             try:
-                consumed = await projector.drain_pending(max_cycles=max_cycles)
+                async with acquire_projector_leadership(engine=engine) as lease:
+                    if lease is None:
+                        leadership_backoff.reset()
+                        _LOGGER.info("Home projector leadership unavailable")
+                        await asyncio.sleep(leader_retry_seconds)
+                        continue
+                    leadership_backoff.reset()
+                    _LOGGER.info("Home projector leadership acquired")
+
+                    async def leader_work(
+                        set_status: Callable[[str], None],
+                    ) -> None:
+                        await _run_leader_loop(
+                            set_status=set_status,
+                            projector=projector,
+                            poll_seconds=poll_seconds,
+                            reconcile_seconds=reconcile_seconds,
+                            max_cycles=max_cycles,
+                            runtime_backoff_initial_seconds=(
+                                runtime_backoff_initial_seconds
+                            ),
+                            runtime_backoff_maximum_seconds=(
+                                runtime_backoff_maximum_seconds
+                            ),
+                            health_seconds=health_seconds,
+                            heartbeat_stale_seconds=heartbeat_stale_seconds,
+                            maximum_lag_seconds=maximum_lag_seconds,
+                            retention_seconds=retention_seconds,
+                            session_factory=session_factory,
+                            retention_policy=retention_policy,
+                        )
+
+                    await _run_guarded_leader_work(
+                        lease=lease,
+                        heartbeat_stale_seconds=heartbeat_stale_seconds,
+                        work=leader_work,
+                    )
             except asyncio.CancelledError:
                 raise
             except Exception as error:
-                # SQL exception strings may include bound financial values.
-                # Log only the bounded exception type and continue with the
-                # independent calendar reconciliation.
+                delay = leadership_backoff.after_failure()
                 _LOGGER.error(
-                    "Home projector event cycle failed error_type=%s",
+                    "Home projector leadership cycle failed error_type=%s",
+                    type(error).__name__,
+                )
+                await asyncio.sleep(delay)
+    finally:
+        await engine.dispose()
+
+
+async def _run_leader_loop(
+    *,
+    set_status: Callable[[str], None],
+    projector: PostgresHomeProjector,
+    poll_seconds: float,
+    reconcile_seconds: float,
+    max_cycles: int,
+    runtime_backoff_initial_seconds: float,
+    runtime_backoff_maximum_seconds: float,
+    health_seconds: float,
+    heartbeat_stale_seconds: float,
+    maximum_lag_seconds: float,
+    retention_seconds: float,
+    session_factory: AsyncSessionFactory,
+    retention_policy: RevisionRetentionPolicy,
+) -> None:
+    event_backoff = BoundedRuntimeBackoff(
+        initial_seconds=runtime_backoff_initial_seconds,
+        maximum_seconds=runtime_backoff_maximum_seconds,
+    )
+    next_reconciliation = 0.0
+    next_health = 0.0
+    next_retention = 0.0
+    while True:
+        consumed = 0
+        reconciled = 0
+        cycle_failed = False
+        try:
+            projection = await projector.drain_available(max_candidates=max_cycles)
+            consumed = projection.published
+            cycle_failed = projection.failures_present
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            cycle_failed = True
+            _LOGGER.error(
+                "Home projector event cycle failed error_type=%s",
+                type(error).__name__,
+            )
+
+        now = time.monotonic()
+        if now >= next_reconciliation:
+            try:
+                reconciliation = await projector.reconcile_all()
+                reconciled = reconciliation.published
+                cycle_failed = cycle_failed or reconciliation.failures_present
+                next_reconciliation = now + reconcile_seconds
+                _LOGGER.info(
+                    "Home projector reconciliation complete published=%d",
+                    reconciled,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                cycle_failed = True
+                _LOGGER.error(
+                    "Home projector reconciliation failed error_type=%s",
                     type(error).__name__,
                 )
 
-            now = time.monotonic()
-            if now >= next_reconciliation:
-                try:
-                    reconciled = await projector.reconcile_all()
-                    next_reconciliation = now + reconcile_seconds
-                    _LOGGER.info(
-                        "Home projector reconciliation complete published=%d",
-                        reconciled,
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except Exception as error:
-                    _LOGGER.error(
-                        "Home projector reconciliation failed error_type=%s",
-                        type(error).__name__,
-                    )
-            if consumed == 0:
-                await asyncio.sleep(poll_seconds)
+        if now >= next_retention:
+            try:
+                pruned = await prune_home_revisions(
+                    session_factory=session_factory,
+                    policy=retention_policy,
+                )
+                next_retention = now + retention_seconds
+                _LOGGER.info("Home projector retention complete pruned=%d", pruned)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                cycle_failed = True
+                _LOGGER.error(
+                    "Home projector retention failed error_type=%s",
+                    type(error).__name__,
+                )
+
+        health: ProjectorHealth | None = None
+        if now >= next_health:
+            try:
+                health = await read_projector_health(
+                    session_factory=session_factory,
+                    heartbeat_stale_seconds=heartbeat_stale_seconds,
+                    maximum_lag_seconds=maximum_lag_seconds,
+                )
+                next_health = now + health_seconds
+                _log_health(health)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                cycle_failed = True
+                _LOGGER.error(
+                    "Home projector health query failed error_type=%s",
+                    type(error).__name__,
+                )
+
+        status = "degraded" if cycle_failed else "idle"
+        if not cycle_failed and (consumed or reconciled):
+            status = "published"
+        set_status(status)
+
+        if cycle_failed:
+            await asyncio.sleep(event_backoff.after_failure())
+        elif consumed == 0:
+            event_backoff.reset()
+            await asyncio.sleep(poll_seconds)
+        else:
+            event_backoff.reset()
+
+
+async def _check_health(
+    *,
+    heartbeat_stale_seconds: float,
+    maximum_lag_seconds: float,
+) -> int:
+    engine, session_factory = create_database(require_database_url())
+    try:
+        try:
+            health = await read_projector_health(
+                session_factory=session_factory,
+                heartbeat_stale_seconds=heartbeat_stale_seconds,
+                maximum_lag_seconds=maximum_lag_seconds,
+            )
+        except Exception as error:
+            _LOGGER.error(
+                "Home projector health unavailable error_type=%s",
+                type(error).__name__,
+            )
+            return 2
+        _log_health(health)
+        return 0 if health.status == "healthy" else 1
     finally:
         await engine.dispose()
+
+
+def _log_health(health: ProjectorHealth) -> None:
+    log = _LOGGER.info if health.status == "healthy" else _LOGGER.error
+    log(
+        "Home projector health status=%s leader=%s heartbeat_age=%s "
+        "pending_lag=%s dead_letters=%s last_cycle=%s",
+        health.status,
+        health.leader,
+        health.heartbeat_age,
+        health.pending_lag,
+        health.dead_letters,
+        health.last_cycle,
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Consume Finance outboxes into immutable Home revisions.",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--once",
         action="store_true",
-        help="Reconcile accounts, drain pending events once, then exit.",
+        help="Run one leader-protected projection and retention cycle.",
     )
-    parser.add_argument(
-        "--max-cycles",
-        type=int,
-        default=100,
-        help="Maximum users processed between poll/reconciliation checks.",
+    mode.add_argument(
+        "--check-health",
+        action="store_true",
+        help="Report privacy-safe worker health and exit 0/1/2.",
     )
+    parser.add_argument("--max-cycles", type=int, default=100)
     parser.add_argument("--poll-seconds", type=float, default=2.0)
     parser.add_argument("--reconcile-seconds", type=float, default=300.0)
+    parser.add_argument("--leader-retry-seconds", type=float, default=5.0)
+    parser.add_argument("--runtime-backoff-initial-seconds", type=float, default=1.0)
+    parser.add_argument("--runtime-backoff-maximum-seconds", type=float, default=30.0)
+    parser.add_argument("--event-max-attempts", type=int, default=8)
+    parser.add_argument("--event-backoff-initial-seconds", type=float, default=2.0)
+    parser.add_argument("--event-backoff-maximum-seconds", type=float, default=300.0)
+    parser.add_argument("--health-seconds", type=float, default=60.0)
+    parser.add_argument("--heartbeat-stale-seconds", type=float, default=30.0)
+    parser.add_argument("--maximum-lag-seconds", type=float, default=120.0)
+    parser.add_argument("--retention-seconds", type=float, default=86400.0)
+    parser.add_argument("--retention-minimum-revisions", type=int, default=2)
+    parser.add_argument("--retention-grace-days", type=int, default=30)
+    parser.add_argument("--retention-maximum-per-cycle", type=int, default=100)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    if args.max_cycles <= 0:
-        raise SystemExit("--max-cycles must be positive")
-    if (
-        not math.isfinite(args.poll_seconds)
-        or not math.isfinite(args.reconcile_seconds)
-        or args.poll_seconds <= 0
-        or args.reconcile_seconds <= 0
-    ):
-        raise SystemExit("poll and reconciliation intervals must be positive")
+    retry_policy, retention_policy = _validated_policies(args)
     logging.basicConfig(level=logging.INFO)
+    if args.check_health:
+        try:
+            return asyncio.run(
+                _check_health(
+                    heartbeat_stale_seconds=args.heartbeat_stale_seconds,
+                    maximum_lag_seconds=args.maximum_lag_seconds,
+                )
+            )
+        except Exception as error:
+            _LOGGER.error(
+                "Home projector health unavailable error_type=%s",
+                type(error).__name__,
+            )
+            return 2
     if args.once:
         try:
-            asyncio.run(_run_once(max_cycles=args.max_cycles))
+            acquired = asyncio.run(
+                _run_once(
+                    max_cycles=args.max_cycles,
+                    heartbeat_stale_seconds=args.heartbeat_stale_seconds,
+                    retry_policy=retry_policy,
+                    retention_policy=retention_policy,
+                )
+            )
         except Exception as error:
             _LOGGER.error(
                 "Home projector one-shot failed error_type=%s",
                 type(error).__name__,
             )
             return 1
-    else:
-        try:
-            asyncio.run(
-                _run_forever(
-                    poll_seconds=args.poll_seconds,
-                    reconcile_seconds=args.reconcile_seconds,
-                    max_cycles=args.max_cycles,
-                )
+        if not acquired:
+            _LOGGER.warning("Home projector one-shot leadership unavailable")
+            return _EX_TEMPFAIL
+        return 0
+    try:
+        asyncio.run(
+            _run_forever(
+                poll_seconds=args.poll_seconds,
+                reconcile_seconds=args.reconcile_seconds,
+                max_cycles=args.max_cycles,
+                leader_retry_seconds=args.leader_retry_seconds,
+                runtime_backoff_initial_seconds=(args.runtime_backoff_initial_seconds),
+                runtime_backoff_maximum_seconds=(args.runtime_backoff_maximum_seconds),
+                health_seconds=args.health_seconds,
+                heartbeat_stale_seconds=args.heartbeat_stale_seconds,
+                maximum_lag_seconds=args.maximum_lag_seconds,
+                retention_seconds=args.retention_seconds,
+                retry_policy=retry_policy,
+                retention_policy=retention_policy,
             )
-        except KeyboardInterrupt:
-            return 0
-        except Exception as error:
-            _LOGGER.error(
-                "Home projector startup failed error_type=%s",
-                type(error).__name__,
-            )
-            return 1
+        )
+    except KeyboardInterrupt:
+        return 0
+    except Exception as error:
+        _LOGGER.error(
+            "Home projector startup failed error_type=%s",
+            type(error).__name__,
+        )
+        return 1
     return 0
+
+
+def _validated_policies(
+    args: argparse.Namespace,
+) -> tuple[EventRetryPolicy, RevisionRetentionPolicy]:
+    if args.max_cycles <= 0:
+        raise SystemExit("--max-cycles must be positive")
+    for name in (
+        "poll_seconds",
+        "reconcile_seconds",
+        "leader_retry_seconds",
+        "runtime_backoff_initial_seconds",
+        "runtime_backoff_maximum_seconds",
+        "health_seconds",
+        "heartbeat_stale_seconds",
+        "maximum_lag_seconds",
+        "retention_seconds",
+    ):
+        value = getattr(args, name)
+        if not math.isfinite(value) or value <= 0:
+            raise SystemExit(f"--{name.replace('_', '-')} must be positive")
+    try:
+        retry_policy = EventRetryPolicy(
+            max_attempts=args.event_max_attempts,
+            initial_seconds=args.event_backoff_initial_seconds,
+            maximum_seconds=args.event_backoff_maximum_seconds,
+        )
+        retention_policy = RevisionRetentionPolicy(
+            minimum_per_series=args.retention_minimum_revisions,
+            grace_days=args.retention_grace_days,
+            maximum_per_cycle=args.retention_maximum_per_cycle,
+        )
+        BoundedRuntimeBackoff(
+            initial_seconds=args.runtime_backoff_initial_seconds,
+            maximum_seconds=args.runtime_backoff_maximum_seconds,
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    return retry_policy, retention_policy
 
 
 if __name__ == "__main__":
