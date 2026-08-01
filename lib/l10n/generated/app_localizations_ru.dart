@@ -664,6 +664,14 @@ class AppLocalizationsRu extends AppLocalizations {
       'Сервис финансовых операций временно недоступен. Попробуйте снова позже.';
 
   @override
+  String get financeSecurityError =>
+      'Не удалось подтвердить безопасное соединение. Проверьте настройки и повторите позже.';
+
+  @override
+  String get financeLocalStorageError =>
+      'Не удалось надёжно сохранить подтверждение на устройстве. Запрос на сервер не отправлялся. Освободите место или разблокируйте защищённое хранилище и повторите.';
+
+  @override
   String get financeUnexpectedError =>
       'Получен некорректный ответ. Финансовые данные не были изменены клиентом.';
 
@@ -697,4 +705,86 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get operationAcceptedRefreshFailed =>
       'Операция уже сохранена. Главный экран можно обновить позже.';
+
+  @override
+  String get operationQueuedTitle => 'Операция сохранена на устройстве';
+
+  @override
+  String get operationQueuedDescription =>
+      'Подтверждение защищённо сохранено. Если сервер ещё не принял его, оно не влияет на баланс. Актуальный статус показан на главном экране.';
+
+  @override
+  String get operationQueuedAuthDescription =>
+      'Подтверждение защищённо сохранено. Для продолжения отправки может понадобиться повторный вход. Актуальный статус показан на главном экране.';
+
+  @override
+  String get operationAlreadySyncedTitle => 'Операция уже синхронизирована';
+
+  @override
+  String get operationAlreadySyncedDescription =>
+      'Сервер подтвердил эту же операцию ранее. Повторная запись не создана.';
+
+  @override
+  String get operationAttentionTitle => 'Операция требует проверки';
+
+  @override
+  String get operationAttentionConflict =>
+      'Сохранённое подтверждение конфликтует с уже обработанной командой и не будет отправляться автоматически.';
+
+  @override
+  String get operationAttentionRejected =>
+      'Finance Core отклонил подтверждение. Баланс не изменён.';
+
+  @override
+  String get operationAttentionSecurity =>
+      'Отправка остановлена из-за проверки безопасности. Баланс не изменён.';
+
+  @override
+  String get operationAttentionInvalid =>
+      'Подтверждение нельзя безопасно отправить автоматически. Баланс не изменён.';
+
+  @override
+  String get operationSyncingBannerTitle => 'Отправляем сохранённую операцию';
+
+  @override
+  String get operationSyncingBannerDescription =>
+      'До подтверждения сервера она не влияет на баланс.';
+
+  @override
+  String get operationHomeUpdatingBannerTitle => 'Главный экран обновляется';
+
+  @override
+  String get operationHomeUpdatingBannerDescription =>
+      'Операция уже сохранена сервером. Баланс обновится после готовности данных; повторно подтверждать её не нужно.';
+
+  @override
+  String get operationHomeUpdatingAction => 'Обновить сейчас';
+
+  @override
+  String get operationPendingBannerTitle => 'Операция ждёт синхронизации';
+
+  @override
+  String get operationPendingBannerDescription =>
+      'Она защищённо сохранена на устройстве и пока не влияет на баланс.';
+
+  @override
+  String get operationAuthBannerTitle => 'Нужен повторный вход';
+
+  @override
+  String get operationAuthBannerDescription =>
+      'Сохранённая операция останется на устройстве до безопасной авторизации.';
+
+  @override
+  String get operationAttentionBannerTitle => 'Проверьте сохранённую операцию';
+
+  @override
+  String get operationAttentionBannerDescription =>
+      'Автоматическая отправка остановлена. Баланс не изменён.';
+
+  @override
+  String get operationLockedBannerDescription =>
+      'Отправка финансовых операций заблокирована после проверки безопасности. Новые подтверждения не будут отправляться автоматически.';
+
+  @override
+  String get operationRetryNowAction => 'Повторить отправку';
 }

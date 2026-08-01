@@ -495,9 +495,11 @@ FinanceEntryResult<T> _dioFailure<T>(
       requestId: requestId,
       contract: contract,
     ),
-    DioExceptionType.badCertificate ||
-    DioExceptionType.cancel ||
-    DioExceptionType.unknown => _failure(
+    DioExceptionType.badCertificate => _failure(
+      kind: FinanceEntryFailureKind.securityFailure,
+      requestId: requestId,
+    ),
+    DioExceptionType.cancel || DioExceptionType.unknown => _failure(
       kind: FinanceEntryFailureKind.unknown,
       requestId: requestId,
     ),

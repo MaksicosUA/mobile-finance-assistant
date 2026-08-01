@@ -41,6 +41,9 @@ outside it.
 - Native Flutter review-and-confirm flow for first-account setup and structured
   online income/expense entry, with exact command retries and bounded Home
   projection convergence
+- Account-scoped encrypted SQLite outbox for confirmed operation commands,
+  with enqueue-before-network delivery, persisted retry/backoff, process-death
+  recovery, and exact idempotent replay after reconnect
 - Owned-account allocation for every new operation, protected by database
   ownership/currency constraints and commit-time revalidation
 - Deterministic PostgreSQL outbox consumer that rebuilds immutable Home
@@ -53,16 +56,16 @@ The default Flutter build uses synthetic Home fixtures and does not require an
 account. Network builds enable the real authentication gate. The API exposes
 bounded first-account and confirmed-operation write paths, and the standalone
 projector consumes both server outboxes. The network Flutter build calls the
-account and operation endpoints through an explicit manual review flow. Offline
-command storage, bank synchronization, speech-to-text, AI extraction, and full
-chat are not part of this slice.
+account and operation endpoints through an explicit manual review flow.
+Cold-start offline drafting/evaluation, bank synchronization, speech-to-text,
+AI extraction, and full chat are not part of this slice.
 
 ## Project layout
 
 - `lib/app/` — application shell, themes, settings, and privacy bridge
 - `lib/features/auth/` — authentication application, data, domain, and UI
-- `lib/features/finance_entry/` — online account and operation review/confirm
-  flow
+- `lib/features/finance_entry/` — account and operation review/confirm flow,
+  plus encrypted delivery of confirmed operations
 - `lib/features/home/` — Home domain, API/cache, application, and presentation
 - `lib/l10n/` — localization source and generated delegates
 - `assets/fixtures/` — synthetic runtime Home fixture
@@ -185,6 +188,15 @@ Authenticated operation writes then use two endpoints:
   `NEEDS_CONFIRMATION` draft hash without writing financial state;
 - `POST /api/v1/operations/commit` revalidates the confirmed draft and returns
   `ACCEPT`, with `idempotentReplay: true` for an identical retry.
+
+After explicit confirmation, Flutter encrypts and persists the exact commit
+command before the first HTTP request. A transient failure, lost response, or
+process restart keeps the command pending and retries the same `commandId`,
+draft hash, fields, and confirmation time. A pending command never changes the
+displayed balance. Only a strict server `ACCEPT` marks it synced and triggers a
+separate Home convergence. The first version of this outbox does not evaluate
+new commands without a network connection and does not run an OS background
+worker while the application is suspended.
 
 Operation v1 accepts only positive decimal-string `expense` and `income`
 amounts in `EUR`; other currencies fail closed until a verified ISO registry
@@ -315,8 +327,9 @@ rotation, and old-session cleanup are intentionally deferred.
 ## Runtime dependencies
 
 Mobile dependencies are open source and require no paid service: Riverpod,
-Dio, `flutter_secure_storage`, `cryptography`, `path_provider`, and
-`shared_preferences`. Backend dependencies are FastAPI, Pydantic, SQLAlchemy,
-asyncpg, Alembic, argon2-cffi, PyJWT, email-validator, Uvicorn, and tzdata.
+Dio, `flutter_secure_storage`, `cryptography`, `sqflite`, `path`,
+`path_provider`, and `shared_preferences`. Backend dependencies are FastAPI,
+Pydantic, SQLAlchemy, asyncpg, Alembic, argon2-cffi, PyJWT, email-validator,
+Uvicorn, and tzdata.
 
 The minimum supported mobile platform versions are Android 24 and iOS 13.

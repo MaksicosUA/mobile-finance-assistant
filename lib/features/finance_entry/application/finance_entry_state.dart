@@ -42,6 +42,13 @@ enum FinanceEntryHomeStatus {
   failed,
 }
 
+enum FinanceOperationDeliveryIssue {
+  commandConflict,
+  rejected,
+  securityBlocked,
+  invalidCommand,
+}
+
 sealed class FinanceEntryState {
   const FinanceEntryState();
 }
@@ -140,4 +147,41 @@ final class FinanceOperationAccepted extends FinanceEntryState {
   final CommittedFinanceOperation operation;
   final DateTime latestOperationDate;
   final FinanceEntryHomeStatus homeStatus;
+}
+
+/// The confirmed command is durable locally but is not authoritative yet.
+final class FinanceOperationQueued extends FinanceEntryState {
+  const FinanceOperationQueued({
+    required this.account,
+    required this.latestOperationDate,
+    required this.authenticationRequired,
+  });
+
+  final FinanceAccount account;
+  final DateTime latestOperationDate;
+  final bool authenticationRequired;
+}
+
+/// The command was already accepted through an exact idempotent replay.
+final class FinanceOperationAlreadySynced extends FinanceEntryState {
+  const FinanceOperationAlreadySynced({
+    required this.account,
+    required this.latestOperationDate,
+  });
+
+  final FinanceAccount account;
+  final DateTime latestOperationDate;
+}
+
+/// A durable command cannot retry automatically and needs user attention.
+final class FinanceOperationDeliveryAttention extends FinanceEntryState {
+  const FinanceOperationDeliveryAttention({
+    required this.account,
+    required this.latestOperationDate,
+    required this.issue,
+  });
+
+  final FinanceAccount account;
+  final DateTime latestOperationDate;
+  final FinanceOperationDeliveryIssue issue;
 }
