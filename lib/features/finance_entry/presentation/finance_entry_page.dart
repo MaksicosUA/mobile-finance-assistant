@@ -17,10 +17,12 @@ class FinanceEntryPage extends ConsumerStatefulWidget {
     super.key,
     required this.onBackHome,
     required this.onSignInRequested,
+    this.deliveryLocked = false,
   });
 
   final VoidCallback onBackHome;
   final VoidCallback onSignInRequested;
+  final bool deliveryLocked;
 
   @override
   ConsumerState<FinanceEntryPage> createState() => _FinanceEntryPageState();
@@ -91,6 +93,7 @@ class _FinanceEntryPageState extends ConsumerState<FinanceEntryPage> {
                   child: _FinanceEntryBody(
                     state: state,
                     privacyEnabled: privacy,
+                    deliveryLocked: widget.deliveryLocked,
                     onBackHome: widget.onBackHome,
                     onSignInRequested: widget.onSignInRequested,
                   ),
@@ -108,12 +111,14 @@ class _FinanceEntryBody extends ConsumerWidget {
   const _FinanceEntryBody({
     required this.state,
     required this.privacyEnabled,
+    required this.deliveryLocked,
     required this.onBackHome,
     required this.onSignInRequested,
   });
 
   final FinanceEntryState state;
   final bool privacyEnabled;
+  final bool deliveryLocked;
   final VoidCallback onBackHome;
   final VoidCallback onSignInRequested;
 
@@ -169,7 +174,43 @@ class _FinanceEntryBody extends ConsumerWidget {
       FinanceOperationAccepted() => _AcceptedOperation(
         state: state as FinanceOperationAccepted,
         onBackHome: onBackHome,
-        onAddAnother: controller.addAnotherOperation,
+        onAddAnother: deliveryLocked ? null : controller.addAnotherOperation,
+      ),
+      FinanceOperationQueued(:final authenticationRequired) =>
+        _OperationDeliveryCard(
+          cardKey: const Key('operation-queued'),
+          icon: Icons.cloud_upload_outlined,
+          title: l10n.operationQueuedTitle,
+          description: authenticationRequired
+              ? l10n.operationQueuedAuthDescription
+              : l10n.operationQueuedDescription,
+          primaryLabel: authenticationRequired
+              ? l10n.signInAgainAction
+              : l10n.backHome,
+          onPrimary: authenticationRequired ? onSignInRequested : onBackHome,
+          onAddAnother: deliveryLocked ? null : controller.addAnotherOperation,
+        ),
+      FinanceOperationAlreadySynced() => _OperationDeliveryCard(
+        cardKey: const Key('operation-already-synced'),
+        icon: Icons.verified_outlined,
+        title: l10n.operationAlreadySyncedTitle,
+        description: l10n.operationAlreadySyncedDescription,
+        primaryLabel: l10n.backHome,
+        onPrimary: onBackHome,
+        onAddAnother: deliveryLocked ? null : controller.addAnotherOperation,
+      ),
+      FinanceOperationDeliveryAttention(:final issue) => _OperationDeliveryCard(
+        cardKey: const Key('operation-delivery-attention'),
+        icon: Icons.report_gmailerrorred_rounded,
+        title: l10n.operationAttentionTitle,
+        description: _deliveryIssueMessage(l10n, issue),
+        primaryLabel: l10n.backHome,
+        onPrimary: onBackHome,
+        onAddAnother:
+            deliveryLocked ||
+                issue == FinanceOperationDeliveryIssue.securityBlocked
+            ? null
+            : controller.addAnotherOperation,
       ),
     };
   }
@@ -721,12 +762,12 @@ class _AcceptedOperation extends StatelessWidget {
   const _AcceptedOperation({
     required this.state,
     required this.onBackHome,
-    required this.onAddAnother,
+    this.onAddAnother,
   });
 
   final FinanceOperationAccepted state;
   final VoidCallback onBackHome;
-  final VoidCallback onAddAnother;
+  final VoidCallback? onAddAnother;
 
   @override
   Widget build(BuildContext context) {
@@ -796,6 +837,67 @@ class _AcceptedOperation extends StatelessWidget {
                 onPressed: updating ? null : onAddAnother,
                 child: Text(l10n.addAnotherOperationAction),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OperationDeliveryCard extends StatelessWidget {
+  const _OperationDeliveryCard({
+    required this.cardKey,
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.primaryLabel,
+    required this.onPrimary,
+    this.onAddAnother,
+  });
+
+  final Key cardKey;
+  final IconData icon;
+  final String title;
+  final String description;
+  final String primaryLabel;
+  final VoidCallback onPrimary;
+  final VoidCallback? onAddAnother;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Card(
+        key: cardKey,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                size: 56,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(description, textAlign: TextAlign.center),
+              const SizedBox(height: AppSpacing.lg),
+              FilledButton(onPressed: onPrimary, child: Text(primaryLabel)),
+              if (onAddAnother case final callback?) ...[
+                const SizedBox(height: AppSpacing.sm),
+                OutlinedButton(
+                  onPressed: callback,
+                  child: Text(l10n.addAnotherOperationAction),
+                ),
+              ],
             ],
           ),
         ),
@@ -1154,11 +1256,28 @@ String _failureMessage(AppLocalizations l10n, FinanceEntryFailure failure) =>
       FinanceEntryFailureKind.unauthenticated ||
       FinanceEntryFailureKind.unauthorized => l10n.authExpiredDescription,
       FinanceEntryFailureKind.sessionChanged => l10n.financeSessionChanged,
+      FinanceEntryFailureKind.interrupted =>
+        l10n.operationPendingBannerDescription,
       FinanceEntryFailureKind.conflict => l10n.financeConflictError,
       FinanceEntryFailureKind.rejected => _issuesMessage(l10n, failure.issues),
       FinanceEntryFailureKind.offline => l10n.financeOfflineError,
       FinanceEntryFailureKind.timeout => l10n.financeTimeoutError,
       FinanceEntryFailureKind.serviceUnavailable => l10n.financeServiceError,
+      FinanceEntryFailureKind.securityFailure => l10n.financeSecurityError,
+      FinanceEntryFailureKind.localStorage => l10n.financeLocalStorageError,
       FinanceEntryFailureKind.malformedResponse ||
       FinanceEntryFailureKind.unknown => l10n.financeUnexpectedError,
     };
+
+String _deliveryIssueMessage(
+  AppLocalizations l10n,
+  FinanceOperationDeliveryIssue issue,
+) => switch (issue) {
+  FinanceOperationDeliveryIssue.commandConflict =>
+    l10n.operationAttentionConflict,
+  FinanceOperationDeliveryIssue.rejected => l10n.operationAttentionRejected,
+  FinanceOperationDeliveryIssue.securityBlocked =>
+    l10n.operationAttentionSecurity,
+  FinanceOperationDeliveryIssue.invalidCommand =>
+    l10n.operationAttentionInvalid,
+};

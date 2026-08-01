@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/home/application/home_controller.dart';
 import '../features/home/presentation/home_page.dart';
 import '../features/auth/application/auth_controller.dart';
+import '../features/finance_entry/application/operation_sync_controller.dart';
+import '../features/finance_entry/domain/operation_outbox.dart';
 import '../features/finance_entry/presentation/finance_entry_page.dart';
+import '../features/home/presentation/widgets/home_status_banner.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
 import 'settings/settings_page.dart';
@@ -20,9 +23,45 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class _AppShellState extends ConsumerState<AppShell>
+    with WidgetsBindingObserver {
   AppSection _section = AppSection.home;
   bool _voiceEntryRequested = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (isNetworkBackendConfigured) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref
+              .read(operationSyncControllerProvider.notifier)
+              .setForeground(
+                WidgetsBinding.instance.lifecycleState ==
+                    AppLifecycleState.resumed,
+              );
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    if (isNetworkBackendConfigured) {
+      ref.read(operationSyncControllerProvider.notifier).setForeground(false);
+    }
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!isNetworkBackendConfigured) return;
+    ref
+        .read(operationSyncControllerProvider.notifier)
+        .setForeground(state == AppLifecycleState.resumed);
+  }
 
   void _selectSection(AppSection section) {
     setState(() {
@@ -98,6 +137,9 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final operationSyncState = isNetworkBackendConfigured
+        ? ref.watch(operationSyncControllerProvider)
+        : null;
     return Scaffold(
       body: IndexedStack(
         index: _section.index,
@@ -112,6 +154,18 @@ class _AppShellState extends ConsumerState<AppShell> {
             onAnalyticsPressed: () => _selectSection(AppSection.analytics),
             onGoalPressed: () => _selectSection(AppSection.goals),
             onSignOutRequested: _openSessionExpired,
+            operationDeliveryStatus:
+                operationSyncState == null ||
+                    (operationSyncState.phase == OperationSyncPhase.idle &&
+                        !operationSyncState.hasLocalOperations)
+                ? null
+                : OperationSyncStatusBanner(
+                    state: operationSyncState,
+                    onRetry: ref
+                        .read(operationSyncControllerProvider.notifier)
+                        .retryNow,
+                    onSignIn: _openSessionExpired,
+                  ),
           ),
           if (isNetworkBackendConfigured &&
               _section == AppSection.chat &&
@@ -119,6 +173,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             FinanceEntryPage(
               onBackHome: () => _selectSection(AppSection.home),
               onSignInRequested: _openSessionExpired,
+              deliveryLocked:
+                  operationSyncState?.phase == OperationSyncPhase.locked,
             )
           else
             StubPage(
@@ -150,6 +206,80 @@ class _AppShellState extends ConsumerState<AppShell> {
         onSelected: _selectSection,
       ),
     );
+  }
+}
+
+class OperationSyncStatusBanner extends StatelessWidget {
+  const OperationSyncStatusBanner({
+    super.key,
+    required this.state,
+    required this.onRetry,
+    required this.onSignIn,
+  });
+
+  final OperationSyncState state;
+  final VoidCallback onRetry;
+  final VoidCallback onSignIn;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return switch (state.phase) {
+      OperationSyncPhase.idle when !state.hasLocalOperations =>
+        const SizedBox.shrink(),
+      OperationSyncPhase.synchronizing => HomeStatusBanner(
+        key: const Key('operation-syncing-banner'),
+        title: l10n.operationSyncingBannerTitle,
+        description: l10n.operationSyncingBannerDescription,
+        tone: HomeBannerTone.neutral,
+      ),
+      OperationSyncPhase.homeConvergencePending => HomeStatusBanner(
+        key: const Key('operation-home-convergence-banner'),
+        title: l10n.operationHomeUpdatingBannerTitle,
+        description: l10n.operationHomeUpdatingBannerDescription,
+        tone: HomeBannerTone.neutral,
+        actionLabel: l10n.operationHomeUpdatingAction,
+        onAction: onRetry,
+      ),
+      OperationSyncPhase.pending ||
+      OperationSyncPhase.retryableFailure => HomeStatusBanner(
+        key: const Key('operation-pending-banner'),
+        title: l10n.operationPendingBannerTitle,
+        description: l10n.operationPendingBannerDescription,
+        tone: HomeBannerTone.warning,
+        actionLabel: l10n.operationRetryNowAction,
+        onAction: onRetry,
+      ),
+      OperationSyncPhase.authenticationRequired => HomeStatusBanner(
+        key: const Key('operation-auth-banner'),
+        title: l10n.operationAuthBannerTitle,
+        description: l10n.operationAuthBannerDescription,
+        tone: HomeBannerTone.warning,
+        actionLabel: l10n.signInAgainAction,
+        onAction: onSignIn,
+      ),
+      OperationSyncPhase.attentionRequired => HomeStatusBanner(
+        key: const Key('operation-attention-banner'),
+        title: l10n.operationAttentionBannerTitle,
+        description: l10n.operationAttentionBannerDescription,
+        tone: HomeBannerTone.error,
+        actionLabel:
+            state.lastSafeError == OperationOutboxErrorCode.storageUnavailable
+            ? l10n.operationRetryNowAction
+            : null,
+        onAction:
+            state.lastSafeError == OperationOutboxErrorCode.storageUnavailable
+            ? onRetry
+            : null,
+      ),
+      OperationSyncPhase.locked => HomeStatusBanner(
+        key: const Key('operation-locked-banner'),
+        title: l10n.operationAttentionBannerTitle,
+        description: l10n.operationLockedBannerDescription,
+        tone: HomeBannerTone.error,
+      ),
+      OperationSyncPhase.idle => const SizedBox.shrink(),
+    };
   }
 }
 

@@ -34,6 +34,7 @@ class HomePage extends ConsumerStatefulWidget {
     required this.onGoalPressed,
     required this.onSignOutRequested,
     this.onManualEntryPressed,
+    this.operationDeliveryStatus,
     this.localClock,
   });
 
@@ -44,6 +45,7 @@ class HomePage extends ConsumerStatefulWidget {
   final VoidCallback onGoalPressed;
   final VoidCallback onSignOutRequested;
   final VoidCallback? onManualEntryPressed;
+  final Widget? operationDeliveryStatus;
   final DateTime Function()? localClock;
 
   @override
@@ -149,6 +151,10 @@ class _HomePageState extends ConsumerState<HomePage>
                   onOpenSettings: widget.onOpenSettings,
                 ),
                 const SizedBox(height: AppSpacing.lg),
+                if (widget.operationDeliveryStatus case final status?) ...[
+                  status,
+                  const SizedBox(height: AppSpacing.sm),
+                ],
                 _HomeStateBody(
                   state: homeState,
                   privacyEnabled: settings.privacyMode,

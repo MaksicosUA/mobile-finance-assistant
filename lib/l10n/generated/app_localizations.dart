@@ -1245,6 +1245,18 @@ abstract class AppLocalizations {
   /// **'Сервис финансовых операций временно недоступен. Попробуйте снова позже.'**
   String get financeServiceError;
 
+  /// No description provided for @financeSecurityError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось подтвердить безопасное соединение. Проверьте настройки и повторите позже.'**
+  String get financeSecurityError;
+
+  /// No description provided for @financeLocalStorageError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось надёжно сохранить подтверждение на устройстве. Запрос на сервер не отправлялся. Освободите место или разблокируйте защищённое хранилище и повторите.'**
+  String get financeLocalStorageError;
+
   /// No description provided for @financeUnexpectedError.
   ///
   /// In ru, this message translates to:
@@ -1298,6 +1310,144 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Операция уже сохранена. Главный экран можно обновить позже.'**
   String get operationAcceptedRefreshFailed;
+
+  /// No description provided for @operationQueuedTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция сохранена на устройстве'**
+  String get operationQueuedTitle;
+
+  /// No description provided for @operationQueuedDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтверждение защищённо сохранено. Если сервер ещё не принял его, оно не влияет на баланс. Актуальный статус показан на главном экране.'**
+  String get operationQueuedDescription;
+
+  /// No description provided for @operationQueuedAuthDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтверждение защищённо сохранено. Для продолжения отправки может понадобиться повторный вход. Актуальный статус показан на главном экране.'**
+  String get operationQueuedAuthDescription;
+
+  /// No description provided for @operationAlreadySyncedTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция уже синхронизирована'**
+  String get operationAlreadySyncedTitle;
+
+  /// No description provided for @operationAlreadySyncedDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер подтвердил эту же операцию ранее. Повторная запись не создана.'**
+  String get operationAlreadySyncedDescription;
+
+  /// No description provided for @operationAttentionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция требует проверки'**
+  String get operationAttentionTitle;
+
+  /// No description provided for @operationAttentionConflict.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранённое подтверждение конфликтует с уже обработанной командой и не будет отправляться автоматически.'**
+  String get operationAttentionConflict;
+
+  /// No description provided for @operationAttentionRejected.
+  ///
+  /// In ru, this message translates to:
+  /// **'Finance Core отклонил подтверждение. Баланс не изменён.'**
+  String get operationAttentionRejected;
+
+  /// No description provided for @operationAttentionSecurity.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отправка остановлена из-за проверки безопасности. Баланс не изменён.'**
+  String get operationAttentionSecurity;
+
+  /// No description provided for @operationAttentionInvalid.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтверждение нельзя безопасно отправить автоматически. Баланс не изменён.'**
+  String get operationAttentionInvalid;
+
+  /// No description provided for @operationSyncingBannerTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отправляем сохранённую операцию'**
+  String get operationSyncingBannerTitle;
+
+  /// No description provided for @operationSyncingBannerDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'До подтверждения сервера она не влияет на баланс.'**
+  String get operationSyncingBannerDescription;
+
+  /// No description provided for @operationHomeUpdatingBannerTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Главный экран обновляется'**
+  String get operationHomeUpdatingBannerTitle;
+
+  /// No description provided for @operationHomeUpdatingBannerDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция уже сохранена сервером. Баланс обновится после готовности данных; повторно подтверждать её не нужно.'**
+  String get operationHomeUpdatingBannerDescription;
+
+  /// No description provided for @operationHomeUpdatingAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновить сейчас'**
+  String get operationHomeUpdatingAction;
+
+  /// No description provided for @operationPendingBannerTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция ждёт синхронизации'**
+  String get operationPendingBannerTitle;
+
+  /// No description provided for @operationPendingBannerDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Она защищённо сохранена на устройстве и пока не влияет на баланс.'**
+  String get operationPendingBannerDescription;
+
+  /// No description provided for @operationAuthBannerTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Нужен повторный вход'**
+  String get operationAuthBannerTitle;
+
+  /// No description provided for @operationAuthBannerDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранённая операция останется на устройстве до безопасной авторизации.'**
+  String get operationAuthBannerDescription;
+
+  /// No description provided for @operationAttentionBannerTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверьте сохранённую операцию'**
+  String get operationAttentionBannerTitle;
+
+  /// No description provided for @operationAttentionBannerDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Автоматическая отправка остановлена. Баланс не изменён.'**
+  String get operationAttentionBannerDescription;
+
+  /// No description provided for @operationLockedBannerDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Отправка финансовых операций заблокирована после проверки безопасности. Новые подтверждения не будут отправляться автоматически.'**
+  String get operationLockedBannerDescription;
+
+  /// No description provided for @operationRetryNowAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторить отправку'**
+  String get operationRetryNowAction;
 }
 
 class _AppLocalizationsDelegate
