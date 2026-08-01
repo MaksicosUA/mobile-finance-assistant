@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import '../domain/home_snapshot.dart';
 
+typedef HomeRequestPreflight = bool Function();
+
 enum HomeBlock {
   balance,
   balanceDelta,
@@ -87,6 +89,11 @@ final class HomeFailureResult extends HomeRepositoryResult {
   final String requestId;
 }
 
+/// A guarded post-write refresh stopped before starting another HTTP request.
+final class HomeRequestInterruptedResult extends HomeRepositoryResult {
+  const HomeRequestInterruptedResult();
+}
+
 @immutable
 final class HomeCachedSnapshot {
   const HomeCachedSnapshot({required this.snapshot, required this.isStale});
@@ -97,6 +104,16 @@ final class HomeCachedSnapshot {
 
 abstract interface class HomeRepository {
   Future<HomeRepositoryResult> fetchHome({bool forceRefresh = false});
+}
+
+/// Optional request-boundary guard used by foreground-only convergence flows.
+/// An already-started request may finish, but no later attempt starts after the
+/// synchronous preflight returns false.
+abstract interface class HomeRequestGuardedRepository {
+  Future<HomeRepositoryResult> fetchHomeGuarded({
+    required bool forceRefresh,
+    required HomeRequestPreflight preflight,
+  });
 }
 
 /// Optional cache-first capability implemented by the network repository.

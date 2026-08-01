@@ -10,7 +10,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, union
 
 from .database import AsyncSessionFactory
 from .db_models import (
@@ -32,6 +32,12 @@ from .home_projection import (
     ProjectionOperation,
     build_current_home_revision,
 )
+from .projector_supervision import (
+    EventRetryDecision,
+    EventRetryPolicy,
+    ProjectorFailureCode,
+    event_retry_decision,
+)
 from .timezones import validated_iana_timezone_key
 
 type _EventKind = Literal["account", "operation"]
@@ -46,7 +52,33 @@ class _OutboxCandidate:
     event_id: UUID
     user_id: UUID
     created_at: datetime
-    attempt_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionCycleResult:
+    published: int
+    inspected: int
+    failures_present: bool
+
+
+class _ProjectionStreamBlocked(Exception):
+    """A user's stream has a delayed retry or an unresolved dead letter."""
+
+
+class _OutboxContractError(Exception):
+    """A specific identifier-only outbox event failed strict validation."""
+
+    def __init__(
+        self,
+        *,
+        kind: _EventKind,
+        event_id: UUID,
+        failure_code: ProjectorFailureCode = "invalid_outbox_contract",
+    ) -> None:
+        super().__init__("outbox event contract is invalid")
+        self.kind = kind
+        self.event_id = event_id
+        self.failure_code = failure_code
 
 
 class PostgresHomeProjector:
@@ -57,15 +89,20 @@ class PostgresHomeProjector:
         *,
         session_factory: AsyncSessionFactory,
         clock: Callable[[], datetime] | None = None,
+        retry_policy: EventRetryPolicy | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock or _utc_now
+        self._retry_policy = retry_policy or EventRetryPolicy()
 
     async def consume_next(self) -> bool:
         """Consume one user's pending source events; return false when idle."""
 
+        excluded_user_ids: set[UUID] = set()
         while True:
-            candidate = await self._next_candidate()
+            candidate = await self._next_candidate(
+                excluded_user_ids=excluded_user_ids,
+            )
             if candidate is None:
                 return False
             try:
@@ -73,9 +110,14 @@ class PostgresHomeProjector:
                     candidate.user_id,
                     require_pending=True,
                 )
-            except Exception:
-                await self._record_failed_attempt(candidate)
-                raise
+            except _ProjectionStreamBlocked:
+                excluded_user_ids.add(candidate.user_id)
+                continue
+            except _OutboxContractError as error:
+                await self._record_failed_attempt(error)
+                raise HomeProjectionInvariantError(
+                    "outbox event contract is invalid"
+                ) from None
             if projected:
                 return True
             # Another worker acknowledged this candidate after selection.
@@ -94,7 +136,59 @@ class PostgresHomeProjector:
             completed += 1
         return completed
 
-    async def reconcile_all(self) -> int:
+    async def drain_available(self, *, max_candidates: int) -> ProjectionCycleResult:
+        """Drain ready users while isolating failures for one bounded cycle."""
+
+        if max_candidates <= 0:
+            raise ValueError("max_candidates must be positive")
+        excluded_user_ids: set[UUID] = set()
+        published = 0
+        inspected = 0
+        failures_present = False
+        while inspected < max_candidates:
+            candidate = await self._next_candidate(
+                excluded_user_ids=excluded_user_ids,
+            )
+            if candidate is None:
+                break
+            inspected += 1
+            try:
+                projected = await self._project_user(
+                    candidate.user_id,
+                    require_pending=True,
+                )
+            except _ProjectionStreamBlocked:
+                excluded_user_ids.add(candidate.user_id)
+                continue
+            except _OutboxContractError as error:
+                await self._record_failed_attempt(error)
+                excluded_user_ids.add(candidate.user_id)
+                failures_present = True
+                _LOGGER.error(
+                    "Home projection stream retry scheduled error_type=%s",
+                    type(error).__name__,
+                )
+                continue
+            except Exception as error:
+                # Do not attribute a ledger/runtime failure to an arbitrary
+                # event. Exclude only this stream for the bounded cycle so
+                # other users continue, then let the runtime back off.
+                excluded_user_ids.add(candidate.user_id)
+                failures_present = True
+                _LOGGER.error(
+                    "Home projection stream skipped error_type=%s",
+                    type(error).__name__,
+                )
+                continue
+            if projected:
+                published += 1
+        return ProjectionCycleResult(
+            published=published,
+            inspected=inspected,
+            failures_present=failures_present,
+        )
+
+    async def reconcile_all(self) -> ProjectionCycleResult:
         """Publish revisions due to a local-day/month boundary without events."""
 
         async with self._session_factory() as database:
@@ -114,6 +208,7 @@ class PostgresHomeProjector:
                 ).all()
             )
         published = 0
+        failures_present = False
         for user_id in user_ids:
             try:
                 if await self._project_user(user_id, require_pending=False):
@@ -125,65 +220,108 @@ class PostgresHomeProjector:
                     "Home reconciliation skipped one account error_type=%s",
                     type(error).__name__,
                 )
-        return published
+                failures_present = True
+        return ProjectionCycleResult(
+            published=published,
+            inspected=len(user_ids),
+            failures_present=failures_present,
+        )
 
-    async def _next_candidate(self) -> _OutboxCandidate | None:
+    async def _next_candidate(
+        self,
+        *,
+        excluded_user_ids: set[UUID],
+    ) -> _OutboxCandidate | None:
+        now = _aware_utc(self._clock())
         async with self._session_factory() as database:
-            account_row = (
-                await database.execute(
-                    select(
-                        FinanceAccountOutboxEventRow.id,
-                        FinanceAccountOutboxEventRow.user_id,
-                        FinanceAccountOutboxEventRow.created_at,
-                        FinanceAccountOutboxEventRow.attempt_count,
-                    )
-                    .join(
-                        UserRow,
-                        UserRow.id == FinanceAccountOutboxEventRow.user_id,
-                    )
-                    .where(
-                        FinanceAccountOutboxEventRow.published_at.is_(None),
-                        UserRow.disabled_at.is_(None),
-                    )
-                    .order_by(
-                        FinanceAccountOutboxEventRow.attempt_count.asc(),
-                        FinanceAccountOutboxEventRow.created_at.asc(),
-                        FinanceAccountOutboxEventRow.id.asc(),
-                    )
-                    .limit(1)
+            blocked_users = union(
+                select(FinanceAccountOutboxEventRow.user_id.label("user_id")).where(
+                    FinanceAccountOutboxEventRow.published_at.is_(None),
+                    (
+                        FinanceAccountOutboxEventRow.dead_lettered_at.is_not(None)
+                        | (FinanceAccountOutboxEventRow.next_attempt_at > now)
+                    ),
+                ),
+                select(FinanceOperationRow.user_id.label("user_id"))
+                .join(
+                    FinanceOutboxEventRow,
+                    FinanceOutboxEventRow.aggregate_id == FinanceOperationRow.id,
                 )
-            ).one_or_none()
-            operation_row = (
-                await database.execute(
-                    select(
-                        FinanceOutboxEventRow.id,
-                        FinanceOperationRow.user_id,
-                        FinanceOutboxEventRow.created_at,
-                        FinanceOutboxEventRow.attempt_count,
-                    )
-                    .join(
-                        FinanceOperationRow,
-                        FinanceOperationRow.id == FinanceOutboxEventRow.aggregate_id,
-                    )
-                    .join(UserRow, UserRow.id == FinanceOperationRow.user_id)
-                    .join(
-                        FinanceAccountRow,
-                        FinanceAccountRow.user_id == FinanceOperationRow.user_id,
-                    )
-                    .where(
-                        FinanceOutboxEventRow.published_at.is_(None),
-                        UserRow.disabled_at.is_(None),
-                        FinanceAccountRow.status == "active",
-                        FinanceAccountRow.is_default.is_(True),
-                    )
-                    .order_by(
-                        FinanceOutboxEventRow.attempt_count.asc(),
-                        FinanceOutboxEventRow.created_at.asc(),
-                        FinanceOutboxEventRow.id.asc(),
-                    )
-                    .limit(1)
+                .where(
+                    FinanceOutboxEventRow.published_at.is_(None),
+                    (
+                        FinanceOutboxEventRow.dead_lettered_at.is_not(None)
+                        | (FinanceOutboxEventRow.next_attempt_at > now)
+                    ),
+                ),
+            ).subquery()
+            account_query = (
+                select(
+                    FinanceAccountOutboxEventRow.id,
+                    FinanceAccountOutboxEventRow.user_id,
+                    FinanceAccountOutboxEventRow.created_at,
                 )
-            ).one_or_none()
+                .join(
+                    UserRow,
+                    UserRow.id == FinanceAccountOutboxEventRow.user_id,
+                )
+                .where(
+                    FinanceAccountOutboxEventRow.published_at.is_(None),
+                    FinanceAccountOutboxEventRow.dead_lettered_at.is_(None),
+                    FinanceAccountOutboxEventRow.next_attempt_at.is_not(None),
+                    FinanceAccountOutboxEventRow.next_attempt_at <= now,
+                    UserRow.disabled_at.is_(None),
+                    FinanceAccountOutboxEventRow.user_id.not_in(
+                        select(blocked_users.c.user_id)
+                    ),
+                )
+                .order_by(
+                    FinanceAccountOutboxEventRow.created_at.asc(),
+                    FinanceAccountOutboxEventRow.id.asc(),
+                )
+                .limit(1)
+            )
+            if excluded_user_ids:
+                account_query = account_query.where(
+                    FinanceAccountOutboxEventRow.user_id.not_in(excluded_user_ids)
+                )
+            account_row = (await database.execute(account_query)).one_or_none()
+            operation_query = (
+                select(
+                    FinanceOutboxEventRow.id,
+                    FinanceOperationRow.user_id,
+                    FinanceOutboxEventRow.created_at,
+                )
+                .join(
+                    FinanceOperationRow,
+                    FinanceOperationRow.id == FinanceOutboxEventRow.aggregate_id,
+                )
+                .join(UserRow, UserRow.id == FinanceOperationRow.user_id)
+                .join(
+                    FinanceAccountRow,
+                    FinanceAccountRow.user_id == FinanceOperationRow.user_id,
+                )
+                .where(
+                    FinanceOutboxEventRow.published_at.is_(None),
+                    FinanceOutboxEventRow.dead_lettered_at.is_(None),
+                    FinanceOutboxEventRow.next_attempt_at.is_not(None),
+                    FinanceOutboxEventRow.next_attempt_at <= now,
+                    UserRow.disabled_at.is_(None),
+                    FinanceAccountRow.status == "active",
+                    FinanceAccountRow.is_default.is_(True),
+                    FinanceOperationRow.user_id.not_in(select(blocked_users.c.user_id)),
+                )
+                .order_by(
+                    FinanceOutboxEventRow.created_at.asc(),
+                    FinanceOutboxEventRow.id.asc(),
+                )
+                .limit(1)
+            )
+            if excluded_user_ids:
+                operation_query = operation_query.where(
+                    FinanceOperationRow.user_id.not_in(excluded_user_ids)
+                )
+            operation_row = (await database.execute(operation_query)).one_or_none()
 
         candidates = tuple(
             candidate
@@ -195,7 +333,6 @@ class PostgresHomeProjector:
                     event_id=account_row.id,
                     user_id=account_row.user_id,
                     created_at=_aware_utc(account_row.created_at),
-                    attempt_count=account_row.attempt_count,
                 ),
                 None
                 if operation_row is None
@@ -204,7 +341,6 @@ class PostgresHomeProjector:
                     event_id=operation_row.id,
                     user_id=operation_row.user_id,
                     created_at=_aware_utc(operation_row.created_at),
-                    attempt_count=operation_row.attempt_count,
                 ),
             )
             if candidate is not None
@@ -214,7 +350,6 @@ class PostgresHomeProjector:
         return min(
             candidates,
             key=lambda item: (
-                item.attempt_count,
                 item.created_at,
                 item.event_id.int,
             ),
@@ -303,6 +438,13 @@ class PostgresHomeProjector:
                     )
                 ).all()
             )
+            eligibility_at = _aware_utc(self._clock())
+            if _stream_is_blocked(
+                account_events=account_events,
+                operation_events=operation_events,
+                eligibility_at=eligibility_at,
+            ):
+                raise _ProjectionStreamBlocked
             if require_pending and not account_events and not operation_events:
                 return False
             if not require_pending and (account_events or operation_events):
@@ -409,44 +551,65 @@ class PostgresHomeProjector:
                     account_event.attempt_count + 1,
                     32767,
                 )
+                account_event.next_attempt_at = None
+                account_event.last_failed_at = None
+                account_event.failure_code = None
+                account_event.dead_lettered_at = None
             for operation_event in operation_events:
                 operation_event.published_at = projection.generated_at
                 operation_event.attempt_count = min(
                     operation_event.attempt_count + 1,
                     32767,
                 )
+                operation_event.next_attempt_at = None
+                operation_event.last_failed_at = None
+                operation_event.failure_code = None
+                operation_event.dead_lettered_at = None
         return True
 
-    async def _record_failed_attempt(self, candidate: _OutboxCandidate) -> None:
+    async def _record_failed_attempt(self, error: _OutboxContractError) -> None:
+        failed_at = _aware_utc(self._clock())
         async with self._session_factory() as database, database.begin():
-            if candidate.kind == "account":
+            if error.kind == "account":
                 account_event = await database.scalar(
                     select(FinanceAccountOutboxEventRow)
                     .where(
-                        FinanceAccountOutboxEventRow.id == candidate.event_id,
+                        FinanceAccountOutboxEventRow.id == error.event_id,
                         FinanceAccountOutboxEventRow.published_at.is_(None),
+                        FinanceAccountOutboxEventRow.dead_lettered_at.is_(None),
                     )
                     .with_for_update()
                 )
                 if account_event is not None:
-                    account_event.attempt_count = min(
-                        account_event.attempt_count + 1,
-                        32767,
+                    decision = event_retry_decision(
+                        previous_validation_failure_count=(
+                            account_event.validation_failure_count
+                        ),
+                        failed_at=failed_at,
+                        failure_code=error.failure_code,
+                        policy=self._retry_policy,
                     )
+                    _apply_retry_decision(account_event, decision=decision)
                 return
             operation_event = await database.scalar(
                 select(FinanceOutboxEventRow)
                 .where(
-                    FinanceOutboxEventRow.id == candidate.event_id,
+                    FinanceOutboxEventRow.id == error.event_id,
                     FinanceOutboxEventRow.published_at.is_(None),
+                    FinanceOutboxEventRow.dead_lettered_at.is_(None),
                 )
                 .with_for_update()
             )
             if operation_event is not None:
-                operation_event.attempt_count = min(
-                    operation_event.attempt_count + 1,
-                    32767,
+                decision = event_retry_decision(
+                    previous_validation_failure_count=(
+                        operation_event.validation_failure_count
+                    ),
+                    failed_at=failed_at,
+                    failure_code=error.failure_code,
+                    policy=self._retry_policy,
                 )
+                _apply_retry_decision(operation_event, decision=decision)
 
 
 def _validate_profile(*, user: UserRow, account: FinanceAccountRow) -> None:
@@ -491,7 +654,7 @@ def _validate_account_events(
             or event.event_type != "finance.account.opened.v1"
             or event.payload != expected_payload
         ):
-            raise HomeProjectionInvariantError("account outbox event is invalid")
+            raise _OutboxContractError(kind="account", event_id=event.id)
 
 
 def _validate_operation_events(
@@ -502,9 +665,7 @@ def _validate_operation_events(
     for event in events:
         operation = operations_by_id.get(event.aggregate_id)
         if operation is None:
-            raise HomeProjectionInvariantError(
-                "operation outbox aggregate is unavailable"
-            )
+            raise _OutboxContractError(kind="operation", event_id=event.id)
         expected_payload = {
             "schemaVersion": "1",
             "operationId": str(operation.id),
@@ -516,7 +677,47 @@ def _validate_operation_events(
             or event.event_type != "finance.operation.accepted.v1"
             or event.payload != expected_payload
         ):
-            raise HomeProjectionInvariantError("operation outbox event is invalid")
+            raise _OutboxContractError(kind="operation", event_id=event.id)
+
+
+def _stream_is_blocked(
+    *,
+    account_events: Sequence[FinanceAccountOutboxEventRow],
+    operation_events: Sequence[FinanceOutboxEventRow],
+    eligibility_at: datetime,
+) -> bool:
+    return any(
+        _event_is_blocked(event, eligibility_at=eligibility_at)
+        for event in account_events
+    ) or any(
+        _event_is_blocked(event, eligibility_at=eligibility_at)
+        for event in operation_events
+    )
+
+
+def _event_is_blocked(
+    event: FinanceAccountOutboxEventRow | FinanceOutboxEventRow,
+    *,
+    eligibility_at: datetime,
+) -> bool:
+    if event.dead_lettered_at is not None:
+        return True
+    if event.next_attempt_at is None:
+        raise HomeProjectionInvariantError("pending outbox event has no retry schedule")
+    return _aware_utc(event.next_attempt_at) > eligibility_at
+
+
+def _apply_retry_decision(
+    event: FinanceAccountOutboxEventRow | FinanceOutboxEventRow,
+    *,
+    decision: EventRetryDecision,
+) -> None:
+    event.attempt_count = min(event.attempt_count + 1, 32767)
+    event.validation_failure_count = decision.validation_failure_count
+    event.next_attempt_at = decision.next_attempt_at
+    event.last_failed_at = decision.last_failed_at
+    event.failure_code = decision.failure_code
+    event.dead_lettered_at = decision.dead_lettered_at
 
 
 def _account_fact(row: FinanceAccountRow) -> ProjectionAccount:

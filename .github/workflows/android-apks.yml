@@ -21,6 +21,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Java
@@ -85,21 +86,14 @@ jobs:
       - name: Analyze Flutter source
         run: flutter analyze
 
-      - name: Build fixture debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter build apk --debug
-          install -m 0644 \
-            build/app/outputs/flutter-apk/app-debug.apk \
-            build/app/outputs/flutter-apk/mobile-finance-assistant-fixture-debug.apk
-
-      - name: Build authenticated network debug APK
+      - name: Build and verify versioned debug APKs
+        id: android_apks
         shell: bash
         env:
           API_BASE_URL: ${{ vars.ANDROID_DEBUG_API_BASE_URL || 'http://127.0.0.1:8000' }}
           HOME_API_TIMEZONE: ${{ vars.HOME_API_TIMEZONE || 'Europe/Berlin' }}
-        run: tool/build_android_network_debug.sh
+          ANDROID_PREVIOUS_REVISION: ${{ github.event_name == 'push' && github.event.before || '' }}
+        run: tool/build_android_apks.sh --github-output "$GITHUB_OUTPUT"
 
       - name: Create APK checksums
         shell: bash
@@ -114,10 +108,11 @@ jobs:
       - name: Upload fixture debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mobile-finance-assistant-fixture-debug-${{ github.sha }}
+          name: ${{ github.ref == 'refs/heads/main' && 'mobile-finance-assistant-fixture-debug' || 'preview-mobile-finance-assistant-fixture-debug' }}-v${{ steps.android_apks.outputs.build_name }}-${{ github.sha }}
           path: |
             build/app/outputs/flutter-apk/mobile-finance-assistant-fixture-debug.apk
             build/app/outputs/flutter-apk/mobile-finance-assistant-fixture-debug.apk.sha256
+            build/app/outputs/flutter-apk/android-build-version.txt
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -125,10 +120,11 @@ jobs:
       - name: Upload authenticated network debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mobile-finance-assistant-network-debug-${{ github.sha }}
+          name: ${{ github.ref == 'refs/heads/main' && 'mobile-finance-assistant-network-debug' || 'preview-mobile-finance-assistant-network-debug' }}-v${{ steps.android_apks.outputs.build_name }}-${{ github.sha }}
           path: |
             build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk
             build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk.sha256
+            build/app/outputs/flutter-apk/android-build-version.txt
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

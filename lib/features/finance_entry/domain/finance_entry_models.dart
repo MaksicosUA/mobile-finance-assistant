@@ -450,6 +450,41 @@ final class FinanceOperationCommitCommand {
   final FinanceOperationNeedsConfirmation review;
   final String confirmedAt;
 
+  factory FinanceOperationCommitCommand.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'draft',
+      'draftHash',
+      'confirmedAt',
+    });
+    _requireSchemaVersion(json);
+    final rawDraft = json['draft'];
+    if (rawDraft is! Map) {
+      throw const FormatException('Invalid operation draft.');
+    }
+    late final Map<String, Object?> draftJson;
+    try {
+      draftJson = Map<String, Object?>.from(rawDraft);
+    } on Object {
+      throw const FormatException('Invalid operation draft.');
+    }
+    final draft = FinanceOperationDraft.fromJson(draftJson);
+    final draftHash = validateDraftHash(_requiredString(json, 'draftHash'));
+    final confirmedAt = _timestamp(json, 'confirmedAt');
+    if (DateTime.parse(
+      confirmedAt,
+    ).toUtc().isBefore(DateTime.parse(draft.capturedAt).toUtc())) {
+      throw const FormatException('Confirmation precedes capture.');
+    }
+    return FinanceOperationCommitCommand._(
+      review: FinanceOperationNeedsConfirmation(
+        draft: draft,
+        draftHash: draftHash,
+      ),
+      confirmedAt: confirmedAt,
+    );
+  }
+
   factory FinanceOperationCommitCommand.fromReview({
     required FinanceOperationNeedsConfirmation review,
     required DateTime confirmedAt,

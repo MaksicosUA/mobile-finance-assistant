@@ -20,7 +20,11 @@ typedef HomeRetryJitter = double Function();
 /// account. Returning null disables persistence, which is safer than sharing a
 /// snapshot when the authentication layer cannot prove the current scope.
 final class NetworkHomeRepository
-    implements HomeRepository, HomeCacheReader, HomeCacheInvalidator {
+    implements
+        HomeRepository,
+        HomeRequestGuardedRepository,
+        HomeCacheReader,
+        HomeCacheInvalidator {
   NetworkHomeRepository({
     required HomeApiClient api,
     required HomeCache cache,
@@ -103,7 +107,22 @@ final class NetworkHomeRepository
   }
 
   @override
-  Future<HomeRepositoryResult> fetchHome({bool forceRefresh = false}) async {
+  Future<HomeRepositoryResult> fetchHome({bool forceRefresh = false}) =>
+      _fetchHome(forceRefresh: forceRefresh);
+
+  @override
+  Future<HomeRepositoryResult> fetchHomeGuarded({
+    required bool forceRefresh,
+    required HomeRequestPreflight preflight,
+  }) => _fetchHome(forceRefresh: forceRefresh, preflight: preflight);
+
+  Future<HomeRepositoryResult> _fetchHome({
+    required bool forceRefresh,
+    HomeRequestPreflight? preflight,
+  }) async {
+    if (!_requestAllowed(preflight)) {
+      return const HomeRequestInterruptedResult();
+    }
     final session = await _readSession();
     final scopeId = session?.scopedCacheScopeId;
     var cached = scopeId == null ? null : await _readValidCache(scopeId);
@@ -121,7 +140,9 @@ final class NetworkHomeRepository
       // failed. Retain the old entry only as an offline fallback.
       etag: forceRefresh ? null : cached?.etag,
       expectedSession: session,
+      preflight: preflight,
     );
+    if (apiResult == null) return const HomeRequestInterruptedResult();
     if (apiResult is HomeApiNotModified && (cached == null || forceRefresh)) {
       if (!await _sessionIsCurrent(session)) {
         await _clearBestEffort();
@@ -133,7 +154,11 @@ final class NetworkHomeRepository
       // A proxy or server may return an invalid 304 without a conditional
       // request. Recover with one unconditional request instead of rendering
       // an empty or known-stale screen.
-      apiResult = await _fetchWithRetry(expectedSession: session);
+      apiResult = await _fetchWithRetry(
+        expectedSession: session,
+        preflight: preflight,
+      );
+      if (apiResult == null) return const HomeRequestInterruptedResult();
     }
 
     // Do not return or persist a response if sign-in/account state changed
@@ -267,17 +292,23 @@ final class NetworkHomeRepository
   @override
   Future<void> invalidateHomeCache() => _cache.clear();
 
-  Future<HomeApiResult> _fetchWithRetry({
+  Future<HomeApiResult?> _fetchWithRetry({
     String? etag,
     required HomeSessionSnapshot? expectedSession,
+    HomeRequestPreflight? preflight,
   }) async {
     late HomeApiResult result;
     for (var attempt = 1; attempt <= _maximumAttempts; attempt += 1) {
+      if (!_requestAllowed(preflight)) return null;
       // Do not start a later attempt with a credential captured before a
       // sign-out, account switch, or token refresh.
       if (attempt > 1 && !await _sessionIsCurrent(expectedSession)) {
         return result;
       }
+      // Keep this synchronous guard adjacent to the API Future. No await may be
+      // inserted between it and fetchHome so a lifecycle change can stop every
+      // later repository retry.
+      if (!_requestAllowed(preflight)) return null;
       result = await _api.fetchHome(
         etag: etag,
         accessToken: expectedSession?.accessToken,
@@ -292,6 +323,7 @@ final class NetworkHomeRepository
       if (retryAfter != null && retryAfter > _maximumRetryDelay) {
         return result;
       }
+      if (!_requestAllowed(preflight)) return null;
       await _retryDelay(retryAfter ?? _backoffFor(attempt));
     }
     return result;
@@ -301,6 +333,15 @@ final class NetworkHomeRepository
     return result is HomeApiTimeoutFailure ||
         result is HomeApiServerFailure ||
         result is HomeApiThrottledFailure;
+  }
+
+  bool _requestAllowed(HomeRequestPreflight? preflight) {
+    if (preflight == null) return true;
+    try {
+      return preflight();
+    } on Object {
+      return false;
+    }
   }
 
   Duration _backoffFor(int attempt) {

@@ -27,7 +27,10 @@ class HomeStatusBanner extends StatelessWidget {
     final colors = context.appColors;
     final foreground = switch (tone) {
       HomeBannerTone.neutral => colors.textSecondary,
-      HomeBannerTone.warning => const Color(0xFF8A5A00),
+      HomeBannerTone.warning =>
+        theme.brightness == Brightness.dark
+            ? const Color(0xFFFFC75A)
+            : const Color(0xFF6B4500),
       HomeBannerTone.error => theme.colorScheme.error,
     };
     final background = switch (tone) {
@@ -56,31 +59,44 @@ class HomeStatusBanner extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.sm),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ExcludeSemantics(child: Icon(icon, color: foreground, size: 22)),
-              const SizedBox(width: AppSpacing.xs),
-              Expanded(
-                child: ExcludeSemantics(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(description, style: theme.textTheme.bodySmall),
-                    ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ExcludeSemantics(
+                    child: Icon(icon, color: foreground, size: 22),
                   ),
-                ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Expanded(
+                    child: ExcludeSemantics(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(description, style: theme.textTheme.bodySmall),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
               if (actionLabel != null && onAction != null) ...[
-                const SizedBox(width: AppSpacing.xs),
-                TextButton(onPressed: onAction, child: Text(actionLabel!)),
+                const SizedBox(height: AppSpacing.xxs),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: TextButton(
+                    onPressed: onAction,
+                    child: Text(actionLabel!),
+                  ),
+                ),
               ],
             ],
           ),

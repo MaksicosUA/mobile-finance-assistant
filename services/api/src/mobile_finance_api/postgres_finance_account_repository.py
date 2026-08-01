@@ -220,6 +220,11 @@ class PostgresFinanceAccountRepository:
                             created_at=created_at,
                             published_at=None,
                             attempt_count=0,
+                            validation_failure_count=0,
+                            next_attempt_at=created_at,
+                            last_failed_at=None,
+                            failure_code=None,
+                            dead_lettered_at=None,
                         ),
                     ]
                 )

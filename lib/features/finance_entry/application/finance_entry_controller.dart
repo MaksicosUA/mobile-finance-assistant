@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_config.dart';
@@ -8,11 +7,13 @@ import '../../../core/platform/finance_capture_context.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../home/application/home_controller.dart';
 import '../data/finance_command_id.dart';
-import '../data/finance_entry_api.dart';
 import '../data/finance_entry_repository.dart';
 import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
+import '../domain/operation_outbox.dart';
+import 'finance_entry_dependencies.dart';
 import 'finance_entry_state.dart';
+import 'operation_sync_controller.dart';
 
 export 'finance_entry_state.dart';
 export '../domain/finance_entry_models.dart' show FinanceOperationType;
@@ -32,24 +33,9 @@ final financeCaptureContextSourceProvider =
       (_) => const PlatformFinanceCaptureContextSource(),
     );
 
-final financeEntryApiProvider = Provider<FinanceEntryApiClient>((ref) {
-  if (!isNetworkBackendConfigured) {
-    throw StateError('Finance entry requires API_BASE_URL.');
-  }
-  final dio = Dio();
-  ref.onDispose(() => dio.close(force: true));
-  return FinanceEntryApi(dio: dio, baseUri: Uri.parse(configuredApiBaseUrl));
-});
+final financeEntryApiProvider = financeEntryApiDependencyProvider;
 
-final financeEntryRepositoryProvider = Provider<FinanceEntryRepositoryClient>((
-  ref,
-) {
-  return FinanceEntryRepository(
-    api: ref.watch(financeEntryApiProvider),
-    sessionStore: ref.watch(authSessionStoreProvider),
-    refreshSession: ref.read(authControllerProvider.notifier).recoverSession,
-  );
-});
+final financeEntryRepositoryProvider = financeEntryRepositoryDependencyProvider;
 
 final financeEntryControllerProvider =
     NotifierProvider.autoDispose<FinanceEntryController, FinanceEntryState>(
@@ -452,46 +438,67 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
       isSubmitting: true,
     );
     try {
-      final result = await _repository.commitOperation(_operationCommit!);
+      final result = await ref
+          .read(operationDeliveryCoordinatorProvider)
+          .enqueueAndSynchronize(
+            expectedPrincipalScopeId: current.account.userId,
+            command: _operationCommit!,
+            onAccepted: (commit) {
+              if (!_isCurrentRequest(requestGeneration)) return;
+              _operationCommit = null;
+              state = FinanceOperationAccepted(
+                account: current.account,
+                operation: commit.operation,
+                latestOperationDate: current.latestOperationDate,
+                homeStatus: FinanceEntryHomeStatus.updating,
+              );
+            },
+          );
       if (!_isCurrentRequest(requestGeneration)) return;
       switch (result) {
-        case FinanceEntrySuccess(:final value):
+        case OperationDeliveryAccepted(:final commit, :final homeStatus):
           _operationCommit = null;
-          final operation = value.operation;
+          final operation = commit.operation;
           state = FinanceOperationAccepted(
             account: current.account,
             operation: operation,
             latestOperationDate: current.latestOperationDate,
-            homeStatus: FinanceEntryHomeStatus.updating,
+            homeStatus: _homeStatus(homeStatus),
           );
-          final convergence = await ref
-              .read(homeControllerProvider.notifier)
-              .convergeAfterAcceptedWrite();
-          if (_isCurrentRequest(requestGeneration)) {
-            if (state case FinanceOperationAccepted(
-              operation: final accepted,
-            ) when accepted.operationId == operation.operationId) {
-              state = FinanceOperationAccepted(
-                account: current.account,
-                operation: operation,
-                latestOperationDate: current.latestOperationDate,
-                homeStatus: _homeStatus(convergence),
-              );
-            }
-          }
-        case FinanceEntryFailureResult(:final failure):
-          if (_sessionChanged(failure)) {
-            _discardSensitiveState(failure);
-          } else if (_requiresAuthentication(failure)) {
-            state = const FinanceEntryAuthenticationRequired();
-          } else {
-            state = FinanceOperationReviewing(
-              account: current.account,
-              review: current.review,
-              latestOperationDate: current.latestOperationDate,
-              failure: failure,
-            );
-          }
+        case OperationDeliveryAlreadySynced():
+          _operationCommit = null;
+          state = FinanceOperationAlreadySynced(
+            account: current.account,
+            latestOperationDate: current.latestOperationDate,
+          );
+        case OperationDeliveryQueued(:final code):
+          _operationCommit = null;
+          state = FinanceOperationQueued(
+            account: current.account,
+            latestOperationDate: current.latestOperationDate,
+            authenticationRequired: const {
+              OperationOutboxErrorCode.authenticationRequired,
+              OperationOutboxErrorCode.sessionChanged,
+              OperationOutboxErrorCode.unauthorized,
+            }.contains(code),
+          );
+        case OperationDeliveryPermanentFailure(:final code):
+          _operationCommit = null;
+          state = FinanceOperationDeliveryAttention(
+            account: current.account,
+            latestOperationDate: current.latestOperationDate,
+            issue: _deliveryIssue(code),
+          );
+        case OperationDeliveryAuthenticationRequired():
+          _operationCommit = null;
+          state = const FinanceEntryAuthenticationRequired();
+        case OperationDeliveryStorageFailure():
+          state = FinanceOperationReviewing(
+            account: current.account,
+            review: current.review,
+            latestOperationDate: current.latestOperationDate,
+            failure: _localStorageFailure(),
+          );
       }
     } on Object {
       if (!_isCurrentRequest(requestGeneration)) return;
@@ -538,14 +545,43 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
 
   void addAnotherOperation() {
     final current = state;
-    if (_requestInFlight || current is! FinanceOperationAccepted) return;
+    if (_requestInFlight ||
+        ref.read(operationSyncControllerProvider).phase ==
+            OperationSyncPhase.locked) {
+      return;
+    }
+    late final FinanceAccount account;
+    late final DateTime latestOperationDate;
+    switch (current) {
+      case FinanceOperationAccepted(
+            account: final value,
+            latestOperationDate: final date,
+          ) ||
+          FinanceOperationQueued(
+            account: final value,
+            latestOperationDate: final date,
+          ) ||
+          FinanceOperationAlreadySynced(
+            account: final value,
+            latestOperationDate: final date,
+          ):
+        account = value;
+        latestOperationDate = date;
+      case FinanceOperationDeliveryAttention(
+            account: final value,
+            latestOperationDate: final date,
+            issue: final issue,
+          )
+          when issue != FinanceOperationDeliveryIssue.securityBlocked:
+        account = value;
+        latestOperationDate = date;
+      default:
+        return;
+    }
     state = FinanceOperationEditing(
-      account: current.account,
-      initialInput: _defaultOperationInput(
-        current.account,
-        current.latestOperationDate,
-      ),
-      latestOperationDate: current.latestOperationDate,
+      account: account,
+      initialInput: _defaultOperationInput(account, latestOperationDate),
+      latestOperationDate: latestOperationDate,
     );
   }
 
@@ -705,3 +741,22 @@ FinanceEntryFailure _unexpectedFailure() => FinanceEntryFailure(
   kind: FinanceEntryFailureKind.unknown,
   requestId: 'req_local_finance_entry',
 );
+
+FinanceEntryFailure _localStorageFailure() => FinanceEntryFailure(
+  kind: FinanceEntryFailureKind.localStorage,
+  requestId: 'req_local_finance_outbox',
+);
+
+FinanceOperationDeliveryIssue _deliveryIssue(OperationOutboxErrorCode code) =>
+    switch (code) {
+      OperationOutboxErrorCode.commandConflict =>
+        FinanceOperationDeliveryIssue.commandConflict,
+      OperationOutboxErrorCode.financeRejected =>
+        FinanceOperationDeliveryIssue.rejected,
+      OperationOutboxErrorCode.securityBlocked ||
+      OperationOutboxErrorCode.responseScopeMismatch ||
+      OperationOutboxErrorCode.locked ||
+      OperationOutboxErrorCode.corruptPayload =>
+        FinanceOperationDeliveryIssue.securityBlocked,
+      _ => FinanceOperationDeliveryIssue.invalidCommand,
+    };

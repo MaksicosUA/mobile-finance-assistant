@@ -6,6 +6,7 @@ import '../domain/finance_entry_result.dart';
 import 'finance_entry_api.dart';
 
 typedef FinanceSessionRefresh = Future<AuthRefreshResult> Function();
+typedef FinanceCommitPreflight = FinanceEntryFailureKind? Function();
 
 abstract interface class FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts();
@@ -23,8 +24,11 @@ abstract interface class FinanceEntryRepositoryClient {
   );
 
   Future<FinanceEntryResult<FinanceOperationCommit>> commitOperation(
-    FinanceOperationCommitCommand command,
-  );
+    FinanceOperationCommitCommand command, {
+    required String expectedPrincipalScopeId,
+    required String expectedSessionRevision,
+    required FinanceCommitPreflight preflight,
+  });
 }
 
 /// Authenticated in-memory orchestration for Finance entry requests.
@@ -87,22 +91,41 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
 
   @override
   Future<FinanceEntryResult<FinanceOperationCommit>> commitOperation(
-    FinanceOperationCommitCommand command,
-  ) {
+    FinanceOperationCommitCommand command, {
+    required String expectedPrincipalScopeId,
+    required String expectedSessionRevision,
+    required FinanceCommitPreflight preflight,
+  }) {
     return _authorized(
       (accessToken) =>
           _api.commitOperation(accessToken: accessToken, command: command),
+      expectedPrincipalScopeId: expectedPrincipalScopeId,
+      expectedSessionRevision: expectedSessionRevision,
+      preflight: preflight,
     );
   }
 
   Future<FinanceEntryResult<T>> _authorized<T>(
-    Future<FinanceEntryResult<T>> Function(String accessToken) request,
-  ) async {
+    Future<FinanceEntryResult<T>> Function(String accessToken) request, {
+    String? expectedPrincipalScopeId,
+    String? expectedSessionRevision,
+    FinanceCommitPreflight? preflight,
+  }) async {
     final initial = await _readSession();
     if (initial == null) {
       return _repositoryFailure(FinanceEntryFailureKind.unauthenticated);
     }
 
+    final initialBlock = _requestBoundaryFailure(
+      initial,
+      expectedPrincipalScopeId: expectedPrincipalScopeId,
+      expectedSessionRevision: expectedSessionRevision,
+      preflight: preflight,
+    );
+    if (initialBlock != null) return _repositoryFailure(initialBlock);
+    // No await may be inserted between the synchronous preflight above and
+    // starting the API Future. Account-change hooks advance their epoch before
+    // replacing secure credentials, so the caller can close that race here.
     final first = await request(initial.accessToken);
     final continuityAfterFirst = await _sessionContinuity(initial);
     if (continuityAfterFirst == _SessionContinuity.changed) {
@@ -137,6 +160,15 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
       return _repositoryFailure(FinanceEntryFailureKind.sessionChanged);
     }
 
+    final retryBlock = _requestBoundaryFailure(
+      replacement,
+      expectedPrincipalScopeId: expectedPrincipalScopeId,
+      expectedSessionRevision: expectedSessionRevision,
+      preflight: preflight,
+    );
+    if (retryBlock != null) return _repositoryFailure(retryBlock);
+    // Keep this call adjacent to the synchronous guard for the same reason as
+    // the first request above. It also protects the post-refresh retry.
     final retry = await request(replacement.accessToken);
     if (await _sessionContinuity(replacement) == _SessionContinuity.changed) {
       return _repositoryFailure(FinanceEntryFailureKind.sessionChanged);
@@ -159,6 +191,31 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
       return _SessionContinuity.sameAccountRotated;
     }
     return _SessionContinuity.changed;
+  }
+}
+
+FinanceEntryFailureKind? _requestBoundaryFailure(
+  AuthSession session, {
+  required String? expectedPrincipalScopeId,
+  required String? expectedSessionRevision,
+  required FinanceCommitPreflight? preflight,
+}) {
+  final guarded =
+      expectedPrincipalScopeId != null ||
+      expectedSessionRevision != null ||
+      preflight != null;
+  if (!guarded) return null;
+  if (expectedPrincipalScopeId == null ||
+      expectedSessionRevision == null ||
+      preflight == null ||
+      session.cacheScopeId != expectedPrincipalScopeId ||
+      session.revision != expectedSessionRevision) {
+    return FinanceEntryFailureKind.sessionChanged;
+  }
+  try {
+    return preflight();
+  } on Object {
+    return FinanceEntryFailureKind.sessionChanged;
   }
 }
 

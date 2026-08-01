@@ -328,6 +328,42 @@ class FinanceAccountOutboxEventRow(Base):
             "attempt_count >= 0",
             name="ck_finance_account_outbox_attempt_count",
         ),
+        CheckConstraint(
+            "validation_failure_count >= 0 "
+            "AND validation_failure_count <= attempt_count",
+            name="ck_finance_account_outbox_validation_failure_count",
+        ),
+        CheckConstraint(
+            "(published_at IS NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NOT NULL) OR "
+            "(published_at IS NOT NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NULL "
+            "AND failure_code IS NULL) OR "
+            "(published_at IS NULL AND dead_lettered_at IS NOT NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract')",
+            name="ck_finance_account_outbox_delivery_state",
+        ),
+        CheckConstraint(
+            "(last_failed_at IS NULL AND failure_code IS NULL) OR "
+            "(last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract' "
+            "AND validation_failure_count > 0)",
+            name="ck_finance_account_outbox_failure_metadata",
+        ),
+        CheckConstraint(
+            "(next_attempt_at IS NULL OR next_attempt_at >= created_at) "
+            "AND (last_failed_at IS NULL OR last_failed_at >= created_at) "
+            "AND (dead_lettered_at IS NULL OR "
+            "(last_failed_at IS NOT NULL "
+            "AND dead_lettered_at >= last_failed_at)) "
+            "AND (published_at IS NULL OR published_at >= created_at) "
+            "AND (last_failed_at IS NULL OR next_attempt_at IS NULL OR "
+            "next_attempt_at > last_failed_at) "
+            "AND (published_at IS NULL OR last_failed_at IS NULL OR "
+            "published_at >= last_failed_at)",
+            name="ck_finance_account_outbox_operational_timestamps",
+        ),
         ForeignKeyConstraint(
             ["aggregate_id", "user_id"],
             ["finance_accounts.id", "finance_accounts.user_id"],
@@ -342,6 +378,20 @@ class FinanceAccountOutboxEventRow(Base):
             "ix_finance_account_outbox_unpublished",
             "published_at",
             "created_at",
+        ),
+        Index(
+            "ix_finance_account_outbox_pending_ready",
+            "next_attempt_at",
+            "created_at",
+            "id",
+            postgresql_where=text("published_at IS NULL AND dead_lettered_at IS NULL"),
+        ),
+        Index(
+            "ix_finance_account_outbox_dead_lettered",
+            "dead_lettered_at",
+            "created_at",
+            "id",
+            postgresql_where=text("dead_lettered_at IS NOT NULL"),
         ),
     )
 
@@ -361,6 +411,23 @@ class FinanceAccountOutboxEventRow(Base):
         nullable=True,
     )
     attempt_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    validation_failure_count: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_failed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    failure_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 class FinanceOperationRow(Base):
@@ -549,12 +616,62 @@ class FinanceOutboxEventRow(Base):
             "attempt_count >= 0",
             name="ck_finance_outbox_attempt_count",
         ),
+        CheckConstraint(
+            "validation_failure_count >= 0 "
+            "AND validation_failure_count <= attempt_count",
+            name="ck_finance_outbox_validation_failure_count",
+        ),
+        CheckConstraint(
+            "(published_at IS NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NOT NULL) OR "
+            "(published_at IS NOT NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NULL "
+            "AND failure_code IS NULL) OR "
+            "(published_at IS NULL AND dead_lettered_at IS NOT NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract')",
+            name="ck_finance_outbox_delivery_state",
+        ),
+        CheckConstraint(
+            "(last_failed_at IS NULL AND failure_code IS NULL) OR "
+            "(last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract' "
+            "AND validation_failure_count > 0)",
+            name="ck_finance_outbox_failure_metadata",
+        ),
+        CheckConstraint(
+            "(next_attempt_at IS NULL OR next_attempt_at >= created_at) "
+            "AND (last_failed_at IS NULL OR last_failed_at >= created_at) "
+            "AND (dead_lettered_at IS NULL OR "
+            "(last_failed_at IS NOT NULL "
+            "AND dead_lettered_at >= last_failed_at)) "
+            "AND (published_at IS NULL OR published_at >= created_at) "
+            "AND (last_failed_at IS NULL OR next_attempt_at IS NULL OR "
+            "next_attempt_at > last_failed_at) "
+            "AND (published_at IS NULL OR last_failed_at IS NULL OR "
+            "published_at >= last_failed_at)",
+            name="ck_finance_outbox_operational_timestamps",
+        ),
         UniqueConstraint(
             "aggregate_id",
             "event_type",
             name="uq_finance_outbox_aggregate_event",
         ),
         Index("ix_finance_outbox_unpublished", "published_at", "created_at"),
+        Index(
+            "ix_finance_outbox_pending_ready",
+            "next_attempt_at",
+            "created_at",
+            "id",
+            postgresql_where=text("published_at IS NULL AND dead_lettered_at IS NULL"),
+        ),
+        Index(
+            "ix_finance_outbox_dead_lettered",
+            "dead_lettered_at",
+            "created_at",
+            "id",
+            postgresql_where=text("dead_lettered_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -573,6 +690,63 @@ class FinanceOutboxEventRow(Base):
         DateTime(timezone=True), nullable=True
     )
     attempt_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    validation_failure_count: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_failed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    failure_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class HomeProjectorRuntimeStateRow(Base):
+    """Singleton operational heartbeat for the active Home projector lease."""
+
+    __tablename__ = "home_projector_runtime_state"
+    __table_args__ = (
+        CheckConstraint(
+            "singleton_id = 1",
+            name="ck_home_projector_runtime_state_singleton",
+        ),
+        CheckConstraint(
+            "lease_id <> '00000000-0000-0000-0000-000000000000'::uuid",
+            name="ck_home_projector_runtime_state_lease_id",
+        ),
+        CheckConstraint(
+            "started_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' AND "
+            "started_at < TIMESTAMPTZ '2101-01-01 00:00:00+00' AND "
+            "heartbeat_at >= started_at AND "
+            "heartbeat_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_home_projector_runtime_state_timestamps",
+        ),
+        CheckConstraint(
+            "last_cycle_status IN "
+            "('starting', 'idle', 'published', 'retry_scheduled', "
+            "'degraded', 'stopped')",
+            name="ck_home_projector_runtime_state_status",
+        ),
+    )
+
+    singleton_id: Mapped[int] = mapped_column(
+        SmallInteger,
+        primary_key=True,
+        default=1,
+    )
+    lease_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    heartbeat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_cycle_status: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 _FINITE_SNAPSHOT_DECIMALS = (
