@@ -100,7 +100,9 @@ jobs:
           python3 --version
           python3 -m venv .ci-venv
           .ci-venv/bin/pip install --quiet --upgrade pip
-          .ci-venv/bin/pip install --quiet . httpx==0.28.1 pytest==9.1.1
+          # Editable: a plain install writes services/api/build/, which the
+          # version resolver rejects as an unclean worktree.
+          .ci-venv/bin/pip install --quiet -e . httpx==0.28.1 pytest==9.1.1
           PYTHONPATH=src .ci-venv/bin/pytest
 
       - name: Build and verify versioned debug APKs
