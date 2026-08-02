@@ -12,11 +12,16 @@ from zoneinfo import ZoneInfo
 from .account_contracts import (
     AccountDraft,
     AccountIssue,
+    BaselineIssue,
     CommittedFinanceAccount,
+    CorrectBaselineDraft,
     EvaluateAccountResponse,
+    EvaluateBaselineResponse,
     ListAccountsResponse,
     account_draft_hash,
+    baseline_draft_hash,
     confirmed_account_command_hash,
+    confirmed_baseline_command_hash,
 )
 
 
@@ -40,6 +45,16 @@ class AccountRejected(Exception):
 
 class AccountPersistenceUnavailable(Exception):
     """The authoritative store could not safely read or commit an account."""
+
+
+class AccountUnavailable(Exception):
+    """The referenced account is not an owned active account."""
+
+
+class BaselineRejected(Exception):
+    def __init__(self, issues: tuple[BaselineIssue, ...]) -> None:
+        super().__init__("baseline correction rejected")
+        self.issues = issues
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +112,24 @@ class AccountWriteResult:
     idempotent_replay: bool
 
 
+@dataclass(frozen=True, slots=True)
+class BaselineCorrectionSnapshot:
+    """Owned-account facts a baseline correction is evaluated against."""
+
+    account_id: UUID
+    user_id: UUID
+    opening_balance_on: date
+    canonical_timezone: str
+    earliest_operation_on: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class BaselineWriteResult:
+    account: CommittedFinanceAccount
+    previous_opening_balance_on: date
+    idempotent_replay: bool
+
+
 class FinanceAccountRepository(FinanceAccountDirectory, Protocol):
     async def get_setup_snapshot(self, *, user_id: UUID) -> AccountSetupSnapshot:
         """Return account/timezone bootstrap state for one authenticated user."""
@@ -122,6 +155,34 @@ class FinanceAccountRepository(FinanceAccountDirectory, Protocol):
         confirmed_at: datetime,
     ) -> AccountWriteResult:
         """Atomically commit or exactly replay account/audit/outbox state."""
+
+    async def get_baseline_snapshot(
+        self,
+        *,
+        user_id: UUID,
+        account_id: UUID,
+    ) -> BaselineCorrectionSnapshot | None:
+        """Return the owned baseline and its earliest operation date."""
+
+    async def replay_existing_baseline(
+        self,
+        *,
+        user_id: UUID,
+        account_id: UUID,
+        command_id: UUID,
+        payload_hash: bytes,
+    ) -> BaselineWriteResult | None:
+        """Return an exact prior correction or reject command identity reuse."""
+
+    async def correct_opening_baseline(
+        self,
+        *,
+        user_id: UUID,
+        draft: CorrectBaselineDraft,
+        payload_hash: bytes,
+        confirmed_at: datetime,
+    ) -> BaselineWriteResult:
+        """Atomically move the baseline earlier with audit and invalidation."""
 
 
 class UnavailableFinanceAccountRepository:
@@ -160,6 +221,37 @@ class UnavailableFinanceAccountRepository:
         payload_hash: bytes,
         confirmed_at: datetime,
     ) -> AccountWriteResult:
+        del user_id, draft, payload_hash, confirmed_at
+        raise AccountPersistenceUnavailable
+
+    async def get_baseline_snapshot(
+        self,
+        *,
+        user_id: UUID,
+        account_id: UUID,
+    ) -> BaselineCorrectionSnapshot | None:
+        del user_id, account_id
+        raise AccountPersistenceUnavailable
+
+    async def replay_existing_baseline(
+        self,
+        *,
+        user_id: UUID,
+        account_id: UUID,
+        command_id: UUID,
+        payload_hash: bytes,
+    ) -> BaselineWriteResult | None:
+        del user_id, account_id, command_id, payload_hash
+        raise AccountPersistenceUnavailable
+
+    async def correct_opening_baseline(
+        self,
+        *,
+        user_id: UUID,
+        draft: CorrectBaselineDraft,
+        payload_hash: bytes,
+        confirmed_at: datetime,
+    ) -> BaselineWriteResult:
         del user_id, draft, payload_hash, confirmed_at
         raise AccountPersistenceUnavailable
 
@@ -256,6 +348,103 @@ class AccountCore:
         )
         return result
 
+    async def evaluate_baseline(
+        self,
+        *,
+        user_id: UUID,
+        draft: CorrectBaselineDraft,
+    ) -> EvaluateBaselineResponse:
+        snapshot = await self._baseline_snapshot(user_id=user_id, draft=draft)
+        issues = _baseline_issues(
+            draft=draft,
+            snapshot=snapshot,
+            now_utc=_aware_utc(self._clock()),
+        )
+        if issues:
+            return EvaluateBaselineResponse(
+                decision="REJECT",
+                draft=draft,
+                draft_hash=None,
+                current_opening_balance_on=snapshot.opening_balance_on,
+                earliest_operation_on=snapshot.earliest_operation_on,
+                issues=issues,
+            )
+        return EvaluateBaselineResponse(
+            decision="NEEDS_CONFIRMATION",
+            draft=draft,
+            draft_hash=baseline_draft_hash(draft),
+            current_opening_balance_on=snapshot.opening_balance_on,
+            earliest_operation_on=snapshot.earliest_operation_on,
+            issues=(),
+        )
+
+    async def commit_baseline(
+        self,
+        *,
+        user_id: UUID,
+        draft: CorrectBaselineDraft,
+        expected_draft_hash: str,
+        confirmed_at: datetime,
+    ) -> BaselineWriteResult:
+        actual_hash = baseline_draft_hash(draft)
+        if actual_hash != expected_draft_hash:
+            raise AccountConfirmationMismatch
+        payload_hash = bytes.fromhex(
+            confirmed_baseline_command_hash(
+                draft=draft,
+                confirmed_at=confirmed_at,
+                evaluated_draft_hash=actual_hash,
+            )
+        )
+        existing = await self._repository.replay_existing_baseline(
+            user_id=user_id,
+            account_id=draft.account_id,
+            command_id=draft.command_id,
+            payload_hash=payload_hash,
+        )
+        if existing is not None:
+            _validate_baseline_result(
+                result=existing,
+                user_id=user_id,
+                draft=draft,
+            )
+            return existing
+
+        # Re-read and re-validate: an operation may have been committed between
+        # evaluation and confirmation, which can invalidate the correction.
+        snapshot = await self._baseline_snapshot(user_id=user_id, draft=draft)
+        issues = _baseline_issues(
+            draft=draft,
+            snapshot=snapshot,
+            now_utc=_aware_utc(self._clock()),
+        )
+        if issues:
+            raise BaselineRejected(issues)
+        result = await self._repository.correct_opening_baseline(
+            user_id=user_id,
+            draft=draft,
+            payload_hash=payload_hash,
+            confirmed_at=confirmed_at,
+        )
+        _validate_baseline_result(result=result, user_id=user_id, draft=draft)
+        return result
+
+    async def _baseline_snapshot(
+        self,
+        *,
+        user_id: UUID,
+        draft: CorrectBaselineDraft,
+    ) -> BaselineCorrectionSnapshot:
+        snapshot = await self._repository.get_baseline_snapshot(
+            user_id=user_id,
+            account_id=draft.account_id,
+        )
+        if snapshot is None:
+            raise AccountUnavailable
+        if snapshot.user_id != user_id or snapshot.account_id != draft.account_id:
+            raise AccountPersistenceUnavailable
+        return snapshot
+
     async def list_accounts(self, *, user_id: UUID) -> ListAccountsResponse:
         snapshot = await self._repository.list_accounts(user_id=user_id)
         if any(account.user_id != user_id for account in snapshot.accounts):
@@ -288,6 +477,55 @@ def _validate_write_result(
         or result.timezone_revision != 1
     ):
         raise AccountPersistenceUnavailable
+
+
+def _validate_baseline_result(
+    *,
+    result: BaselineWriteResult,
+    user_id: UUID,
+    draft: CorrectBaselineDraft,
+) -> None:
+    account = result.account
+    if (
+        account.user_id != user_id
+        or account.account_id != draft.account_id
+        or account.opening_balance_on != draft.opening_balance_on
+        or account.opening_balance_on > result.previous_opening_balance_on
+    ):
+        raise AccountPersistenceUnavailable
+
+
+def _baseline_issues(
+    *,
+    draft: CorrectBaselineDraft,
+    snapshot: BaselineCorrectionSnapshot,
+    now_utc: datetime,
+) -> tuple[BaselineIssue, ...]:
+    """Apply the ADR 0016 correction bounds in a fixed, deterministic order."""
+
+    issues: list[BaselineIssue] = []
+    # Only the earlier direction is permitted: moving a baseline later can
+    # strand operations before it, which is the state the invariant prevents.
+    if draft.opening_balance_on >= snapshot.opening_balance_on:
+        issues.append(
+            BaselineIssue(code="BASELINE_NOT_EARLIER", field="openingBalanceOn")
+        )
+    timezone = ZoneInfo(snapshot.canonical_timezone)
+    if draft.opening_balance_on > now_utc.astimezone(timezone).date():
+        issues.append(
+            BaselineIssue(code="BASELINE_DATE_IN_FUTURE", field="openingBalanceOn")
+        )
+    # Redundant while corrections only move earlier, but validated explicitly so
+    # the rule survives any future relaxation of the direction constraint.
+    earliest = snapshot.earliest_operation_on
+    if earliest is not None and draft.opening_balance_on > earliest:
+        issues.append(
+            BaselineIssue(
+                code="BASELINE_AFTER_EXISTING_OPERATION",
+                field="openingBalanceOn",
+            )
+        )
+    return tuple(issues)
 
 
 def _draft_issues(

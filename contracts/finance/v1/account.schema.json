@@ -1,15 +1,12 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mobile-finance-assistant.local/contracts/finance/v1/account.schema.json",
-  "title": "Finance account v1 messages",
-  "description": "Strict messages for explicit account bootstrap, deterministic evaluation, idempotent commit, and authoritative account reads.",
   "$defs": {
     "AccountDraft": {
       "additionalProperties": false,
       "properties": {
-        "schemaVersion": {
-          "const": "1",
-          "title": "Schemaversion",
+        "canonicalTimezone": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Canonicaltimezone",
           "type": "string"
         },
         "commandId": {
@@ -17,17 +14,17 @@
           "title": "Commandid",
           "type": "string"
         },
-        "name": {
-          "maxLength": 100,
-          "minLength": 1,
-          "title": "Name",
-          "type": "string"
-        },
         "currency": {
           "maxLength": 3,
           "minLength": 3,
           "pattern": "^[A-Z]{3}$",
           "title": "Currency",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
           "type": "string"
         },
         "openingBalance": {
@@ -44,10 +41,9 @@
           "title": "Openingbalanceon",
           "type": "string"
         },
-        "canonicalTimezone": {
-          "maxLength": 128,
-          "minLength": 1,
-          "title": "Canonicaltimezone",
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
           "type": "string"
         }
       },
@@ -66,6 +62,14 @@
     "AccountErrorDetail": {
       "additionalProperties": false,
       "properties": {
+        "baselineIssues": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BaselineIssue"
+          },
+          "title": "Baselineissues",
+          "type": "array"
+        },
         "code": {
           "enum": [
             "MALFORMED_ACCOUNT",
@@ -73,6 +77,8 @@
             "COMMAND_CONFLICT",
             "ACCOUNT_ALREADY_INITIALIZED",
             "ACCOUNT_REJECTED",
+            "ACCOUNT_UNAVAILABLE",
+            "BASELINE_REJECTED",
             "AUTHENTICATION_UNAVAILABLE",
             "FINANCE_PERSISTENCE_UNAVAILABLE"
           ],
@@ -136,12 +142,40 @@
       "title": "AccountIssue",
       "type": "object"
     },
+    "BaselineIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "BASELINE_NOT_EARLIER",
+            "BASELINE_DATE_IN_FUTURE",
+            "BASELINE_AFTER_EXISTING_OPERATION"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "field": {
+          "const": "openingBalanceOn",
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "field"
+      ],
+      "title": "BaselineIssue",
+      "type": "object"
+    },
     "CommitAccountRequest": {
       "additionalProperties": false,
       "properties": {
-        "schemaVersion": {
-          "const": "1",
-          "title": "Schemaversion",
+        "confirmedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Confirmedat",
           "type": "string"
         },
         "draft": {
@@ -154,12 +188,9 @@
           "title": "Drafthash",
           "type": "string"
         },
-        "confirmedAt": {
-          "description": "Timezone-aware instant normalized to UTC.",
-          "format": "date-time",
-          "formatMaximum": "2100-12-31T23:59:59.999999Z",
-          "formatMinimum": "1900-01-01T00:00:00Z",
-          "title": "Confirmedat",
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
           "type": "string"
         }
       },
@@ -175,10 +206,13 @@
     "CommitAccountResponse": {
       "additionalProperties": false,
       "properties": {
-        "schemaVersion": {
-          "const": "1",
-          "default": "1",
-          "title": "Schemaversion",
+        "account": {
+          "$ref": "#/$defs/CommittedFinanceAccount"
+        },
+        "canonicalTimezone": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Canonicaltimezone",
           "type": "string"
         },
         "decision": {
@@ -191,19 +225,16 @@
           "title": "Idempotentreplay",
           "type": "boolean"
         },
-        "canonicalTimezone": {
-          "maxLength": 128,
-          "minLength": 1,
-          "title": "Canonicaltimezone",
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
           "type": "string"
         },
         "timezoneRevision": {
           "const": 1,
           "title": "Timezonerevision",
           "type": "integer"
-        },
-        "account": {
-          "$ref": "#/$defs/CommittedFinanceAccount"
         }
       },
       "required": [
@@ -215,6 +246,80 @@
       "title": "CommitAccountResponse",
       "type": "object"
     },
+    "CommitBaselineRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Confirmedat",
+          "type": "string"
+        },
+        "draft": {
+          "$ref": "#/$defs/CorrectBaselineDraft"
+        },
+        "draftHash": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Drafthash",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "draft",
+        "draftHash",
+        "confirmedAt"
+      ],
+      "title": "CommitBaselineRequest",
+      "type": "object"
+    },
+    "CommitBaselineResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "$ref": "#/$defs/CommittedFinanceAccount"
+        },
+        "decision": {
+          "const": "ACCEPT",
+          "default": "ACCEPT",
+          "title": "Decision",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "previousOpeningBalanceOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Previousopeningbalanceon",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "previousOpeningBalanceOn",
+        "account"
+      ],
+      "title": "CommitBaselineResponse",
+      "type": "object"
+    },
     "CommittedFinanceAccount": {
       "additionalProperties": false,
       "properties": {
@@ -223,20 +328,25 @@
           "title": "Accountid",
           "type": "string"
         },
-        "userId": {
-          "format": "uuid",
-          "title": "Userid",
-          "type": "string"
-        },
         "commandId": {
           "format": "uuid",
           "title": "Commandid",
           "type": "string"
         },
-        "name": {
-          "maxLength": 100,
-          "minLength": 1,
-          "title": "Name",
+        "confirmedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Confirmedat",
+          "type": "string"
+        },
+        "createdAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Createdat",
           "type": "string"
         },
         "currency": {
@@ -244,6 +354,17 @@
           "minLength": 3,
           "pattern": "^[A-Z]{3}$",
           "title": "Currency",
+          "type": "string"
+        },
+        "isDefault": {
+          "const": true,
+          "title": "Isdefault",
+          "type": "boolean"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
           "type": "string"
         },
         "openingBalance": {
@@ -271,25 +392,9 @@
           "title": "Status",
           "type": "string"
         },
-        "isDefault": {
-          "const": true,
-          "title": "Isdefault",
-          "type": "boolean"
-        },
-        "confirmedAt": {
-          "description": "Timezone-aware instant normalized to UTC.",
-          "format": "date-time",
-          "formatMaximum": "2100-12-31T23:59:59.999999Z",
-          "formatMinimum": "1900-01-01T00:00:00Z",
-          "title": "Confirmedat",
-          "type": "string"
-        },
-        "createdAt": {
-          "description": "Timezone-aware instant normalized to UTC.",
-          "format": "date-time",
-          "formatMaximum": "2100-12-31T23:59:59.999999Z",
-          "formatMinimum": "1900-01-01T00:00:00Z",
-          "title": "Createdat",
+        "userId": {
+          "format": "uuid",
+          "title": "Userid",
           "type": "string"
         }
       },
@@ -310,6 +415,42 @@
       "title": "CommittedFinanceAccount",
       "type": "object"
     },
+    "CorrectBaselineDraft": {
+      "additionalProperties": false,
+      "description": "An explicit request to move an account baseline date earlier.",
+      "properties": {
+        "accountId": {
+          "format": "uuid",
+          "title": "Accountid",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "openingBalanceOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Openingbalanceon",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "accountId",
+        "openingBalanceOn"
+      ],
+      "title": "CorrectBaselineDraft",
+      "type": "object"
+    },
     "EvaluateAccountRequest": {
       "additionalProperties": false,
       "properties": {
@@ -326,12 +467,6 @@
     "EvaluateAccountResponse": {
       "additionalProperties": false,
       "properties": {
-        "schemaVersion": {
-          "const": "1",
-          "default": "1",
-          "title": "Schemaversion",
-          "type": "string"
-        },
         "decision": {
           "enum": [
             "REJECT",
@@ -364,6 +499,12 @@
           },
           "title": "Issues",
           "type": "array"
+        },
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
         }
       },
       "required": [
@@ -374,14 +515,103 @@
       "title": "EvaluateAccountResponse",
       "type": "object"
     },
-    "ListAccountsResponse": {
+    "EvaluateBaselineRequest": {
       "additionalProperties": false,
       "properties": {
+        "draft": {
+          "$ref": "#/$defs/CorrectBaselineDraft"
+        }
+      },
+      "required": [
+        "draft"
+      ],
+      "title": "EvaluateBaselineRequest",
+      "type": "object"
+    },
+    "EvaluateBaselineResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "currentOpeningBalanceOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Currentopeningbalanceon",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "REJECT",
+            "NEEDS_CONFIRMATION"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "draft": {
+          "$ref": "#/$defs/CorrectBaselineDraft"
+        },
+        "draftHash": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Drafthash"
+        },
+        "earliestOperationOn": {
+          "anyOf": [
+            {
+              "format": "date",
+              "formatMaximum": "2100-12-31",
+              "formatMinimum": "1900-01-01",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Earliestoperationon"
+        },
+        "issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BaselineIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
         "schemaVersion": {
           "const": "1",
           "default": "1",
           "title": "Schemaversion",
           "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "draft",
+        "draftHash",
+        "currentOpeningBalanceOn",
+        "earliestOperationOn"
+      ],
+      "title": "EvaluateBaselineResponse",
+      "type": "object"
+    },
+    "ListAccountsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "accounts": {
+          "items": {
+            "$ref": "#/$defs/CommittedFinanceAccount"
+          },
+          "maxItems": 1,
+          "title": "Accounts",
+          "type": "array"
         },
         "canonicalTimezone": {
           "anyOf": [
@@ -396,6 +626,12 @@
           ],
           "title": "Canonicaltimezone"
         },
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
         "timezoneRevision": {
           "enum": [
             0,
@@ -403,14 +639,6 @@
           ],
           "title": "Timezonerevision",
           "type": "integer"
-        },
-        "accounts": {
-          "items": {
-            "$ref": "#/$defs/CommittedFinanceAccount"
-          },
-          "maxItems": 1,
-          "title": "Accounts",
-          "type": "array"
         }
       },
       "required": [
@@ -422,6 +650,8 @@
       "type": "object"
     }
   },
+  "$id": "https://mobile-finance-assistant.local/contracts/finance/v1/account.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "anyOf": [
     {
       "$ref": "#/$defs/EvaluateAccountRequest"
@@ -439,7 +669,21 @@
       "$ref": "#/$defs/ListAccountsResponse"
     },
     {
+      "$ref": "#/$defs/EvaluateBaselineRequest"
+    },
+    {
+      "$ref": "#/$defs/EvaluateBaselineResponse"
+    },
+    {
+      "$ref": "#/$defs/CommitBaselineRequest"
+    },
+    {
+      "$ref": "#/$defs/CommitBaselineResponse"
+    },
+    {
       "$ref": "#/$defs/AccountErrorResponse"
     }
-  ]
+  ],
+  "description": "Strict messages for explicit account bootstrap, deterministic evaluation, idempotent commit, and authoritative account reads.",
+  "title": "Finance account v1 messages"
 }
