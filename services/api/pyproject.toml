@@ -22,7 +22,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  "httpx==0.28.1",
   "mypy==2.3.0",
+  "pytest==9.1.1",
   "ruff==0.16.0",
 ]
 
@@ -42,6 +44,14 @@ select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/mobile_finance_api/main.py" = ["B008"]
+# Tests assert by design and use synthetic, non-secret credentials.
+"tests/*" = ["S101", "S105", "S106"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Only test_*.py is collected, so the *_postgres_e2e.py scripts stay opt-in:
+# they need a live database the APK workflow does not provision.
+addopts = "-q"
 
 [tool.mypy]
 python_version = "3.12"
