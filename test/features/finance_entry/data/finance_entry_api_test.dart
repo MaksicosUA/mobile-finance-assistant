@@ -9,6 +9,115 @@ import 'package:mobile_finance_assistant/features/finance_entry/domain/finance_e
 
 void main() {
   group('FinanceEntryApi', () {
+    test(
+      'confirms a baseline correction that moves the date earlier',
+      () async {
+        final adapter = _QueueAdapter([
+          _JsonResponse(
+            200,
+            _baselineEvaluation(decision: 'NEEDS_CONFIRMATION'),
+          ),
+        ]);
+        final api = _api(adapter);
+
+        final result = await api.evaluateBaseline(
+          accessToken: 'access-token',
+          draft: _baselineModel(),
+        );
+
+        final review =
+            (result as FinanceEntrySuccess<FinanceBaselineEvaluation>).value
+                as FinanceBaselineNeedsConfirmation;
+        expect(review.currentOpeningBalanceOn, '2026-07-28');
+        expect(review.earliestOperationOn, isNull);
+        expect(review.draft.openingBalanceOn, '2026-01-01');
+        expect(
+          adapter.requests.single.uri.path,
+          '/api/v1/accounts/baseline/evaluate',
+        );
+      },
+    );
+
+    test('surfaces the reason a baseline correction was refused', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(
+          200,
+          _baselineEvaluation(
+            decision: 'REJECT',
+            issues: const [
+              {'code': 'BASELINE_NOT_EARLIER', 'field': 'openingBalanceOn'},
+            ],
+          ),
+        ),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.evaluateBaseline(
+        accessToken: 'access-token',
+        draft: _baselineModel(),
+      );
+
+      final rejected =
+          (result as FinanceEntrySuccess<FinanceBaselineEvaluation>).value
+              as FinanceBaselineRejected;
+      expect(
+        rejected.issues.single.code,
+        FinanceBaselineIssueCode.baselineNotEarlier,
+      );
+    });
+
+    test(
+      'commits a baseline correction and reports the previous date',
+      () async {
+        final adapter = _QueueAdapter([_JsonResponse(200, _baselineCommit())]);
+        final api = _api(adapter);
+
+        final result = await api.commitBaseline(
+          accessToken: 'access-token',
+          command: _baselineCommand(),
+        );
+
+        final commit =
+            (result as FinanceEntrySuccess<FinanceBaselineCommit>).value;
+        expect(commit.idempotentReplay, isFalse);
+        expect(commit.previousOpeningBalanceOn, '2026-07-28');
+        expect(commit.account.openingBalanceOn, '2026-01-01');
+        expect(
+          adapter.requests.single.uri.path,
+          '/api/v1/accounts/baseline/commit',
+        );
+      },
+    );
+
+    test('refuses a commit response that contradicts the review', () async {
+      // The server must never answer with a different account or a date that
+      // is later than the baseline it claims to have replaced.
+      final wrongAccount = _baselineCommit();
+      (wrongAccount['account']! as Map<String, Object?>)['openingBalanceOn'] =
+          '2026-09-01';
+      final movedLater = _baselineCommit(previous: '2025-01-01');
+      final adapter = _QueueAdapter([
+        _JsonResponse(200, wrongAccount),
+        _JsonResponse(200, movedLater),
+      ]);
+      final api = _api(adapter);
+
+      final mismatched = await api.commitBaseline(
+        accessToken: 'access-token',
+        command: _baselineCommand(),
+      );
+      final later = await api.commitBaseline(
+        accessToken: 'access-token',
+        command: _baselineCommand(),
+      );
+
+      expect(
+        _failure(mismatched).kind,
+        FinanceEntryFailureKind.malformedResponse,
+      );
+      expect(_failure(later).kind, FinanceEntryFailureKind.malformedResponse);
+    });
+
     test('lists the strict authoritative account setup', () async {
       final adapter = _QueueAdapter([_JsonResponse(200, _accountSetup())]);
       final api = _api(adapter);
@@ -346,6 +455,66 @@ Map<String, Object?> _evaluation({
   'issues': issues,
 };
 
+FinanceBaselineDraft _baselineModel({String openingBalanceOn = '2026-01-01'}) =>
+    FinanceBaselineDraft(
+      commandId: _baselineCommandId,
+      accountId: _accountId,
+      openingBalanceOn: openingBalanceOn,
+    );
+
+FinanceBaselineCommitCommand _baselineCommand() =>
+    FinanceBaselineCommitCommand.fromReview(
+      review: FinanceBaselineNeedsConfirmation(
+        draft: _baselineModel(),
+        currentOpeningBalanceOn: '2026-07-28',
+        earliestOperationOn: null,
+        draftHash: 'a' * 64,
+      ),
+      confirmedAt: DateTime.utc(2026, 8, 2, 12),
+    );
+
+Map<String, Object?> _baselineDraft({String openingBalanceOn = '2026-01-01'}) =>
+    {
+      'schemaVersion': '1',
+      'commandId': _baselineCommandId,
+      'accountId': _accountId,
+      'openingBalanceOn': openingBalanceOn,
+    };
+
+Map<String, Object?> _baselineEvaluation({
+  required String decision,
+  List<Map<String, Object?>> issues = const [],
+}) => {
+  'schemaVersion': '1',
+  'decision': decision,
+  'draft': _baselineDraft(),
+  'draftHash': decision == 'REJECT' ? null : 'a' * 64,
+  'currentOpeningBalanceOn': '2026-07-28',
+  'earliestOperationOn': null,
+  'issues': issues,
+};
+
+Map<String, Object?> _baselineCommit({String previous = '2026-07-28'}) => {
+  'schemaVersion': '1',
+  'decision': 'ACCEPT',
+  'idempotentReplay': false,
+  'previousOpeningBalanceOn': previous,
+  'account': {
+    'accountId': _accountId,
+    'userId': _userId,
+    'commandId': _accountCommandId,
+    'name': 'Main account',
+    'currency': 'EUR',
+    'openingBalance': '1000',
+    'openingBalanceOn': '2026-01-01',
+    'openingTimezone': 'Europe/Berlin',
+    'status': 'active',
+    'isDefault': true,
+    'confirmedAt': '2026-07-28T12:01:00Z',
+    'createdAt': '2026-07-28T12:01:01Z',
+  },
+};
+
 Map<String, Object?> _accountSetup() => {
   'schemaVersion': '1',
   'canonicalTimezone': 'Europe/Berlin',
@@ -418,6 +587,7 @@ const _accountId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const _operationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const _userId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const _accountCommandId = '11111111-1111-4111-8111-111111111111';
+const _baselineCommandId = '77777777-7777-4777-8777-777777777777';
 const _operationCommandId = '22222222-2222-4222-8222-222222222222';
 const _draftHash =
     '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';

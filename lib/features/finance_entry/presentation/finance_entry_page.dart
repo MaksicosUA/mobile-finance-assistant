@@ -444,6 +444,7 @@ class _OperationFormState extends State<_OperationForm> {
             _FinanceMessage(
               failure: widget.state.failure,
               issues: widget.state.issues,
+              openingBalanceOn: account.openingBalanceOn,
             ),
           ],
           const SizedBox(height: AppSpacing.md),
@@ -991,17 +992,24 @@ class _MessageCard extends StatelessWidget {
 }
 
 class _FinanceMessage extends StatelessWidget {
-  const _FinanceMessage({this.failure, this.issues = const []});
+  const _FinanceMessage({
+    this.failure,
+    this.issues = const [],
+    this.openingBalanceOn,
+  });
 
   final FinanceEntryFailure? failure;
   final List<FinanceIssue> issues;
+
+  /// The account baseline, when known, so a refusal can name the actual bound.
+  final String? openingBalanceOn;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final message = failure == null
-        ? _issuesMessage(l10n, issues)
-        : _failureMessage(l10n, failure!);
+        ? _issuesMessage(l10n, issues, openingBalanceOn: openingBalanceOn)
+        : _failureMessage(l10n, failure!, openingBalanceOn: openingBalanceOn);
     return _StatusMessage(
       key: const Key('finance-entry-message'),
       icon: Icons.info_outline_rounded,
@@ -1227,7 +1235,11 @@ String _localizedDate(BuildContext context, String wireDate) {
   return MaterialLocalizations.of(context).formatMediumDate(value);
 }
 
-String _issuesMessage(AppLocalizations l10n, List<FinanceIssue> issues) {
+String _issuesMessage(
+  AppLocalizations l10n,
+  List<FinanceIssue> issues, {
+  String? openingBalanceOn,
+}) {
   if (issues.any(
     (issue) =>
         issue.code == FinanceIssueCode.openingBalanceDateInFuture ||
@@ -1238,7 +1250,10 @@ String _issuesMessage(AppLocalizations l10n, List<FinanceIssue> issues) {
   if (issues.any(
     (issue) => issue.code == FinanceIssueCode.operationBeforeAccountBaseline,
   )) {
-    return l10n.operationBeforeOpeningDateError;
+    // Name the bound and the way out instead of a bare range error (ADR 0016).
+    final baseline = openingBalanceOn;
+    if (baseline == null) return l10n.operationBeforeOpeningDateError;
+    return l10n.operationBeforeOpeningDateDetail(baseline);
   }
   if (issues.any(
     (issue) =>
@@ -1250,24 +1265,30 @@ String _issuesMessage(AppLocalizations l10n, List<FinanceIssue> issues) {
   return l10n.financeValidationRejected;
 }
 
-String _failureMessage(AppLocalizations l10n, FinanceEntryFailure failure) =>
-    switch (failure.kind) {
-      FinanceEntryFailureKind.invalidInput => l10n.financeInvalidInput,
-      FinanceEntryFailureKind.unauthenticated ||
-      FinanceEntryFailureKind.unauthorized => l10n.authExpiredDescription,
-      FinanceEntryFailureKind.sessionChanged => l10n.financeSessionChanged,
-      FinanceEntryFailureKind.interrupted =>
-        l10n.operationPendingBannerDescription,
-      FinanceEntryFailureKind.conflict => l10n.financeConflictError,
-      FinanceEntryFailureKind.rejected => _issuesMessage(l10n, failure.issues),
-      FinanceEntryFailureKind.offline => l10n.financeOfflineError,
-      FinanceEntryFailureKind.timeout => l10n.financeTimeoutError,
-      FinanceEntryFailureKind.serviceUnavailable => l10n.financeServiceError,
-      FinanceEntryFailureKind.securityFailure => l10n.financeSecurityError,
-      FinanceEntryFailureKind.localStorage => l10n.financeLocalStorageError,
-      FinanceEntryFailureKind.malformedResponse ||
-      FinanceEntryFailureKind.unknown => l10n.financeUnexpectedError,
-    };
+String _failureMessage(
+  AppLocalizations l10n,
+  FinanceEntryFailure failure, {
+  String? openingBalanceOn,
+}) => switch (failure.kind) {
+  FinanceEntryFailureKind.invalidInput => l10n.financeInvalidInput,
+  FinanceEntryFailureKind.unauthenticated ||
+  FinanceEntryFailureKind.unauthorized => l10n.authExpiredDescription,
+  FinanceEntryFailureKind.sessionChanged => l10n.financeSessionChanged,
+  FinanceEntryFailureKind.interrupted => l10n.operationPendingBannerDescription,
+  FinanceEntryFailureKind.conflict => l10n.financeConflictError,
+  FinanceEntryFailureKind.rejected => _issuesMessage(
+    l10n,
+    failure.issues,
+    openingBalanceOn: openingBalanceOn,
+  ),
+  FinanceEntryFailureKind.offline => l10n.financeOfflineError,
+  FinanceEntryFailureKind.timeout => l10n.financeTimeoutError,
+  FinanceEntryFailureKind.serviceUnavailable => l10n.financeServiceError,
+  FinanceEntryFailureKind.securityFailure => l10n.financeSecurityError,
+  FinanceEntryFailureKind.localStorage => l10n.financeLocalStorageError,
+  FinanceEntryFailureKind.malformedResponse ||
+  FinanceEntryFailureKind.unknown => l10n.financeUnexpectedError,
+};
 
 String _deliveryIssueMessage(
   AppLocalizations l10n,

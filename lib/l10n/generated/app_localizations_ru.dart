@@ -787,4 +787,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get operationRetryNowAction => 'Повторить отправку';
+
+  @override
+  String operationBeforeOpeningDateDetail(String openingDate) {
+    return 'Учёт по счёту начинается $openingDate. Операции раньше этой даты записать нельзя. Дату начала можно перенести назад в настройках счёта.';
+  }
 }

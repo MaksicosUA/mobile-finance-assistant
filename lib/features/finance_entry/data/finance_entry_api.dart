@@ -23,6 +23,16 @@ abstract interface class FinanceEntryApiClient {
     required FinanceAccountCommitCommand command,
   });
 
+  Future<FinanceEntryResult<FinanceBaselineEvaluation>> evaluateBaseline({
+    required String accessToken,
+    required FinanceBaselineDraft draft,
+  });
+
+  Future<FinanceEntryResult<FinanceBaselineCommit>> commitBaseline({
+    required String accessToken,
+    required FinanceBaselineCommitCommand command,
+  });
+
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation({
     required String accessToken,
     required FinanceOperationDraft draft,
@@ -116,6 +126,43 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       contract: _ContractKind.account,
       parse: (json, statusCode) =>
           _parseAccountCommit(json, statusCode: statusCode, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceBaselineEvaluation>> evaluateBaseline({
+    required String accessToken,
+    required FinanceBaselineDraft draft,
+  }) {
+    try {
+      FinanceBaselineDraft.fromJson(draft.toJson());
+    } on Object {
+      return Future.value(_localFailure(FinanceEntryFailureKind.invalidInput));
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/accounts/baseline/evaluate',
+      accessToken: accessToken,
+      body: <String, Object?>{'draft': draft.toJson()},
+      acceptedStatuses: const {200},
+      contract: _ContractKind.account,
+      parse: _parseBaselineEvaluation,
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceBaselineCommit>> commitBaseline({
+    required String accessToken,
+    required FinanceBaselineCommitCommand command,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/v1/accounts/baseline/commit',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200},
+      contract: _ContractKind.account,
+      parse: (json, statusCode) => _parseBaselineCommit(json, command: command),
     );
   }
 
@@ -307,6 +354,89 @@ FinanceAccountEvaluation _parseAccountEvaluation(
       FinanceAccountRejected(draft: draft, issues: issues),
     _ => throw const FormatException('Invalid account evaluation.'),
   };
+}
+
+FinanceBaselineEvaluation _parseBaselineEvaluation(
+  Map<String, Object?> json,
+  int statusCode,
+) {
+  if (statusCode != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {
+    'schemaVersion',
+    'decision',
+    'draft',
+    'draftHash',
+    'currentOpeningBalanceOn',
+    'earliestOperationOn',
+    'issues',
+  });
+  _requireSchema(json);
+  final draft = FinanceBaselineDraft.fromJson(_object(json['draft']));
+  final current = _requiredString(json, 'currentOpeningBalanceOn');
+  final earliest = json['earliestOperationOn'];
+  if (earliest is! String?) {
+    throw const FormatException('Invalid earliestOperationOn.');
+  }
+  final issues = _baselineIssues(json['issues']);
+  return switch (json['decision']) {
+    'NEEDS_CONFIRMATION' when issues.isEmpty =>
+      FinanceBaselineNeedsConfirmation(
+        draft: draft,
+        currentOpeningBalanceOn: current,
+        earliestOperationOn: earliest,
+        draftHash: validateDraftHash(_requiredString(json, 'draftHash')),
+      ),
+    'REJECT' when json['draftHash'] == null && issues.isNotEmpty =>
+      FinanceBaselineRejected(
+        draft: draft,
+        currentOpeningBalanceOn: current,
+        earliestOperationOn: earliest,
+        issues: issues,
+      ),
+    _ => throw const FormatException('Invalid baseline evaluation.'),
+  };
+}
+
+FinanceBaselineCommit _parseBaselineCommit(
+  Map<String, Object?> json, {
+  required FinanceBaselineCommitCommand command,
+}) {
+  _expectKeys(json, const {
+    'schemaVersion',
+    'decision',
+    'idempotentReplay',
+    'previousOpeningBalanceOn',
+    'account',
+  });
+  _requireSchema(json);
+  if (json['decision'] != 'ACCEPT') {
+    throw const FormatException('Invalid baseline commit.');
+  }
+  final replay = json['idempotentReplay'];
+  if (replay is! bool) {
+    throw const FormatException('Invalid baseline commit replay flag.');
+  }
+  final previous = _requiredString(json, 'previousOpeningBalanceOn');
+  final account = FinanceAccount.fromJson(_object(json['account']));
+  // The response must describe the correction that was actually confirmed,
+  // and it must never move a baseline later than it already was.
+  if (account.accountId != command.draft.accountId ||
+      account.openingBalanceOn != command.draft.openingBalanceOn ||
+      account.openingBalanceOn.compareTo(previous) > 0) {
+    throw const FormatException('Baseline commit does not match the review.');
+  }
+  return FinanceBaselineCommit(
+    idempotentReplay: replay,
+    previousOpeningBalanceOn: previous,
+    account: account,
+  );
+}
+
+List<FinanceBaselineIssue> _baselineIssues(Object? value) {
+  if (value is! List) throw const FormatException('Invalid issues.');
+  return List<FinanceBaselineIssue>.unmodifiable(
+    value.map((item) => FinanceBaselineIssue.fromJson(_object(item))),
+  );
 }
 
 FinanceAccountCommit _parseAccountCommit(
