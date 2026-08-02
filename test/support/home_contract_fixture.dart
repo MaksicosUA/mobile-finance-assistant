@@ -29,17 +29,15 @@ Map<String, Object?> deepCopyHomeFixture(Map<String, Object?> value) {
 }
 
 Directory homeFixtureDirectory() {
-  final candidates = <Directory>[
-    Directory('../apps/mobile/test/fixtures/home/v2'),
-    Directory('apps/mobile/test/fixtures/home/v2'),
-  ];
-  return candidates.firstWhere(
-    (candidate) => candidate.existsSync(),
-    orElse: () => throw StateError(
-      'External Home v2 test fixtures were not found from '
-      '${Directory.current.path}.',
-    ),
-  );
+  // Fixtures are versioned with the suite in this repository (ADR 0015).
+  // `flutter test` runs from the package root, so the path is relative to it.
+  final directory = Directory('test/fixtures/home/v2');
+  if (!directory.existsSync()) {
+    throw StateError(
+      'Home v2 test fixtures were not found from ${Directory.current.path}.',
+    );
+  }
+  return directory;
 }
 
 File homeFixtureFile(String name) {
