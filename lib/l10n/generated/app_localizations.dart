@@ -1448,6 +1448,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Повторить отправку'**
   String get operationRetryNowAction;
+
+  /// Explains the account baseline bound and the recovery path.
+  ///
+  /// In ru, this message translates to:
+  /// **'Учёт по счёту начинается {openingDate}. Операции раньше этой даты записать нельзя. Дату начала можно перенести назад в настройках счёта.'**
+  String operationBeforeOpeningDateDetail(String openingDate);
 }
 
 class _AppLocalizationsDelegate

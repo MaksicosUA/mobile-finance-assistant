@@ -8,25 +8,33 @@
   "greetingMorning": "Доброе утро, {userName}",
   "@greetingMorning": {
     "placeholders": {
-      "userName": {"type": "String"}
+      "userName": {
+        "type": "String"
+      }
     }
   },
   "greetingDay": "Добрый день, {userName}",
   "@greetingDay": {
     "placeholders": {
-      "userName": {"type": "String"}
+      "userName": {
+        "type": "String"
+      }
     }
   },
   "greetingEvening": "Добрый вечер, {userName}",
   "@greetingEvening": {
     "placeholders": {
-      "userName": {"type": "String"}
+      "userName": {
+        "type": "String"
+      }
     }
   },
   "greetingNight": "Доброй ночи, {userName}",
   "@greetingNight": {
     "placeholders": {
-      "userName": {"type": "String"}
+      "userName": {
+        "type": "String"
+      }
     }
   },
   "notificationsLabel": "Уведомления, есть новые",
@@ -44,7 +52,11 @@
   "setupAccountAction": "Настроить счёт",
   "monthSummaryTitle": "Итоги за {month}",
   "@monthSummaryTitle": {
-    "placeholders": {"month": {"type": "String"}}
+    "placeholders": {
+      "month": {
+        "type": "String"
+      }
+    }
   },
   "income": "Доходы",
   "incomeCaption": "поступило",
@@ -65,33 +77,57 @@
   "trendSemantics": "{title} за период, всего {amount}",
   "@trendSemantics": {
     "placeholders": {
-      "title": {"type": "String"},
-      "amount": {"type": "String"}
+      "title": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
     }
   },
   "amountsHidden": "суммы скрыты",
   "goalDueDate": "до {date}",
   "@goalDueDate": {
-    "placeholders": {"date": {"type": "String"}}
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
   },
   "goalProgressSummary": "из {target} · {progress}%",
   "@goalProgressSummary": {
     "placeholders": {
-      "target": {"type": "String"},
-      "progress": {"type": "String"}
+      "target": {
+        "type": "String"
+      },
+      "progress": {
+        "type": "String"
+      }
     }
   },
   "goalMonthlyContribution": "Нужно откладывать примерно {amount} в месяц",
   "@goalMonthlyContribution": {
-    "placeholders": {"amount": {"type": "String"}}
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
   },
   "goalSemantics": "{title}, накоплено {current}, цель {target}, прогресс {progress} процентов, открыть цель",
   "@goalSemantics": {
     "placeholders": {
-      "title": {"type": "String"},
-      "current": {"type": "String"},
-      "target": {"type": "String"},
-      "progress": {"type": "String"}
+      "title": {
+        "type": "String"
+      },
+      "current": {
+        "type": "String"
+      },
+      "target": {
+        "type": "String"
+      },
+      "progress": {
+        "type": "String"
+      }
     }
   },
   "upcomingPaymentsTitle": "Ближайшие платежи",
@@ -99,22 +135,40 @@
   "noUpcomingPayments": "Ближайших платежей нет",
   "paymentDueDate": "до {date}",
   "@paymentDueDate": {
-    "placeholders": {"date": {"type": "String"}}
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
   },
   "paymentOverdueDate": "просрочен · {date}",
   "@paymentOverdueDate": {
-    "placeholders": {"date": {"type": "String"}}
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
   },
   "paymentDateUnknown": "статус уточняется · {date}",
   "@paymentDateUnknown": {
-    "placeholders": {"date": {"type": "String"}}
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
   },
   "paymentSemantics": "{title}, {due}, {amount}",
   "@paymentSemantics": {
     "placeholders": {
-      "title": {"type": "String"},
-      "due": {"type": "String"},
-      "amount": {"type": "String"}
+      "title": {
+        "type": "String"
+      },
+      "due": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
     }
   },
   "recentTransactionsTitle": "Последние операции",
@@ -123,8 +177,12 @@
   "transactionMetadata": "{category} · {date}",
   "@transactionMetadata": {
     "placeholders": {
-      "category": {"type": "String"},
-      "date": {"type": "String"}
+      "category": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
     }
   },
   "transactionIncome": "доход",
@@ -134,11 +192,21 @@
   "transactionSemantics": "{title}, {category}, {date}, {amount}, {kind}",
   "@transactionSemantics": {
     "placeholders": {
-      "title": {"type": "String"},
-      "category": {"type": "String"},
-      "date": {"type": "String"},
-      "amount": {"type": "String"},
-      "kind": {"type": "String"}
+      "title": {
+        "type": "String"
+      },
+      "category": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      }
     }
   },
   "refreshingTitle": "Обновляем данные",
@@ -149,8 +217,12 @@
   "offlineDataAsOf": "Данные актуальны на {date}, {time} UTC.",
   "@offlineDataAsOf": {
     "placeholders": {
-      "date": {"type": "String"},
-      "time": {"type": "String"}
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
     }
   },
   "refreshFailedTitle": "Не удалось обновить данные",
@@ -160,7 +232,11 @@
   "fatalErrorDescription": "Попробуйте ещё раз. Если ошибка повторится, сообщите код запроса поддержке.",
   "requestIdLabel": "Код запроса: {requestId}",
   "@requestIdLabel": {
-    "placeholders": {"requestId": {"type": "String"}}
+    "placeholders": {
+      "requestId": {
+        "type": "String"
+      }
+    }
   },
   "authExpiredTitle": "Сессия истекла",
   "authExpiredDescription": "Для защиты данных нужно войти снова.",
@@ -312,5 +388,14 @@
   "operationAttentionBannerTitle": "Проверьте сохранённую операцию",
   "operationAttentionBannerDescription": "Автоматическая отправка остановлена. Баланс не изменён.",
   "operationLockedBannerDescription": "Отправка финансовых операций заблокирована после проверки безопасности. Новые подтверждения не будут отправляться автоматически.",
-  "operationRetryNowAction": "Повторить отправку"
+  "operationRetryNowAction": "Повторить отправку",
+  "operationBeforeOpeningDateDetail": "Учёт по счёту начинается {openingDate}. Операции раньше этой даты записать нельзя. Дату начала можно перенести назад в настройках счёта.",
+  "@operationBeforeOpeningDateDetail": {
+    "description": "Explains the account baseline bound and the recovery path.",
+    "placeholders": {
+      "openingDate": {
+        "type": "String"
+      }
+    }
+  }
 }
