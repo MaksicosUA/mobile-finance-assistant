@@ -280,8 +280,19 @@ class FinanceAccountAuditRow(Base):
     __tablename__ = "finance_account_audit_events"
     __table_args__ = (
         CheckConstraint(
-            "event_type = 'account_opened' AND actor_type = 'user'",
-            name="ck_finance_account_audit_open_event",
+            "event_type IN ('account_opened', 'account_baseline_corrected') "
+            "AND actor_type = 'user'",
+            name="ck_finance_account_audit_event_type",
+        ),
+        CheckConstraint(
+            "(event_type = 'account_opened' AND details IS NULL) OR "
+            "(event_type = 'account_baseline_corrected' AND details IS NOT NULL "
+            "AND jsonb_typeof(details) = 'object' "
+            "AND details ? 'previousOpeningBalanceOn' "
+            "AND details ? 'openingBalanceOn' "
+            "AND jsonb_typeof(details -> 'previousOpeningBalanceOn') = 'string' "
+            "AND jsonb_typeof(details -> 'openingBalanceOn') = 'string')",
+            name="ck_finance_account_audit_details",
         ),
         CheckConstraint(
             "octet_length(payload_hash) = 32",
@@ -292,10 +303,19 @@ class FinanceAccountAuditRow(Base):
             ["finance_accounts.id", "finance_accounts.user_id"],
             ondelete="CASCADE",
         ),
+        # One audit row per account-level command. This is what makes a
+        # replayed baseline correction idempotent: the account row keeps the
+        # opening command, so command identity lives here instead.
         UniqueConstraint(
             "account_id",
-            "event_type",
-            name="uq_finance_account_audit_account_event",
+            "command_id",
+            name="uq_finance_account_audit_account_command",
+        ),
+        Index(
+            "uq_finance_account_audit_single_open",
+            "account_id",
+            unique=True,
+            postgresql_where=text("event_type = 'account_opened'"),
         ),
         Index("ix_finance_account_audit_user_created", "user_id", "created_at"),
     )
@@ -307,6 +327,9 @@ class FinanceAccountAuditRow(Base):
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
     actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
     payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    # Only a baseline correction populates this, and only with the previous and
+    # new local dates. It never carries an amount or any user-authored text.
+    details: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -321,7 +344,8 @@ class FinanceAccountOutboxEventRow(Base):
             name="ck_finance_account_outbox_aggregate_type",
         ),
         CheckConstraint(
-            "event_type = 'finance.account.opened.v1'",
+            "event_type IN ('finance.account.opened.v1', "
+            "'finance.account.baseline_corrected.v1')",
             name="ck_finance_account_outbox_event_type",
         ),
         CheckConstraint(
@@ -371,8 +395,14 @@ class FinanceAccountOutboxEventRow(Base):
         ),
         UniqueConstraint(
             "aggregate_id",
-            "event_type",
-            name="uq_finance_account_outbox_aggregate_event",
+            "command_id",
+            name="uq_finance_account_outbox_aggregate_command",
+        ),
+        Index(
+            "uq_finance_account_outbox_single_open",
+            "aggregate_id",
+            unique=True,
+            postgresql_where=text("event_type = 'finance.account.opened.v1'"),
         ),
         Index(
             "ix_finance_account_outbox_unpublished",

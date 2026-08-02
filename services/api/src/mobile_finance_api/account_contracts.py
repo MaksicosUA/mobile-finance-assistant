@@ -164,6 +164,8 @@ AccountErrorCode = Literal[
     "COMMAND_CONFLICT",
     "ACCOUNT_ALREADY_INITIALIZED",
     "ACCOUNT_REJECTED",
+    "ACCOUNT_UNAVAILABLE",
+    "BASELINE_REJECTED",
     "AUTHENTICATION_UNAVAILABLE",
     "FINANCE_PERSISTENCE_UNAVAILABLE",
 ]
@@ -273,9 +275,77 @@ class ListAccountsResponse(AccountApiModel):
         return self
 
 
+class CorrectBaselineDraft(AccountApiModel):
+    """An explicit request to move an account baseline date earlier."""
+
+    schema_version: Literal["1"] = Field(alias="schemaVersion")
+    command_id: UUID = Field(alias="commandId")
+    account_id: UUID = Field(alias="accountId")
+    opening_balance_on: AccountDate = Field(alias="openingBalanceOn")
+
+
+class BaselineIssue(AccountApiModel):
+    code: Literal[
+        "BASELINE_NOT_EARLIER",
+        "BASELINE_DATE_IN_FUTURE",
+        "BASELINE_AFTER_EXISTING_OPERATION",
+    ]
+    field: Literal["openingBalanceOn"]
+
+
+class EvaluateBaselineRequest(AccountApiModel):
+    draft: CorrectBaselineDraft
+
+
+class EvaluateBaselineResponse(AccountApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    decision: Literal["REJECT", "NEEDS_CONFIRMATION"]
+    draft: CorrectBaselineDraft
+    draft_hash: DraftHash | None = Field(alias="draftHash")
+    current_opening_balance_on: AccountDate = Field(alias="currentOpeningBalanceOn")
+    earliest_operation_on: AccountDate | None = Field(alias="earliestOperationOn")
+    issues: tuple[BaselineIssue, ...] = ()
+
+    @model_validator(mode="after")
+    def decision_is_consistent(self) -> Self:
+        if self.decision == "REJECT" and (
+            not self.issues or self.draft_hash is not None
+        ):
+            raise ValueError("rejected drafts require issues and no confirmation hash")
+        if self.decision == "NEEDS_CONFIRMATION" and (
+            self.issues or self.draft_hash is None
+        ):
+            raise ValueError("confirmable drafts require a hash and no issues")
+        return self
+
+
+class CommitBaselineRequest(AccountApiModel):
+    schema_version: Literal["1"] = Field(alias="schemaVersion")
+    draft: CorrectBaselineDraft
+    draft_hash: DraftHash = Field(alias="draftHash")
+    confirmed_at: UtcTimestamp = Field(alias="confirmedAt")
+
+
+class CommitBaselineResponse(AccountApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    decision: Literal["ACCEPT"] = "ACCEPT"
+    idempotent_replay: bool = Field(alias="idempotentReplay")
+    previous_opening_balance_on: AccountDate = Field(alias="previousOpeningBalanceOn")
+    account: CommittedFinanceAccount
+
+    @model_validator(mode="after")
+    def correction_moves_earlier(self) -> Self:
+        if self.account.opening_balance_on > self.previous_opening_balance_on:
+            raise ValueError("a baseline correction may only move the date earlier")
+        return self
+
+
 class AccountErrorDetail(AccountApiModel):
     code: AccountErrorCode
     issues: tuple[AccountIssue, ...] = ()
+    baseline_issues: tuple[BaselineIssue, ...] = Field(
+        default=(), alias="baselineIssues"
+    )
 
     @model_validator(mode="after")
     def issues_are_consistent(self) -> Self:
@@ -283,6 +353,10 @@ class AccountErrorDetail(AccountApiModel):
             raise ValueError("account rejection requires issues")
         if self.code != "ACCOUNT_REJECTED" and self.issues:
             raise ValueError("only account rejection may expose issues")
+        if self.code == "BASELINE_REJECTED" and not self.baseline_issues:
+            raise ValueError("baseline rejection requires issues")
+        if self.code != "BASELINE_REJECTED" and self.baseline_issues:
+            raise ValueError("only baseline rejection may expose baseline issues")
         return self
 
 
@@ -296,6 +370,10 @@ type AccountMessage = (
     | CommitAccountRequest
     | CommitAccountResponse
     | ListAccountsResponse
+    | EvaluateBaselineRequest
+    | EvaluateBaselineResponse
+    | CommitBaselineRequest
+    | CommitBaselineResponse
     | AccountErrorResponse
 )
 
@@ -317,6 +395,29 @@ def confirmed_account_command_hash(
     """Bind every field of an explicitly confirmed account command."""
 
     command = CommitAccountRequest(
+        schema_version="1",
+        draft=draft,
+        draft_hash=evaluated_draft_hash,
+        confirmed_at=confirmed_at,
+    )
+    return _canonical_hash(command.model_dump(mode="json", by_alias=True))
+
+
+def baseline_draft_hash(draft: CorrectBaselineDraft) -> str:
+    """Return the canonical SHA-256 binding for a reviewed baseline draft."""
+
+    return _canonical_hash(draft.model_dump(mode="json", by_alias=True))
+
+
+def confirmed_baseline_command_hash(
+    *,
+    draft: CorrectBaselineDraft,
+    confirmed_at: datetime,
+    evaluated_draft_hash: str,
+) -> str:
+    """Bind every field of an explicitly confirmed baseline correction."""
+
+    command = CommitBaselineRequest(
         schema_version="1",
         draft=draft,
         draft_hash=evaluated_draft_hash,

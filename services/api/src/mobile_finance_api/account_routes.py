@@ -16,10 +16,15 @@ from .account_contracts import (
     AccountErrorDetail,
     AccountErrorResponse,
     AccountIssue,
+    BaselineIssue,
     CommitAccountRequest,
     CommitAccountResponse,
+    CommitBaselineRequest,
+    CommitBaselineResponse,
     EvaluateAccountRequest,
     EvaluateAccountResponse,
+    EvaluateBaselineRequest,
+    EvaluateBaselineResponse,
     ListAccountsResponse,
 )
 from .account_core import (
@@ -29,6 +34,8 @@ from .account_core import (
     AccountCore,
     AccountPersistenceUnavailable,
     AccountRejected,
+    AccountUnavailable,
+    BaselineRejected,
 )
 from .auth import AuthenticatedUser, current_user
 
@@ -213,6 +220,122 @@ async def list_accounts(
     raise public_error
 
 
+@router.post(
+    "/baseline/evaluate",
+    response_model=EvaluateBaselineResponse,
+    response_model_by_alias=True,
+    responses={
+        401: {"description": "Authentication is required"},
+        404: {
+            "model": AccountErrorResponse,
+            "description": "The account is not an owned active account",
+        },
+        422: {
+            "model": AccountErrorResponse,
+            "description": "Malformed baseline draft",
+        },
+        503: {
+            "model": AccountErrorResponse,
+            "description": "Finance account persistence is unavailable",
+        },
+    },
+)
+async def evaluate_baseline(
+    body: EvaluateBaselineRequest,
+    core: AccountCoreDependency,
+    user: CurrentUserDependency,
+) -> EvaluateBaselineResponse:
+    user_id = _authenticated_user_id(user)
+    try:
+        return await core.evaluate_baseline(user_id=user_id, draft=body.draft)
+    except AccountUnavailable:
+        public_error = _account_error(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="ACCOUNT_UNAVAILABLE",
+        )
+    except AccountPersistenceUnavailable:
+        public_error = _unavailable()
+    except Exception:
+        public_error = _unavailable()
+    raise public_error
+
+
+@router.post(
+    "/baseline/commit",
+    response_model=CommitBaselineResponse,
+    response_model_by_alias=True,
+    responses={
+        200: {
+            "model": CommitBaselineResponse,
+            "description": "Accepted or idempotently replayed baseline correction",
+        },
+        401: {"description": "Authentication is required"},
+        404: {
+            "model": AccountErrorResponse,
+            "description": "The account is not an owned active account",
+        },
+        409: {
+            "model": AccountErrorResponse,
+            "description": "Confirmation or command identity conflict",
+        },
+        422: {
+            "model": AccountErrorResponse,
+            "description": "Malformed or deterministically rejected correction",
+        },
+        503: {
+            "model": AccountErrorResponse,
+            "description": "Finance account persistence is unavailable",
+        },
+    },
+)
+async def commit_baseline(
+    body: CommitBaselineRequest,
+    core: AccountCoreDependency,
+    user: CurrentUserDependency,
+) -> CommitBaselineResponse:
+    user_id = _authenticated_user_id(user)
+    try:
+        result = await core.commit_baseline(
+            user_id=user_id,
+            draft=body.draft,
+            expected_draft_hash=body.draft_hash,
+            confirmed_at=body.confirmed_at,
+        )
+    except AccountConfirmationMismatch:
+        public_error = _account_error(
+            status_code=status.HTTP_409_CONFLICT,
+            code="CONFIRMATION_MISMATCH",
+        )
+    except AccountCommandConflict:
+        public_error = _account_error(
+            status_code=status.HTTP_409_CONFLICT,
+            code="COMMAND_CONFLICT",
+        )
+    except AccountUnavailable:
+        public_error = _account_error(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="ACCOUNT_UNAVAILABLE",
+        )
+    except BaselineRejected as rejection:
+        public_error = _account_error(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="BASELINE_REJECTED",
+            baseline_issues=rejection.issues,
+        )
+    except AccountPersistenceUnavailable:
+        public_error = _unavailable()
+    except Exception:
+        public_error = _unavailable()
+    else:
+        # A correction is never a creation, so it always answers 200.
+        return CommitBaselineResponse(
+            idempotent_replay=result.idempotent_replay,
+            previous_opening_balance_on=result.previous_opening_balance_on,
+            account=result.account,
+        )
+    raise public_error
+
+
 def _authenticated_user_id(user: AuthenticatedUser) -> UUID:
     try:
         return UUID(user.subject)
@@ -232,11 +355,17 @@ def _account_error(
     status_code: int,
     code: AccountErrorCode,
     issues: tuple[AccountIssue, ...] = (),
+    baseline_issues: tuple[BaselineIssue, ...] = (),
 ) -> HTTPException:
-    detail = AccountErrorDetail(code=code, issues=issues).model_dump(
-        mode="json",
-        by_alias=True,
-    )
+    detail = AccountErrorDetail(
+        code=code,
+        issues=issues,
+        baseline_issues=baseline_issues,
+    ).model_dump(mode="json", by_alias=True)
+    # Keep the wire shape of every pre-existing error byte-identical: installed
+    # clients parse this strictly, so the field appears only when it is used.
+    if not baseline_issues:
+        detail.pop("baselineIssues", None)
     return HTTPException(
         status_code=status_code,
         detail=detail,

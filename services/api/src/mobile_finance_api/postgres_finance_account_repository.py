@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .account_contracts import AccountDraft, CommittedFinanceAccount
+from .account_contracts import (
+    AccountDraft,
+    CommittedFinanceAccount,
+    CorrectBaselineDraft,
+)
 from .account_core import (
     AccountAlreadyInitialized,
     AccountCommandConflict,
@@ -18,6 +22,8 @@ from .account_core import (
     AccountPersistenceUnavailable,
     AccountSetupSnapshot,
     AccountWriteResult,
+    BaselineCorrectionSnapshot,
+    BaselineWriteResult,
     FinanceAccountSnapshot,
 )
 from .database import AsyncSessionFactory
@@ -25,6 +31,7 @@ from .db_models import (
     FinanceAccountAuditRow,
     FinanceAccountOutboxEventRow,
     FinanceAccountRow,
+    FinanceOperationRow,
     UserRow,
 )
 
@@ -233,6 +240,211 @@ class PostgresFinanceAccountRepository:
                 account=account,
                 idempotent_replay=False,
             )
+
+    async def get_baseline_snapshot(
+        self,
+        *,
+        user_id: UUID,
+        account_id: UUID,
+    ) -> BaselineCorrectionSnapshot | None:
+        async with self._session_factory() as database:
+            account = await database.scalar(
+                select(FinanceAccountRow).where(
+                    FinanceAccountRow.id == account_id,
+                    FinanceAccountRow.user_id == user_id,
+                    FinanceAccountRow.status == "active",
+                )
+            )
+            if account is None:
+                return None
+            earliest = await _earliest_operation_on(
+                database=database,
+                user_id=user_id,
+                account_id=account_id,
+            )
+        return BaselineCorrectionSnapshot(
+            account_id=account.id,
+            user_id=account.user_id,
+            opening_balance_on=account.opening_balance_on,
+            canonical_timezone=account.opening_timezone,
+            earliest_operation_on=earliest,
+        )
+
+    async def replay_existing_baseline(
+        self,
+        *,
+        user_id: UUID,
+        account_id: UUID,
+        command_id: UUID,
+        payload_hash: bytes,
+    ) -> BaselineWriteResult | None:
+        if len(payload_hash) != 32:
+            raise AccountPersistenceUnavailable
+        async with self._session_factory() as database:
+            audit = await database.scalar(
+                select(FinanceAccountAuditRow).where(
+                    FinanceAccountAuditRow.account_id == account_id,
+                    FinanceAccountAuditRow.user_id == user_id,
+                    FinanceAccountAuditRow.command_id == command_id,
+                )
+            )
+            if audit is None:
+                return None
+            if (
+                audit.payload_hash != payload_hash
+                or audit.event_type != "account_baseline_corrected"
+            ):
+                raise AccountCommandConflict
+            account = await database.scalar(
+                select(FinanceAccountRow).where(
+                    FinanceAccountRow.id == account_id,
+                    FinanceAccountRow.user_id == user_id,
+                )
+            )
+        if account is None:  # pragma: no cover - foreign key guarantees a row
+            raise AccountPersistenceUnavailable
+        return BaselineWriteResult(
+            account=_to_contract(account),
+            previous_opening_balance_on=_audit_previous_date(audit),
+            idempotent_replay=True,
+        )
+
+    async def correct_opening_baseline(
+        self,
+        *,
+        user_id: UUID,
+        draft: CorrectBaselineDraft,
+        payload_hash: bytes,
+        confirmed_at: datetime,
+    ) -> BaselineWriteResult:
+        if len(payload_hash) != 32:
+            raise AccountPersistenceUnavailable
+        del confirmed_at  # bound into payload_hash; the audit row carries created_at
+        created_at = _aware_utc(self._clock())
+
+        async with self._session_factory() as database:
+            async with database.begin():
+                account = await database.scalar(
+                    select(FinanceAccountRow)
+                    .where(
+                        FinanceAccountRow.id == draft.account_id,
+                        FinanceAccountRow.user_id == user_id,
+                        FinanceAccountRow.status == "active",
+                    )
+                    .with_for_update()
+                )
+                if account is None:
+                    raise AccountPersistenceUnavailable
+
+                existing = await database.scalar(
+                    select(FinanceAccountAuditRow).where(
+                        FinanceAccountAuditRow.account_id == draft.account_id,
+                        FinanceAccountAuditRow.user_id == user_id,
+                        FinanceAccountAuditRow.command_id == draft.command_id,
+                    )
+                )
+                if existing is not None:
+                    if (
+                        existing.payload_hash != payload_hash
+                        or existing.event_type != "account_baseline_corrected"
+                    ):
+                        raise AccountCommandConflict
+                    return BaselineWriteResult(
+                        account=_to_contract(account),
+                        previous_opening_balance_on=_audit_previous_date(existing),
+                        idempotent_replay=True,
+                    )
+
+                previous_opening_balance_on = account.opening_balance_on
+                # Re-check under the row lock: evaluation and confirmation are
+                # separate requests, so the bound may have moved in between.
+                if draft.opening_balance_on >= previous_opening_balance_on:
+                    raise AccountPersistenceUnavailable
+                earliest = await _earliest_operation_on(
+                    database=database,
+                    user_id=user_id,
+                    account_id=draft.account_id,
+                )
+                if earliest is not None and draft.opening_balance_on > earliest:
+                    raise AccountPersistenceUnavailable
+
+                account.opening_balance_on = draft.opening_balance_on
+                database.add_all(
+                    [
+                        FinanceAccountAuditRow(
+                            id=uuid4(),
+                            account_id=draft.account_id,
+                            user_id=user_id,
+                            command_id=draft.command_id,
+                            event_type="account_baseline_corrected",
+                            actor_type="user",
+                            payload_hash=payload_hash,
+                            details={
+                                "previousOpeningBalanceOn": (
+                                    previous_opening_balance_on.isoformat()
+                                ),
+                                "openingBalanceOn": (
+                                    draft.opening_balance_on.isoformat()
+                                ),
+                            },
+                            created_at=created_at,
+                        ),
+                        FinanceAccountOutboxEventRow(
+                            id=uuid4(),
+                            aggregate_type="finance_account",
+                            aggregate_id=draft.account_id,
+                            user_id=user_id,
+                            command_id=draft.command_id,
+                            event_type="finance.account.baseline_corrected.v1",
+                            payload=_outbox_payload(
+                                account_id=draft.account_id,
+                                user_id=user_id,
+                                command_id=draft.command_id,
+                            ),
+                            created_at=created_at,
+                            published_at=None,
+                            attempt_count=0,
+                            validation_failure_count=0,
+                            next_attempt_at=created_at,
+                            last_failed_at=None,
+                            failure_code=None,
+                            dead_lettered_at=None,
+                        ),
+                    ]
+                )
+            return BaselineWriteResult(
+                account=_to_contract(account),
+                previous_opening_balance_on=previous_opening_balance_on,
+                idempotent_replay=False,
+            )
+
+
+async def _earliest_operation_on(
+    *,
+    database: AsyncSession,
+    user_id: UUID,
+    account_id: UUID,
+) -> date | None:
+    earliest: date | None = await database.scalar(
+        select(func.min(FinanceOperationRow.occurred_on)).where(
+            FinanceOperationRow.account_id == account_id,
+            FinanceOperationRow.user_id == user_id,
+        )
+    )
+    return earliest
+
+
+def _audit_previous_date(audit: FinanceAccountAuditRow) -> date:
+    details = audit.details
+    if not isinstance(details, dict):  # pragma: no cover - guarded by CHECK
+        raise AccountPersistenceUnavailable
+    raw = details.get("previousOpeningBalanceOn")
+    if not isinstance(raw, str):  # pragma: no cover - guarded by CHECK
+        raise AccountPersistenceUnavailable
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as error:  # pragma: no cover - guarded by CHECK
+        raise AccountPersistenceUnavailable from error
 
 
 async def _active_user(*, database: AsyncSession, user_id: UUID) -> UserRow:

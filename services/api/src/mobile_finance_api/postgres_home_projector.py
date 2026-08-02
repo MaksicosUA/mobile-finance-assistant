@@ -650,10 +650,26 @@ def _validate_account_events(
             event.aggregate_type != "finance_account"
             or event.aggregate_id != account.id
             or event.user_id != account.user_id
-            or event.command_id != account.command_id
-            or event.event_type != "finance.account.opened.v1"
-            or event.payload != expected_payload
         ):
+            raise _OutboxContractError(kind="account", event_id=event.id)
+        if event.event_type == "finance.account.opened.v1":
+            # The opening event is bound to the account's own opening command.
+            if (
+                event.command_id != account.command_id
+                or event.payload != expected_payload
+            ):
+                raise _OutboxContractError(kind="account", event_id=event.id)
+        elif event.event_type == "finance.account.baseline_corrected.v1":
+            # A correction carries its own command identity (ADR 0016), so the
+            # payload is checked against that instead of the opening command.
+            if event.payload != {
+                "schemaVersion": "1",
+                "accountId": str(account.id),
+                "userId": str(account.user_id),
+                "commandId": str(event.command_id),
+            }:
+                raise _OutboxContractError(kind="account", event_id=event.id)
+        else:
             raise _OutboxContractError(kind="account", event_id=event.id)
 
 
