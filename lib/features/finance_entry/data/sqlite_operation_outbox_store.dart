@@ -1044,9 +1044,12 @@ final class SqliteOperationOutboxStore implements OperationOutboxStore {
         options: sqflite.OpenDatabaseOptions(
           version: _schemaVersion,
           onConfigure: (database) async {
+            // Android rejects statements that return rows through execute().
+            // busy_timeout and secure_delete always return their new value, so
+            // they must use the query path; foreign_keys returns no rows.
             await database.execute('PRAGMA foreign_keys = ON');
-            await database.execute('PRAGMA busy_timeout = 5000');
-            await database.execute('PRAGMA secure_delete = ON');
+            await database.rawQuery('PRAGMA busy_timeout = 5000');
+            await database.rawQuery('PRAGMA secure_delete = ON');
           },
           onCreate: (database, version) => _createSchema(database),
         ),
