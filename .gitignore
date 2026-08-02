@@ -38,6 +38,7 @@ migrate_working_dir/
 .env.*
 !.env.example
 .venv/
+.ci-venv/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
