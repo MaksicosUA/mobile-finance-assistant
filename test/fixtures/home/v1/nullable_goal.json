@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-07-11T01:20:00Z",
+  "dataAsOf": "2026-07-11T01:19:58Z",
+  "baseCurrency": "EUR",
+  "user": { "displayName": "Максим" },
+  "balance": {
+    "amount": "3240.50",
+    "deltaAmount": "182.40",
+    "deltaPercent": null
+  },
+  "monthSummary": {
+    "from": "2026-07-01",
+    "to": "2026-07-31",
+    "income": "1930.00",
+    "expense": "847.20",
+    "netFlow": "1082.80"
+  },
+  "trend": {
+    "metric": "expense",
+    "period": "30d",
+    "total": "847.20",
+    "points": [
+      { "date": "2026-07-10", "amount": "20.00" },
+      { "date": "2026-07-11", "amount": "34.00" }
+    ]
+  },
+  "primaryGoal": null,
+  "upcomingPayments": [
+    {
+      "id": "payment_fixture_1",
+      "title": "Аренда",
+      "dueAt": "2026-07-16T07:00:00Z",
+      "amount": "530.00",
+      "currency": "EUR",
+      "status": "scheduled"
+    }
+  ],
+  "recentTransactions": [
+    {
+      "id": "transaction_fixture_1",
+      "title": null,
+      "category": null,
+      "occurredOn": "2026-07-10",
+      "occurredAt": null,
+      "amount": "-38.00",
+      "currency": "EUR",
+      "direction": "expense",
+      "status": "confirmed"
+    }
+  ],
+  "availableActions": ["voice_entry", "analytics"],
+  "warnings": []
+}

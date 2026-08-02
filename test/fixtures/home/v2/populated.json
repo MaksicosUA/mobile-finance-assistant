@@ -1,0 +1,130 @@
+{
+  "generatedAt": "2026-07-11T01:20:00Z",
+  "dataAsOf": "2026-07-11T01:19:58Z",
+  "baseCurrency": "EUR",
+  "user": {
+    "displayName": "Алексей"
+  },
+  "balance": {
+    "amount": "3240.50",
+    "deltaAmount": "182.40",
+    "deltaPercent": "5.96"
+  },
+  "monthSummary": {
+    "from": "2026-07-01",
+    "to": "2026-07-31",
+    "income": "1930.00",
+    "expense": "847.20",
+    "netFlow": "1082.80"
+  },
+  "trend": {
+    "metric": "expense",
+    "period": "30d",
+    "total": "847.20",
+    "points": [
+      { "date": "2026-06-12", "amount": "24.00" },
+      { "date": "2026-06-13", "amount": "31.00" },
+      { "date": "2026-06-14", "amount": "18.00" },
+      { "date": "2026-06-15", "amount": "12.00" },
+      { "date": "2026-06-16", "amount": "40.00" },
+      { "date": "2026-06-17", "amount": "27.00" },
+      { "date": "2026-06-18", "amount": "22.00" },
+      { "date": "2026-06-19", "amount": "35.00" },
+      { "date": "2026-06-20", "amount": "16.00" },
+      { "date": "2026-06-21", "amount": "20.00" },
+      { "date": "2026-06-22", "amount": "44.00" },
+      { "date": "2026-06-23", "amount": "29.00" },
+      { "date": "2026-06-24", "amount": "18.00" },
+      { "date": "2026-06-25", "amount": "25.00" },
+      { "date": "2026-06-26", "amount": "33.00" },
+      { "date": "2026-06-27", "amount": "21.00" },
+      { "date": "2026-06-28", "amount": "15.00" },
+      { "date": "2026-06-29", "amount": "38.00" },
+      { "date": "2026-06-30", "amount": "26.00" },
+      { "date": "2026-07-01", "amount": "19.00" },
+      { "date": "2026-07-02", "amount": "30.00" },
+      { "date": "2026-07-03", "amount": "24.00" },
+      { "date": "2026-07-04", "amount": "47.00" },
+      { "date": "2026-07-05", "amount": "22.00" },
+      { "date": "2026-07-06", "amount": "17.00" },
+      { "date": "2026-07-07", "amount": "28.00" },
+      { "date": "2026-07-08", "amount": "36.00" },
+      { "date": "2026-07-09", "amount": "23.00" },
+      { "date": "2026-07-10", "amount": "20.00" },
+      { "date": "2026-07-11", "amount": "34.00" }
+    ]
+  },
+  "primaryGoal": {
+    "id": "goal_fixture_1",
+    "title": "Финансовый резерв",
+    "current": "3200.00",
+    "target": "10000.00",
+    "currency": "EUR",
+    "dueDate": "2026-12-31",
+    "progressPercent": "32",
+    "monthlyContribution": "1360.00"
+  },
+  "upcomingPayments": [
+    {
+      "id": "payment_fixture_1",
+      "title": "Аренда",
+      "dueAt": "2026-07-16T07:00:00Z",
+      "amount": "530.00",
+      "currency": "EUR",
+      "status": "scheduled"
+    },
+    {
+      "id": "payment_fixture_2",
+      "title": "Интернет",
+      "dueAt": "2026-07-20T07:00:00Z",
+      "amount": "39.99",
+      "currency": "EUR",
+      "status": "scheduled"
+    },
+    {
+      "id": "payment_fixture_3",
+      "title": "Страховка",
+      "dueAt": "2026-07-23T07:00:00Z",
+      "amount": "74.00",
+      "currency": "EUR",
+      "status": "scheduled"
+    }
+  ],
+  "recentTransactions": [
+    {
+      "id": "transaction_fixture_1",
+      "title": "Продуктовый магазин",
+      "category": "Продукты",
+      "occurredOn": "2026-07-10",
+      "occurredAt": "2026-07-10T17:45:00Z",
+      "amount": "-38.00",
+      "currency": "EUR",
+      "direction": "expense",
+      "status": "confirmed"
+    },
+    {
+      "id": "transaction_fixture_2",
+      "title": "Зарплата",
+      "category": "Доход",
+      "occurredOn": "2026-07-05",
+      "occurredAt": "2026-07-05T08:00:00Z",
+      "amount": "1930.00",
+      "currency": "EUR",
+      "direction": "income",
+      "status": "confirmed"
+    },
+    {
+      "id": "transaction_fixture_3",
+      "title": "Дивиденды ETF",
+      "category": "Инвестиционный доход",
+      "occurredOn": "2026-07-03",
+      "occurredAt": "2026-07-03T14:20:00Z",
+      "amount": "55.00",
+      "currency": "USD",
+      "direction": "income",
+      "status": "confirmed"
+    }
+  ],
+  "availableActions": ["voice_entry", "analytics", "goals"],
+  "warnings": []
+}
