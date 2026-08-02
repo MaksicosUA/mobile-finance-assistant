@@ -35,6 +35,12 @@ enum FinanceIssueCode {
   unsupportedDateExpression,
 }
 
+enum FinanceBaselineIssueCode {
+  baselineNotEarlier,
+  baselineDateInFuture,
+  baselineAfterExistingOperation,
+}
+
 enum FinanceIssueField {
   account,
   openingBalanceOn,
@@ -288,6 +294,141 @@ final class FinanceAccountCommit {
   final bool idempotentReplay;
   final String canonicalTimezone;
   final int timezoneRevision;
+  final FinanceAccount account;
+}
+
+@immutable
+final class FinanceBaselineIssue {
+  const FinanceBaselineIssue({required this.code});
+
+  final FinanceBaselineIssueCode code;
+
+  factory FinanceBaselineIssue.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'code', 'field'});
+    _requiredLiteral(json, 'field', 'openingBalanceOn');
+    return FinanceBaselineIssue(
+      code: _baselineIssueCode(_requiredString(json, 'code')),
+    );
+  }
+}
+
+/// An explicit request to move an account baseline date earlier (ADR 0016).
+@immutable
+final class FinanceBaselineDraft {
+  const FinanceBaselineDraft({
+    required this.commandId,
+    required this.accountId,
+    required this.openingBalanceOn,
+  });
+
+  final String commandId;
+  final String accountId;
+  final String openingBalanceOn;
+
+  factory FinanceBaselineDraft.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'commandId',
+      'accountId',
+      'openingBalanceOn',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return FinanceBaselineDraft(
+      commandId: _requiredUuid(json, 'commandId'),
+      accountId: _requiredUuid(json, 'accountId'),
+      openingBalanceOn: _date(json, 'openingBalanceOn'),
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'accountId': accountId,
+    'openingBalanceOn': openingBalanceOn,
+  };
+}
+
+sealed class FinanceBaselineEvaluation {
+  const FinanceBaselineEvaluation({
+    required this.draft,
+    required this.currentOpeningBalanceOn,
+    required this.earliestOperationOn,
+  });
+
+  final FinanceBaselineDraft draft;
+
+  /// The bound the user is currently stuck behind.
+  final String currentOpeningBalanceOn;
+
+  /// The oldest recorded operation, or null when none exists yet.
+  final String? earliestOperationOn;
+}
+
+@immutable
+final class FinanceBaselineNeedsConfirmation extends FinanceBaselineEvaluation {
+  const FinanceBaselineNeedsConfirmation({
+    required super.draft,
+    required super.currentOpeningBalanceOn,
+    required super.earliestOperationOn,
+    required this.draftHash,
+  });
+
+  final String draftHash;
+}
+
+@immutable
+final class FinanceBaselineRejected extends FinanceBaselineEvaluation {
+  FinanceBaselineRejected({
+    required super.draft,
+    required super.currentOpeningBalanceOn,
+    required super.earliestOperationOn,
+    required List<FinanceBaselineIssue> issues,
+  }) : issues = List.unmodifiable(issues);
+
+  final List<FinanceBaselineIssue> issues;
+}
+
+@immutable
+final class FinanceBaselineCommitCommand {
+  const FinanceBaselineCommitCommand._({
+    required this.draft,
+    required this.draftHash,
+    required this.confirmedAt,
+  });
+
+  factory FinanceBaselineCommitCommand.fromReview({
+    required FinanceBaselineNeedsConfirmation review,
+    required DateTime confirmedAt,
+  }) {
+    return FinanceBaselineCommitCommand._(
+      draft: review.draft,
+      draftHash: validateDraftHash(review.draftHash),
+      confirmedAt: _utcWireTimestamp(confirmedAt),
+    );
+  }
+
+  final FinanceBaselineDraft draft;
+  final String draftHash;
+  final String confirmedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'draft': draft.toJson(),
+    'draftHash': draftHash,
+    'confirmedAt': confirmedAt,
+  };
+}
+
+@immutable
+final class FinanceBaselineCommit {
+  const FinanceBaselineCommit({
+    required this.idempotentReplay,
+    required this.previousOpeningBalanceOn,
+    required this.account,
+  });
+
+  final bool idempotentReplay;
+  final String previousOpeningBalanceOn;
   final FinanceAccount account;
 }
 
@@ -629,6 +770,14 @@ void validateAccountDraft(FinanceAccountDraft draft) {
 void validateOperationDraft(FinanceOperationDraft draft) {
   FinanceOperationDraft.fromJson(draft.toJson());
 }
+
+FinanceBaselineIssueCode _baselineIssueCode(String value) => switch (value) {
+  'BASELINE_NOT_EARLIER' => FinanceBaselineIssueCode.baselineNotEarlier,
+  'BASELINE_DATE_IN_FUTURE' => FinanceBaselineIssueCode.baselineDateInFuture,
+  'BASELINE_AFTER_EXISTING_OPERATION' =>
+    FinanceBaselineIssueCode.baselineAfterExistingOperation,
+  _ => throw FormatException('Unsupported baseline issue code: $value'),
+};
 
 String validateDraftHash(String value) {
   if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(value)) {
