@@ -1,0 +1,84 @@
+{
+  "generatedAt": "2026-07-11T01:20:00Z",
+  "dataAsOf": "2026-07-11T01:19:58Z",
+  "baseCurrency": "EUR",
+  "user": {
+    "displayName": "Максим",
+    "futureAvatarShape": "rounded"
+  },
+  "balance": {
+    "amount": "3240.50",
+    "deltaAmount": "182.40",
+    "deltaPercent": "5.96",
+    "futureLiabilityPolicy": "included"
+  },
+  "monthSummary": {
+    "from": "2026-07-01",
+    "to": "2026-07-31",
+    "income": "1930.00",
+    "expense": "847.20",
+    "netFlow": "1082.80",
+    "futureComparison": "stable"
+  },
+  "trend": {
+    "metric": "future_metric",
+    "period": "future_period",
+    "total": "34.00",
+    "points": [
+      {
+        "date": "2026-07-11",
+        "amount": "34.00",
+        "futureConfidence": "high"
+      }
+    ],
+    "futureBaseline": "30.00"
+  },
+  "primaryGoal": null,
+  "upcomingPayments": [
+    {
+      "id": "payment_fixture_unknown",
+      "title": "Синтетический платёж",
+      "dueAt": "2026-07-16T07:00:00Z",
+      "amount": "12.34",
+      "currency": "EUR",
+      "status": "future_status",
+      "futureProvider": "fixture"
+    }
+  ],
+  "recentTransactions": [
+    {
+      "id": "transaction_fixture_unknown",
+      "title": "Синтетическая операция",
+      "category": "Другое",
+      "occurredOn": "2026-07-10",
+      "occurredAt": "2026-07-10T17:45:00Z",
+      "amount": "12.34",
+      "currency": "EUR",
+      "direction": "future_direction",
+      "status": "confirmed",
+      "futureIcon": "spark"
+    },
+    {
+      "id": "transaction_fixture_pending",
+      "title": "Неподтверждённая операция",
+      "category": "Другое",
+      "occurredOn": "2026-07-09",
+      "occurredAt": "2026-07-09T17:45:00Z",
+      "amount": "9.87",
+      "currency": "EUR",
+      "direction": "expense",
+      "status": "pending"
+    }
+  ],
+  "availableActions": ["voice_entry", "future_action"],
+  "warnings": [
+    {
+      "code": "future_warning",
+      "block": "future_block",
+      "futureRecovery": "automatic"
+    }
+  ],
+  "futureRootField": {
+    "enabled": true
+  }
+}

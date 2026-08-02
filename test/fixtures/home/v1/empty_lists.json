@@ -1,0 +1,29 @@
+{
+  "generatedAt": "2026-07-11T01:20:00Z",
+  "dataAsOf": "2026-07-11T01:19:58Z",
+  "baseCurrency": "EUR",
+  "user": { "displayName": "Максим" },
+  "balance": {
+    "amount": "0.00",
+    "deltaAmount": "0.00",
+    "deltaPercent": "0"
+  },
+  "monthSummary": {
+    "from": "2026-07-01",
+    "to": "2026-07-31",
+    "income": "0.00",
+    "expense": "0.00",
+    "netFlow": "0.00"
+  },
+  "trend": {
+    "metric": "expense",
+    "period": "30d",
+    "total": "0.00",
+    "points": []
+  },
+  "primaryGoal": null,
+  "upcomingPayments": [],
+  "recentTransactions": [],
+  "availableActions": ["voice_entry"],
+  "warnings": []
+}
