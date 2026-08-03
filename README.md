@@ -1,9 +1,8 @@
 # Mobile Finance Assistant
 
 A mobile-first personal finance assistant built with Flutter and FastAPI. This
-repository is the clean production-code export: internal tests, product
-documents, project memory, and agent instructions are intentionally maintained
-outside it.
+repository holds the production source and both test suites. Product documents,
+project memory, and agent instructions are intentionally maintained outside it.
 
 ## Included
 
@@ -74,6 +73,9 @@ AI extraction, and full chat are not part of this slice.
   nullable operation facts
 - `contracts/finance/v1/` — versioned Finance account and operation schemas
 - `services/api/` — FastAPI service, PostgreSQL adapters, and Alembic migrations
+- `test/` — Flutter unit, widget, golden, and contract tests
+- `services/api/tests/` — backend tests; `*_postgres_e2e.py` scripts need a
+  live database and are not collected by default
 - `android/` and `ios/` — native Flutter hosts
 
 ## Run the fixture app
@@ -280,8 +282,11 @@ resolver with timestamps or local counters.
 ## GitHub Actions APKs
 
 Every push, and each manual workflow run, performs the locked dependency,
-localization, formatting, and analysis checks before building two separate
-14-day artifacts. The `fixture-debug` APK uses synthetic Home data. The
+localization, formatting, and analysis checks, then runs both test suites,
+before building two separate 14-day artifacts. `flutter test` and `pytest` are
+mandatory gates: a failing test produces no APK.
+
+The `fixture-debug` APK uses synthetic Home data. The
 `network-debug` APK enables authentication and the real API, and includes a
 SHA-256 checksum alongside each APK. Checkout uses full Git history, the
 version is resolved once, and both manifests are verified before upload. Each
