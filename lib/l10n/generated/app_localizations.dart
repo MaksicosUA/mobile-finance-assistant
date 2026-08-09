@@ -759,6 +759,150 @@ abstract class AppLocalizations {
   /// **'Настройки языка и валюты пока демонстрационные.'**
   String get settingsNote;
 
+  /// No description provided for @baselineSettingsAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата начала учёта'**
+  String get baselineSettingsAction;
+
+  /// No description provided for @baselineSettingsDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Разрешить операции за более ранний период'**
+  String get baselineSettingsDescription;
+
+  /// No description provided for @baselineCorrectionTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата начала учёта'**
+  String get baselineCorrectionTitle;
+
+  /// No description provided for @baselineCorrectionLoading.
+  ///
+  /// In ru, this message translates to:
+  /// **'Загружаем настройки счёта'**
+  String get baselineCorrectionLoading;
+
+  /// No description provided for @baselineCorrectionDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Перенесите дату назад, чтобы добавить более ранние операции. Начальный остаток и валюта не изменятся.'**
+  String get baselineCorrectionDescription;
+
+  /// No description provided for @baselineCurrentDateLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Текущая дата начала учёта'**
+  String get baselineCurrentDateLabel;
+
+  /// No description provided for @baselineNewDateLabel.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новая дата'**
+  String get baselineNewDateLabel;
+
+  /// No description provided for @baselineChooseDateAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выбрать дату'**
+  String get baselineChooseDateAction;
+
+  /// No description provided for @baselineDateRangeHelp.
+  ///
+  /// In ru, this message translates to:
+  /// **'Можно выбрать только дату раньше текущей даты начала учёта.'**
+  String get baselineDateRangeHelp;
+
+  /// No description provided for @baselineReviewTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверьте новую дату'**
+  String get baselineReviewTitle;
+
+  /// No description provided for @baselineReviewDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'После подтверждения главный экран и месячные итоги будут пересчитаны из авторитетных данных.'**
+  String get baselineReviewDescription;
+
+  /// No description provided for @baselineConfirmAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтвердить новую дату'**
+  String get baselineConfirmAction;
+
+  /// No description provided for @baselineSuccessTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата начала учёта изменена'**
+  String get baselineSuccessTitle;
+
+  /// No description provided for @baselineSuccessDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Теперь можно добавлять операции начиная с {date}.'**
+  String baselineSuccessDescription(String date);
+
+  /// No description provided for @baselineHomeDelayedDescription.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата уже сохранена. Главный экран обновится позже; повторно подтверждать изменение не нужно.'**
+  String get baselineHomeDelayedDescription;
+
+  /// No description provided for @baselineDoneAction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get baselineDoneAction;
+
+  /// No description provided for @baselineUnavailableTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дату пока нельзя изменить'**
+  String get baselineUnavailableTitle;
+
+  /// No description provided for @baselineAccountRequired.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала настройте первый счёт.'**
+  String get baselineAccountRequired;
+
+  /// No description provided for @baselineMinimumDateReached.
+  ///
+  /// In ru, this message translates to:
+  /// **'Счёт уже начинается с самой ранней поддерживаемой даты.'**
+  String get baselineMinimumDateReached;
+
+  /// No description provided for @baselineNotEarlierError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите дату раньше текущей даты начала учёта.'**
+  String get baselineNotEarlierError;
+
+  /// No description provided for @baselineFutureError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата начала учёта не может быть позже сегодняшнего дня.'**
+  String get baselineFutureError;
+
+  /// No description provided for @baselineAfterOperationError.
+  ///
+  /// In ru, this message translates to:
+  /// **'Новая дата не может быть позже самой ранней сохранённой операции.'**
+  String get baselineAfterOperationError;
+
+  /// No description provided for @baselineLoadFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить настройки счёта.'**
+  String get baselineLoadFailed;
+
+  /// No description provided for @baselineChangeFailed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось изменить дату. Финансовые данные не были изменены клиентом.'**
+  String get baselineChangeFailed;
+
   /// No description provided for @stubDescription.
   ///
   /// In ru, this message translates to:
@@ -1026,7 +1170,7 @@ abstract class AppLocalizations {
   /// No description provided for @accountSetupDescription.
   ///
   /// In ru, this message translates to:
-  /// **'Укажите фактический остаток и дату, с которой начинается учёт. Перед сохранением вы проверите все данные.'**
+  /// **'Укажите фактический остаток. Дата начала задаёт самый ранний день, за который можно добавить операцию. Перед сохранением вы проверите данные.'**
   String get accountSetupDescription;
 
   /// No description provided for @accountNameField.

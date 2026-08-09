@@ -4,7 +4,7 @@ import asyncio
 import calendar
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -612,7 +612,6 @@ async def _exercise_http() -> tuple[
 
 async def _restart_check(
     *,
-    engine: AsyncEngine,
     session_factory: AsyncSessionFactory,
     tokens: AccessTokenCodec,
     identity: _Identity,
@@ -635,7 +634,169 @@ async def _restart_check(
         assert replay.status_code == 200
         assert replay.json()["idempotentReplay"] is True
         assert replay.json()["account"]["accountId"] == account_id
-    await engine.dispose()
+
+
+async def _baseline_replay_check(
+    *,
+    session_factory: AsyncSessionFactory,
+    tokens: AccessTokenCodec,
+    identity: _Identity,
+    opening_commit_body: dict[str, object],
+    account_id: str,
+) -> None:
+    app = _application(session_factory=session_factory, tokens=tokens)
+    opening_on = date.fromisoformat(OPENING_ON)
+    first_on = opening_on - timedelta(days=10)
+    second_on = opening_on - timedelta(days=20)
+    first_draft = {
+        "schemaVersion": "1",
+        "commandId": "44444444-4444-4444-8444-444444444444",
+        "accountId": account_id,
+        "openingBalanceOn": first_on.isoformat(),
+    }
+    second_draft = {
+        "schemaVersion": "1",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "accountId": account_id,
+        "openingBalanceOn": second_on.isoformat(),
+    }
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        first_evaluation = await client.post(
+            "/api/v1/accounts/baseline/evaluate",
+            json={"draft": first_draft},
+            headers=identity.headers,
+        )
+        assert first_evaluation.status_code == 200, first_evaluation.text
+        assert first_evaluation.json()["decision"] == "NEEDS_CONFIRMATION"
+        assert first_evaluation.json()["currentOpeningBalanceOn"] == OPENING_ON
+        first_commit = {
+            "schemaVersion": "1",
+            "draft": first_draft,
+            "draftHash": first_evaluation.json()["draftHash"],
+            "confirmedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        first_responses = await asyncio.gather(
+            client.post(
+                "/api/v1/accounts/baseline/commit",
+                json=first_commit,
+                headers=identity.headers,
+            ),
+            client.post(
+                "/api/v1/accounts/baseline/commit",
+                json=first_commit,
+                headers=identity.headers,
+            ),
+        )
+        assert all(response.status_code == 200 for response in first_responses)
+        first_payloads = tuple(response.json() for response in first_responses)
+        assert sorted(payload["idempotentReplay"] for payload in first_payloads) == [
+            False,
+            True,
+        ]
+        assert all(
+            payload["previousOpeningBalanceOn"] == OPENING_ON
+            and payload["account"]["openingBalanceOn"] == first_on.isoformat()
+            for payload in first_payloads
+        )
+
+        second_evaluation = await client.post(
+            "/api/v1/accounts/baseline/evaluate",
+            json={"draft": second_draft},
+            headers=identity.headers,
+        )
+        assert second_evaluation.status_code == 200, second_evaluation.text
+        assert second_evaluation.json()["currentOpeningBalanceOn"] == (
+            first_on.isoformat()
+        )
+        second_commit = {
+            "schemaVersion": "1",
+            "draft": second_draft,
+            "draftHash": second_evaluation.json()["draftHash"],
+            "confirmedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        second_response = await client.post(
+            "/api/v1/accounts/baseline/commit",
+            json=second_commit,
+            headers=identity.headers,
+        )
+        assert second_response.status_code == 200, second_response.text
+        assert second_response.json()["idempotentReplay"] is False
+
+        replayed_first = await client.post(
+            "/api/v1/accounts/baseline/commit",
+            json=first_commit,
+            headers=identity.headers,
+        )
+        assert replayed_first.status_code == 200, replayed_first.text
+        replayed_first_body = replayed_first.json()
+        assert replayed_first_body["idempotentReplay"] is True
+        assert replayed_first_body["previousOpeningBalanceOn"] == OPENING_ON
+        assert replayed_first_body["account"]["openingBalanceOn"] == (
+            first_on.isoformat()
+        )
+
+        replayed_opening = await client.post(
+            "/api/v1/accounts/commit",
+            json=opening_commit_body,
+            headers=identity.headers,
+        )
+        assert replayed_opening.status_code == 200, replayed_opening.text
+        replayed_opening_body = replayed_opening.json()
+        assert replayed_opening_body["idempotentReplay"] is True
+        assert replayed_opening_body["account"]["openingBalanceOn"] == OPENING_ON
+
+        listed = await client.get("/api/v1/accounts", headers=identity.headers)
+        assert listed.status_code == 200, listed.text
+        live_account = listed.json()["accounts"][0]
+        assert live_account["openingBalanceOn"] == second_on.isoformat()
+        # Replayed receipts restore only their historical date. Every immutable
+        # field still comes from the current authoritative account row.
+        for key in (
+            "accountId",
+            "userId",
+            "commandId",
+            "name",
+            "currency",
+            "openingBalance",
+            "openingTimezone",
+            "status",
+            "isDefault",
+            "confirmedAt",
+            "createdAt",
+        ):
+            assert replayed_first_body["account"][key] == live_account[key]
+            assert replayed_opening_body["account"][key] == live_account[key]
+
+    async with session_factory() as database:
+        audits = tuple(
+            (
+                await database.scalars(
+                    select(FinanceAccountAuditRow).where(
+                        FinanceAccountAuditRow.account_id == UUID(account_id)
+                    )
+                )
+            ).all()
+        )
+        outbox = tuple(
+            (
+                await database.scalars(
+                    select(FinanceAccountOutboxEventRow).where(
+                        FinanceAccountOutboxEventRow.aggregate_id == UUID(account_id)
+                    )
+                )
+            ).all()
+        )
+    assert len(audits) == 3
+    assert len(outbox) == 3
+    assert sum(row.event_type == "account_baseline_corrected" for row in audits) == 2
+    assert (
+        sum(row.event_type == "finance.account.baseline_corrected.v1" for row in outbox)
+        == 2
+    )
 
 
 def _assert_lossy_downgrade_refused() -> None:
@@ -650,14 +811,23 @@ def _assert_lossy_downgrade_refused() -> None:
 
 async def main() -> None:
     engine, factory, tokens, identity, commit_body, account_id = await _exercise_http()
-    await _restart_check(
-        engine=engine,
-        session_factory=factory,
-        tokens=tokens,
-        identity=identity,
-        commit_body=commit_body,
-        account_id=account_id,
-    )
+    try:
+        await _restart_check(
+            session_factory=factory,
+            tokens=tokens,
+            identity=identity,
+            commit_body=commit_body,
+            account_id=account_id,
+        )
+        await _baseline_replay_check(
+            session_factory=factory,
+            tokens=tokens,
+            identity=identity,
+            opening_commit_body=commit_body,
+            account_id=account_id,
+        )
+    finally:
+        await engine.dispose()
 
 
 if __name__ == "__main__":

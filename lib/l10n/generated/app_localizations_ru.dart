@@ -392,6 +392,90 @@ class AppLocalizationsRu extends AppLocalizations {
   String get settingsNote => 'Настройки языка и валюты пока демонстрационные.';
 
   @override
+  String get baselineSettingsAction => 'Дата начала учёта';
+
+  @override
+  String get baselineSettingsDescription =>
+      'Разрешить операции за более ранний период';
+
+  @override
+  String get baselineCorrectionTitle => 'Дата начала учёта';
+
+  @override
+  String get baselineCorrectionLoading => 'Загружаем настройки счёта';
+
+  @override
+  String get baselineCorrectionDescription =>
+      'Перенесите дату назад, чтобы добавить более ранние операции. Начальный остаток и валюта не изменятся.';
+
+  @override
+  String get baselineCurrentDateLabel => 'Текущая дата начала учёта';
+
+  @override
+  String get baselineNewDateLabel => 'Новая дата';
+
+  @override
+  String get baselineChooseDateAction => 'Выбрать дату';
+
+  @override
+  String get baselineDateRangeHelp =>
+      'Можно выбрать только дату раньше текущей даты начала учёта.';
+
+  @override
+  String get baselineReviewTitle => 'Проверьте новую дату';
+
+  @override
+  String get baselineReviewDescription =>
+      'После подтверждения главный экран и месячные итоги будут пересчитаны из авторитетных данных.';
+
+  @override
+  String get baselineConfirmAction => 'Подтвердить новую дату';
+
+  @override
+  String get baselineSuccessTitle => 'Дата начала учёта изменена';
+
+  @override
+  String baselineSuccessDescription(String date) {
+    return 'Теперь можно добавлять операции начиная с $date.';
+  }
+
+  @override
+  String get baselineHomeDelayedDescription =>
+      'Дата уже сохранена. Главный экран обновится позже; повторно подтверждать изменение не нужно.';
+
+  @override
+  String get baselineDoneAction => 'Готово';
+
+  @override
+  String get baselineUnavailableTitle => 'Дату пока нельзя изменить';
+
+  @override
+  String get baselineAccountRequired => 'Сначала настройте первый счёт.';
+
+  @override
+  String get baselineMinimumDateReached =>
+      'Счёт уже начинается с самой ранней поддерживаемой даты.';
+
+  @override
+  String get baselineNotEarlierError =>
+      'Выберите дату раньше текущей даты начала учёта.';
+
+  @override
+  String get baselineFutureError =>
+      'Дата начала учёта не может быть позже сегодняшнего дня.';
+
+  @override
+  String get baselineAfterOperationError =>
+      'Новая дата не может быть позже самой ранней сохранённой операции.';
+
+  @override
+  String get baselineLoadFailed => 'Не удалось загрузить настройки счёта.';
+
+  @override
+  String get baselineChangeFailed =>
+      'Не удалось изменить дату. Финансовые данные не были изменены клиентом.';
+
+  @override
   String get stubDescription =>
       'Раздел будет реализован на следующем этапе. Сейчас это навигационная заглушка.';
 
@@ -538,7 +622,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get accountSetupDescription =>
-      'Укажите фактический остаток и дату, с которой начинается учёт. Перед сохранением вы проверите все данные.';
+      'Укажите фактический остаток. Дата начала задаёт самый ранний день, за который можно добавить операцию. Перед сохранением вы проверите данные.';
 
   @override
   String get accountNameField => 'Название счёта';

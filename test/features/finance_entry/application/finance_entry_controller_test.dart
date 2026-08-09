@@ -1232,6 +1232,20 @@ final class _FakeFinanceEntryRepository
   }
 
   @override
+  Future<FinanceEntryResult<FinanceBaselineEvaluation>> evaluateBaseline(
+    FinanceBaselineDraft draft,
+  ) {
+    throw StateError('Unexpected baseline evaluation.');
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceBaselineCommit>> commitBaseline(
+    FinanceBaselineCommitCommand command,
+  ) {
+    throw StateError('Unexpected baseline commit.');
+  }
+
+  @override
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation(
     FinanceOperationDraft draft,
   ) async {

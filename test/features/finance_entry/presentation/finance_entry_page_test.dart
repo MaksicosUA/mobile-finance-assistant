@@ -85,6 +85,50 @@ void main() {
   });
 
   testWidgets(
+    'operation before opening date names the localized bound and guidance',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _FakeFinanceRepository(
+        _initializedSetup(),
+        operationEvaluation: (draft) => FinanceOperationRejected(
+          draft: draft,
+          issues: const [
+            FinanceIssue(
+              code: FinanceIssueCode.operationBeforeAccountBaseline,
+              field: FinanceIssueField.occurredOn,
+            ),
+          ],
+        ),
+      );
+
+      await _pumpPage(tester, repository: repository);
+      final pageContext = tester.element(
+        find.byKey(const Key('finance-entry-page')),
+      );
+      final localizedBound = MaterialLocalizations.of(
+        pageContext,
+      ).formatMediumDate(DateTime(2026, 7, 1));
+
+      await tester.enterText(find.byKey(const Key('operation-amount')), '5');
+      await _scrollTo(tester, find.byKey(const Key('operation-evaluate')));
+      await tester.tap(find.byKey(const Key('operation-evaluate')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Учёт по счёту начинается $localizedBound. '
+          'Операции раньше этой даты записать нельзя. '
+          'Дату начала можно перенести назад в настройках счёта.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('2026-07-01'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'privacy masks opening balance input and account review semantics at 360 dp',
     (tester) async {
       final semantics = tester.ensureSemantics();
@@ -472,9 +516,11 @@ final class _FakeOperationDeliveryCoordinator
 }
 
 final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
-  _FakeFinanceRepository(this.setup);
+  _FakeFinanceRepository(this.setup, {this.operationEvaluation});
 
   final FinanceAccountSetup setup;
+  final FinanceOperationEvaluation Function(FinanceOperationDraft draft)?
+  operationEvaluation;
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {
@@ -498,14 +544,25 @@ final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
   ) => throw UnimplementedError();
 
   @override
+  Future<FinanceEntryResult<FinanceBaselineEvaluation>> evaluateBaseline(
+    FinanceBaselineDraft draft,
+  ) => throw StateError('Unexpected baseline evaluation.');
+
+  @override
+  Future<FinanceEntryResult<FinanceBaselineCommit>> commitBaseline(
+    FinanceBaselineCommitCommand command,
+  ) => throw StateError('Unexpected baseline commit.');
+
+  @override
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation(
     FinanceOperationDraft draft,
   ) async => _success(
-    FinanceOperationNeedsConfirmation(
-      draft: draft,
-      draftHash:
-          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-    ),
+    operationEvaluation?.call(draft) ??
+        FinanceOperationNeedsConfirmation(
+          draft: draft,
+          draftHash:
+              'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        ),
   );
 
   @override

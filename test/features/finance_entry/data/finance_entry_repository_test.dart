@@ -63,6 +63,62 @@ void main() {
       },
     );
 
+    test('evaluates a baseline with the active access token', () async {
+      final draft = _baselineDraft();
+      final api = _BaselineApi(
+        evaluationResults: [_successBaselineEvaluation(draft)],
+      );
+      final repository = FinanceEntryRepository(
+        api: api,
+        sessionStore: _SessionStore(
+          _session(access: 'active-access', refresh: 'active-refresh'),
+        ),
+        refreshSession: () async => AuthRefreshResult.recovered,
+      );
+
+      final result = await repository.evaluateBaseline(draft);
+
+      expect(result, isA<FinanceEntrySuccess<FinanceBaselineEvaluation>>());
+      expect(api.tokens, ['active-access']);
+      expect(api.evaluationDrafts, [same(draft)]);
+    });
+
+    test(
+      'retries a baseline commit once after an authorized token refresh',
+      () async {
+        final initial = _session(access: 'old-access', refresh: 'old-refresh');
+        final replacement = _session(
+          access: 'new-access',
+          refresh: 'new-refresh',
+        );
+        final command = _baselineCommand();
+        final store = _SessionStore(initial);
+        final api = _BaselineApi(
+          commitResults: [
+            _failedBaseline(FinanceEntryFailureKind.unauthorized),
+            _successBaselineCommit(command),
+          ],
+        );
+        var refreshes = 0;
+        final repository = FinanceEntryRepository(
+          api: api,
+          sessionStore: store,
+          refreshSession: () async {
+            refreshes += 1;
+            store.session = replacement;
+            return AuthRefreshResult.recovered;
+          },
+        );
+
+        final result = await repository.commitBaseline(command);
+
+        expect(result, isA<FinanceEntrySuccess<FinanceBaselineCommit>>());
+        expect(api.tokens, ['old-access', 'new-access']);
+        expect(api.commitCommands, [same(command), same(command)]);
+        expect(refreshes, 1);
+      },
+    );
+
     test(
       'accepts a successful response after a same-account token rotation',
       () async {
@@ -430,6 +486,71 @@ FinanceEntryFailureResult<FinanceAccountSetup> _failed(
 FinanceEntryFailure _failure<T>(FinanceEntryResult<T> result) =>
     (result as FinanceEntryFailureResult<T>).failure;
 
+FinanceBaselineDraft _baselineDraft() => const FinanceBaselineDraft(
+  commandId: '11111111-1111-4111-8111-111111111111',
+  accountId: '22222222-2222-4222-8222-222222222222',
+  openingBalanceOn: '2026-01-01',
+);
+
+FinanceBaselineCommitCommand _baselineCommand() {
+  return FinanceBaselineCommitCommand.fromReview(
+    review: FinanceBaselineNeedsConfirmation(
+      draft: _baselineDraft(),
+      currentOpeningBalanceOn: '2026-07-29',
+      earliestOperationOn: null,
+      draftHash:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ),
+    confirmedAt: DateTime.utc(2026, 8, 9, 12),
+  );
+}
+
+FinanceEntrySuccess<FinanceBaselineEvaluation> _successBaselineEvaluation(
+  FinanceBaselineDraft draft,
+) {
+  return FinanceEntrySuccess<FinanceBaselineEvaluation>(
+    requestId: 'req_test_baseline_evaluation',
+    value: FinanceBaselineNeedsConfirmation(
+      draft: draft,
+      currentOpeningBalanceOn: '2026-07-29',
+      earliestOperationOn: null,
+      draftHash:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    ),
+  );
+}
+
+FinanceEntryFailureResult<FinanceBaselineCommit> _failedBaseline(
+  FinanceEntryFailureKind kind,
+) => FinanceEntryFailureResult<FinanceBaselineCommit>(
+  FinanceEntryFailure(kind: kind, requestId: 'req_test_baseline_failure'),
+);
+
+FinanceEntrySuccess<FinanceBaselineCommit> _successBaselineCommit(
+  FinanceBaselineCommitCommand command,
+) {
+  final draft = command.draft;
+  return FinanceEntrySuccess<FinanceBaselineCommit>(
+    requestId: 'req_test_baseline_commit',
+    value: FinanceBaselineCommit(
+      idempotentReplay: false,
+      previousOpeningBalanceOn: '2026-07-29',
+      account: FinanceAccount(
+        accountId: draft.accountId,
+        userId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        commandId: draft.commandId,
+        name: 'Synthetic account',
+        currency: 'EUR',
+        openingBalance: '0.00',
+        openingBalanceOn: draft.openingBalanceOn,
+        openingTimezone: 'Europe/Berlin',
+        confirmedAt: command.confirmedAt,
+        createdAt: '2026-07-29T12:00:01.000Z',
+      ),
+    ),
+  );
+}
+
 FinanceOperationCommitCommand _operationCommand() {
   final draft = FinanceOperationDraft.fromJson(<String, Object?>{
     'schemaVersion': '1',
@@ -565,6 +686,41 @@ final class _OperationApi extends _ListApi {
     tokens.add(accessToken);
     commands.add(command);
     return _operationResults.removeAt(0);
+  }
+}
+
+final class _BaselineApi extends _ListApi {
+  _BaselineApi({
+    List<FinanceEntryResult<FinanceBaselineEvaluation>> evaluationResults =
+        const [],
+    List<FinanceEntryResult<FinanceBaselineCommit>> commitResults = const [],
+  }) : _evaluationResults = List.of(evaluationResults),
+       _commitResults = List.of(commitResults),
+       super(const []);
+
+  final List<FinanceEntryResult<FinanceBaselineEvaluation>> _evaluationResults;
+  final List<FinanceEntryResult<FinanceBaselineCommit>> _commitResults;
+  final List<FinanceBaselineDraft> evaluationDrafts = [];
+  final List<FinanceBaselineCommitCommand> commitCommands = [];
+
+  @override
+  Future<FinanceEntryResult<FinanceBaselineEvaluation>> evaluateBaseline({
+    required String accessToken,
+    required FinanceBaselineDraft draft,
+  }) async {
+    tokens.add(accessToken);
+    evaluationDrafts.add(draft);
+    return _evaluationResults.removeAt(0);
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceBaselineCommit>> commitBaseline({
+    required String accessToken,
+    required FinanceBaselineCommitCommand command,
+  }) async {
+    tokens.add(accessToken);
+    commitCommands.add(command);
+    return _commitResults.removeAt(0);
   }
 }
 

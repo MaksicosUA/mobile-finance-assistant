@@ -9,8 +9,9 @@ import 'app_settings.dart';
 import 'app_settings_controller.dart';
 
 class SettingsPage extends ConsumerWidget {
-  const SettingsPage({super.key, this.onSignOut});
+  const SettingsPage({super.key, this.onCorrectOpeningDate, this.onSignOut});
 
+  final VoidCallback? onCorrectOpeningDate;
   final Future<void> Function()? onSignOut;
 
   @override
@@ -114,19 +115,34 @@ class SettingsPage extends ConsumerWidget {
                   l10n.settingsNote,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                if (onSignOut != null) ...[
+                if (onCorrectOpeningDate != null || onSignOut != null) ...[
                   const SizedBox(height: AppSpacing.lg),
                   _SectionLabel(l10n.accountSection),
                   const SizedBox(height: AppSpacing.sm),
-                  Semantics(
-                    button: true,
-                    child: OutlinedButton.icon(
-                      key: const Key('settings-sign-out'),
-                      onPressed: () => _confirmSignOut(context),
-                      icon: const Icon(Icons.logout_rounded),
-                      label: Text(l10n.signOutAction),
+                  if (onCorrectOpeningDate != null) ...[
+                    Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: _SettingsActionRow(
+                        key: const Key('settings-opening-date'),
+                        icon: Icons.calendar_month_outlined,
+                        label: l10n.baselineSettingsAction,
+                        description: l10n.baselineSettingsDescription,
+                        onPressed: onCorrectOpeningDate!,
+                      ),
                     ),
-                  ),
+                    if (onSignOut != null)
+                      const SizedBox(height: AppSpacing.sm),
+                  ],
+                  if (onSignOut != null)
+                    Semantics(
+                      button: true,
+                      child: OutlinedButton.icon(
+                        key: const Key('settings-sign-out'),
+                        onPressed: () => _confirmSignOut(context),
+                        icon: const Icon(Icons.logout_rounded),
+                        label: Text(l10n.signOutAction),
+                      ),
+                    ),
                 ],
               ],
             ),
@@ -427,6 +443,69 @@ class _SettingsRow extends StatelessWidget {
               ),
             ?trailing,
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsActionRow extends StatelessWidget {
+  const _SettingsActionRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.description,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final String description;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: true,
+      excludeSemantics: true,
+      label: '$label. $description',
+      onTap: onPressed,
+      child: InkWell(
+        onTap: onPressed,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppSizes.minTouchTarget),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Row(
+              children: [
+                Icon(icon, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        description,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                const ExcludeSemantics(
+                  child: Icon(Icons.chevron_right_rounded),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

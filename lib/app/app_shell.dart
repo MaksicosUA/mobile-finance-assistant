@@ -6,6 +6,7 @@ import '../features/home/presentation/home_page.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/finance_entry/application/operation_sync_controller.dart';
 import '../features/finance_entry/domain/operation_outbox.dart';
+import '../features/finance_entry/presentation/account_baseline_page.dart';
 import '../features/finance_entry/presentation/finance_entry_page.dart';
 import '../features/home/presentation/widgets/home_status_banner.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -15,6 +16,15 @@ import 'theme/app_colors.dart';
 import 'theme/app_tokens.dart';
 
 enum AppSection { home, chat, analytics, goals, profile }
+
+@visibleForTesting
+Future<void> popToRootBeforeSignIn({
+  required BuildContext context,
+  required Future<void> Function() requireSignIn,
+}) async {
+  Navigator.of(context).popUntil((route) => route.isFirst);
+  await requireSignIn();
+}
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -88,10 +98,22 @@ class _AppShellState extends ConsumerState<AppShell>
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => SettingsPage(
+          onCorrectOpeningDate: isNetworkBackendConfigured
+              ? _openAccountBaseline
+              : null,
           onSignOut: isNetworkBackendConfigured
               ? ref.read(authControllerProvider.notifier).signOut
               : null,
         ),
+      ),
+    );
+  }
+
+  void _openAccountBaseline() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            AccountBaselinePage(onSignInRequested: _openSessionExpired),
       ),
     );
   }
@@ -114,7 +136,10 @@ class _AppShellState extends ConsumerState<AppShell>
 
   Future<void> _openSessionExpired() async {
     if (isNetworkBackendConfigured) {
-      await ref.read(authControllerProvider.notifier).requireSignIn();
+      await popToRootBeforeSignIn(
+        context: context,
+        requireSignIn: ref.read(authControllerProvider.notifier).requireSignIn,
+      );
       return;
     }
     await ref.read(homeControllerProvider.notifier).clearSessionForSignOut();

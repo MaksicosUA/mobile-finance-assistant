@@ -1007,9 +1007,20 @@ class _FinanceMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final localizedOpeningBalanceOn = openingBalanceOn == null
+        ? null
+        : _localizedDate(context, openingBalanceOn!);
     final message = failure == null
-        ? _issuesMessage(l10n, issues, openingBalanceOn: openingBalanceOn)
-        : _failureMessage(l10n, failure!, openingBalanceOn: openingBalanceOn);
+        ? _issuesMessage(
+            l10n,
+            issues,
+            openingBalanceOn: localizedOpeningBalanceOn,
+          )
+        : _failureMessage(
+            l10n,
+            failure!,
+            openingBalanceOn: localizedOpeningBalanceOn,
+          );
     return _StatusMessage(
       key: const Key('finance-entry-message'),
       icon: Icons.info_outline_rounded,
