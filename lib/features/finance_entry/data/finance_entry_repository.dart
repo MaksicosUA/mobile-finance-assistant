@@ -19,6 +19,14 @@ abstract interface class FinanceEntryRepositoryClient {
     FinanceAccountCommitCommand command,
   );
 
+  Future<FinanceEntryResult<FinanceBaselineEvaluation>> evaluateBaseline(
+    FinanceBaselineDraft draft,
+  );
+
+  Future<FinanceEntryResult<FinanceBaselineCommit>> commitBaseline(
+    FinanceBaselineCommitCommand command,
+  );
+
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation(
     FinanceOperationDraft draft,
   );
@@ -76,6 +84,26 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
     return _authorized(
       (accessToken) =>
           _api.commitAccount(accessToken: accessToken, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceBaselineEvaluation>> evaluateBaseline(
+    FinanceBaselineDraft draft,
+  ) {
+    return _authorized(
+      (accessToken) =>
+          _api.evaluateBaseline(accessToken: accessToken, draft: draft),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceBaselineCommit>> commitBaseline(
+    FinanceBaselineCommitCommand command,
+  ) {
+    return _authorized(
+      (accessToken) =>
+          _api.commitBaseline(accessToken: accessToken, command: command),
     );
   }
 

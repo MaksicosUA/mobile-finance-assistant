@@ -145,7 +145,7 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       accessToken: accessToken,
       body: <String, Object?>{'draft': draft.toJson()},
       acceptedStatuses: const {200},
-      contract: _ContractKind.account,
+      contract: _ContractKind.baseline,
       parse: _parseBaselineEvaluation,
     );
   }
@@ -161,7 +161,7 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       accessToken: accessToken,
       body: command.toJson(),
       acceptedStatuses: const {200},
-      contract: _ContractKind.account,
+      contract: _ContractKind.baseline,
       parse: (json, statusCode) => _parseBaselineCommit(json, command: command),
     );
   }
@@ -372,11 +372,8 @@ FinanceBaselineEvaluation _parseBaselineEvaluation(
   });
   _requireSchema(json);
   final draft = FinanceBaselineDraft.fromJson(_object(json['draft']));
-  final current = _requiredString(json, 'currentOpeningBalanceOn');
-  final earliest = json['earliestOperationOn'];
-  if (earliest is! String?) {
-    throw const FormatException('Invalid earliestOperationOn.');
-  }
+  final current = _accountDate(json, 'currentOpeningBalanceOn');
+  final earliest = _optionalAccountDate(json, 'earliestOperationOn');
   final issues = _baselineIssues(json['issues']);
   return switch (json['decision']) {
     'NEEDS_CONFIRMATION' when issues.isEmpty =>
@@ -416,7 +413,7 @@ FinanceBaselineCommit _parseBaselineCommit(
   if (replay is! bool) {
     throw const FormatException('Invalid baseline commit replay flag.');
   }
-  final previous = _requiredString(json, 'previousOpeningBalanceOn');
+  final previous = _accountDate(json, 'previousOpeningBalanceOn');
   final account = FinanceAccount.fromJson(_object(json['account']));
   // The response must describe the correction that was actually confirmed,
   // and it must never move a baseline later than it already was.
@@ -433,7 +430,9 @@ FinanceBaselineCommit _parseBaselineCommit(
 }
 
 List<FinanceBaselineIssue> _baselineIssues(Object? value) {
-  if (value is! List) throw const FormatException('Invalid issues.');
+  if (value is! List<Object?> || value.length > 16) {
+    throw const FormatException('Invalid baseline issues.');
+  }
   return List<FinanceBaselineIssue>.unmodifiable(
     value.map((item) => FinanceBaselineIssue.fromJson(_object(item))),
   );
@@ -563,8 +562,29 @@ FinanceEntryResult<T> _httpFailure<T>({
       requestId: requestId,
     );
   }
+  if (statusCode == 404) {
+    final detail = _tryErrorDetail(bytes, contract: contract);
+    if (contract != _ContractKind.baseline ||
+        detail?.code != FinanceEntryErrorCode.accountUnavailable) {
+      return _failure(
+        kind: FinanceEntryFailureKind.malformedResponse,
+        requestId: requestId,
+      );
+    }
+    return _failure(
+      kind: FinanceEntryFailureKind.conflict,
+      requestId: requestId,
+      code: detail!.code,
+    );
+  }
   if (statusCode == 503 || statusCode == 429 || statusCode >= 500) {
     final detail = _tryErrorDetail(bytes, contract: contract);
+    if (detail?.code == FinanceEntryErrorCode.accountUnavailable) {
+      return _failure(
+        kind: FinanceEntryFailureKind.malformedResponse,
+        requestId: requestId,
+      );
+    }
     return _failure(
       kind: FinanceEntryFailureKind.serviceUnavailable,
       requestId: requestId,
@@ -573,7 +593,8 @@ FinanceEntryResult<T> _httpFailure<T>({
   }
   if (statusCode == 409 || statusCode == 422) {
     final detail = _tryErrorDetail(bytes, contract: contract);
-    if (detail == null) {
+    if (detail == null ||
+        detail.code == FinanceEntryErrorCode.accountUnavailable) {
       return _failure(
         kind: FinanceEntryFailureKind.malformedResponse,
         requestId: requestId,
@@ -581,6 +602,7 @@ FinanceEntryResult<T> _httpFailure<T>({
     }
     final kind = switch (detail.code) {
       FinanceEntryErrorCode.accountRejected ||
+      FinanceEntryErrorCode.baselineRejected ||
       FinanceEntryErrorCode.operationRejected =>
         FinanceEntryFailureKind.rejected,
       FinanceEntryErrorCode.malformedAccount ||
@@ -594,6 +616,7 @@ FinanceEntryResult<T> _httpFailure<T>({
       requestId: requestId,
       code: detail.code,
       issues: detail.issues,
+      baselineIssues: detail.baselineIssues,
     );
   }
   return _failure(kind: FinanceEntryFailureKind.unknown, requestId: requestId);
@@ -645,19 +668,40 @@ _ErrorDetail? _tryErrorDetail(
     final root = _decodeObject(bytes);
     _expectKeys(root, const {'detail'});
     final detail = _object(root['detail']);
-    _expectKeys(detail, const {'code', 'issues'});
-    final code = _errorCode(_requiredString(detail, 'code'));
+    final rawCode = _requiredString(detail, 'code');
+    final isBaselineRejection = rawCode == 'BASELINE_REJECTED';
+    _expectKeys(
+      detail,
+      isBaselineRejection
+          ? const {'code', 'issues', 'baselineIssues'}
+          : const {'code', 'issues'},
+    );
+    final code = _errorCode(rawCode);
     if (!_errorAllowed(code, contract)) {
       throw const FormatException('Wrong Finance error contract.');
     }
-    final issues = _issues(detail['issues'], contract: contract);
+    final issueContract = contract == _ContractKind.operation
+        ? _ContractKind.operation
+        : _ContractKind.account;
+    final issues = _issues(detail['issues'], contract: issueContract);
+    final baselineIssues = isBaselineRejection
+        ? _baselineIssues(detail['baselineIssues'])
+        : const <FinanceBaselineIssue>[];
     final rejection =
         code == FinanceEntryErrorCode.accountRejected ||
+        code == FinanceEntryErrorCode.baselineRejected ||
         code == FinanceEntryErrorCode.operationRejected;
-    if (rejection != issues.isNotEmpty) {
+    final hasMatchingIssues = code == FinanceEntryErrorCode.baselineRejected
+        ? issues.isEmpty && baselineIssues.isNotEmpty
+        : issues.isNotEmpty && baselineIssues.isEmpty;
+    if (rejection != hasMatchingIssues) {
       throw const FormatException('Inconsistent Finance rejection detail.');
     }
-    return _ErrorDetail(code: code, issues: issues);
+    return _ErrorDetail(
+      code: code,
+      issues: issues,
+      baselineIssues: baselineIssues,
+    );
   } on Object {
     return null;
   }
@@ -686,6 +730,7 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
       FinanceIssueCode.openingBalanceDateInFuture,
       FinanceIssueCode.unsupportedCurrency,
     }.contains(code),
+    _ContractKind.baseline => false,
     _ContractKind.operation => const {
       FinanceIssueCode.accountRequired,
       FinanceIssueCode.accountUnavailable,
@@ -715,6 +760,17 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.accountAlreadyInitialized,
       FinanceEntryErrorCode.accountRejected,
     }.contains(code),
+    _ContractKind.baseline => const {
+      FinanceEntryErrorCode.malformedAccount,
+      FinanceEntryErrorCode.confirmationMismatch,
+      FinanceEntryErrorCode.commandConflict,
+      FinanceEntryErrorCode.accountAlreadyInitialized,
+      FinanceEntryErrorCode.accountRejected,
+      FinanceEntryErrorCode.accountUnavailable,
+      FinanceEntryErrorCode.baselineRejected,
+      FinanceEntryErrorCode.authenticationUnavailable,
+      FinanceEntryErrorCode.financePersistenceUnavailable,
+    }.contains(code),
     _ContractKind.operation => const {
       FinanceEntryErrorCode.malformedOperation,
       FinanceEntryErrorCode.operationRejected,
@@ -730,6 +786,8 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'ACCOUNT_ALREADY_INITIALIZED' =>
     FinanceEntryErrorCode.accountAlreadyInitialized,
   'ACCOUNT_REJECTED' => FinanceEntryErrorCode.accountRejected,
+  'ACCOUNT_UNAVAILABLE' => FinanceEntryErrorCode.accountUnavailable,
+  'BASELINE_REJECTED' => FinanceEntryErrorCode.baselineRejected,
   'OPERATION_REJECTED' => FinanceEntryErrorCode.operationRejected,
   'AUTHENTICATION_UNAVAILABLE' =>
     FinanceEntryErrorCode.authenticationUnavailable,
@@ -743,6 +801,7 @@ FinanceEntryFailureResult<T> _failure<T>({
   required String requestId,
   FinanceEntryErrorCode? code,
   List<FinanceIssue> issues = const [],
+  List<FinanceBaselineIssue> baselineIssues = const [],
 }) {
   return FinanceEntryFailureResult<T>(
     FinanceEntryFailure(
@@ -750,6 +809,7 @@ FinanceEntryFailureResult<T> _failure<T>({
       requestId: requestId,
       code: code,
       issues: issues,
+      baselineIssues: baselineIssues,
     ),
   );
 }
@@ -883,11 +943,36 @@ bool _containsControl(String value) =>
 bool _sameInstant(String first, String second) =>
     DateTime.parse(first).toUtc() == DateTime.parse(second).toUtc();
 
-enum _ContractKind { account, operation }
+String _accountDate(Map<String, Object?> json, String key) {
+  final value = _requiredString(json, key);
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+    throw FormatException('Invalid $key.');
+  }
+  final parsed = DateTime.tryParse('${value}T00:00:00Z');
+  if (parsed == null ||
+      parsed.toIso8601String().substring(0, 10) != value ||
+      parsed.year < 1900 ||
+      parsed.year > 2100) {
+    throw FormatException('Invalid $key.');
+  }
+  return value;
+}
+
+String? _optionalAccountDate(Map<String, Object?> json, String key) {
+  if (json[key] == null) return null;
+  return _accountDate(json, key);
+}
+
+enum _ContractKind { account, baseline, operation }
 
 final class _ErrorDetail {
-  const _ErrorDetail({required this.code, required this.issues});
+  const _ErrorDetail({
+    required this.code,
+    required this.issues,
+    required this.baselineIssues,
+  });
 
   final FinanceEntryErrorCode code;
   final List<FinanceIssue> issues;
+  final List<FinanceBaselineIssue> baselineIssues;
 }

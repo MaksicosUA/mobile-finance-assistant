@@ -26,6 +26,8 @@ enum FinanceEntryErrorCode {
   commandConflict,
   accountAlreadyInitialized,
   accountRejected,
+  accountUnavailable,
+  baselineRejected,
   operationRejected,
   authenticationUnavailable,
   financePersistenceUnavailable,
@@ -38,12 +40,15 @@ final class FinanceEntryFailure {
     required this.requestId,
     this.code,
     List<FinanceIssue> issues = const [],
-  }) : issues = List.unmodifiable(issues);
+    List<FinanceBaselineIssue> baselineIssues = const [],
+  }) : issues = List.unmodifiable(issues),
+       baselineIssues = List.unmodifiable(baselineIssues);
 
   final FinanceEntryFailureKind kind;
   final String requestId;
   final FinanceEntryErrorCode? code;
   final List<FinanceIssue> issues;
+  final List<FinanceBaselineIssue> baselineIssues;
 }
 
 sealed class FinanceEntryResult<T> {

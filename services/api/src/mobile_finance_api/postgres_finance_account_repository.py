@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .account_contracts import (
@@ -106,11 +106,18 @@ class PostgresFinanceAccountRepository:
         async with self._session_factory() as database:
             user = await _active_user(database=database, user_id=user_id)
             existing = await database.scalar(
-                select(FinanceAccountRow).where(
-                    FinanceAccountRow.user_id == user_id,
-                    FinanceAccountRow.command_id == command_id,
+                _opening_replay_account_query(
+                    user_id=user_id,
+                    command_id=command_id,
                 )
             )
+            baseline_corrections: tuple[FinanceAccountAuditRow, ...] = ()
+            if existing is not None:
+                baseline_corrections = await _baseline_corrections(
+                    database=database,
+                    user_id=user_id,
+                    account_id=existing.id,
+                )
         if existing is None:
             return None
         if existing.command_payload_hash != payload_hash:
@@ -119,6 +126,10 @@ class PostgresFinanceAccountRepository:
             user=user,
             account=existing,
             idempotent_replay=True,
+            opening_balance_on=_original_opening_balance_on(
+                account=existing,
+                corrections=baseline_corrections,
+            ),
         )
 
     async def commit_account(
@@ -149,18 +160,27 @@ class PostgresFinanceAccountRepository:
                     raise AccountPersistenceUnavailable
 
                 existing = await database.scalar(
-                    select(FinanceAccountRow).where(
-                        FinanceAccountRow.user_id == user_id,
-                        FinanceAccountRow.command_id == draft.command_id,
+                    _opening_replay_account_query(
+                        user_id=user_id,
+                        command_id=draft.command_id,
                     )
                 )
                 if existing is not None:
                     if existing.command_payload_hash != payload_hash:
                         raise AccountCommandConflict
+                    baseline_corrections = await _baseline_corrections(
+                        database=database,
+                        user_id=user_id,
+                        account_id=existing.id,
+                    )
                     return _write_result(
                         user=user,
                         account=existing,
                         idempotent_replay=True,
+                        opening_balance_on=_original_opening_balance_on(
+                            account=existing,
+                            corrections=baseline_corrections,
+                        ),
                     )
 
                 account_exists = await database.scalar(
@@ -303,11 +323,7 @@ class PostgresFinanceAccountRepository:
             )
         if account is None:  # pragma: no cover - foreign key guarantees a row
             raise AccountPersistenceUnavailable
-        return BaselineWriteResult(
-            account=_to_contract(account),
-            previous_opening_balance_on=_audit_previous_date(audit),
-            idempotent_replay=True,
-        )
+        return _baseline_replay_result(account=account, audit=audit)
 
     async def correct_opening_baseline(
         self,
@@ -349,11 +365,7 @@ class PostgresFinanceAccountRepository:
                         or existing.event_type != "account_baseline_corrected"
                     ):
                         raise AccountCommandConflict
-                    return BaselineWriteResult(
-                        account=_to_contract(account),
-                        previous_opening_balance_on=_audit_previous_date(existing),
-                        idempotent_replay=True,
-                    )
+                    return _baseline_replay_result(account=account, audit=existing)
 
                 previous_opening_balance_on = account.opening_balance_on
                 # Re-check under the row lock: evaluation and confirmation are
@@ -434,11 +446,98 @@ async def _earliest_operation_on(
     return earliest
 
 
-def _audit_previous_date(audit: FinanceAccountAuditRow) -> date:
+async def _baseline_corrections(
+    *,
+    database: AsyncSession,
+    user_id: UUID,
+    account_id: UUID,
+) -> tuple[FinanceAccountAuditRow, ...]:
+    result = await database.scalars(
+        select(FinanceAccountAuditRow).where(
+            FinanceAccountAuditRow.account_id == account_id,
+            FinanceAccountAuditRow.user_id == user_id,
+            FinanceAccountAuditRow.event_type == "account_baseline_corrected",
+        )
+    )
+    return tuple(result.all())
+
+
+def _opening_replay_account_query(
+    *, user_id: UUID, command_id: UUID
+) -> Select[tuple[FinanceAccountRow]]:
+    """Lock the live account while reconstructing its original receipt.
+
+    PostgreSQL READ COMMITTED takes a new snapshot for each statement. Without
+    this row lock, a concurrent baseline correction can commit after the account
+    read but before the audit-chain read, making a valid chain look corrupt.
+    """
+
+    return (
+        select(FinanceAccountRow)
+        .where(
+            FinanceAccountRow.user_id == user_id,
+            FinanceAccountRow.command_id == command_id,
+        )
+        .with_for_update()
+    )
+
+
+def _baseline_replay_result(
+    *,
+    account: FinanceAccountRow,
+    audit: FinanceAccountAuditRow,
+) -> BaselineWriteResult:
+    previous = _audit_baseline_date(audit, "previousOpeningBalanceOn")
+    corrected = _audit_baseline_date(audit, "openingBalanceOn")
+    # Replay is the original receipt, not a snapshot of later aggregate state.
+    # A subsequent correction may have moved the live baseline farther back, so
+    # preserve every current immutable account field while restoring the date
+    # that this command actually accepted.
+    if corrected >= previous or account.opening_balance_on > corrected:
+        raise AccountPersistenceUnavailable
+    return BaselineWriteResult(
+        account=_to_contract(account, opening_balance_on=corrected),
+        previous_opening_balance_on=previous,
+        idempotent_replay=True,
+    )
+
+
+def _original_opening_balance_on(
+    *,
+    account: FinanceAccountRow,
+    corrections: Sequence[FinanceAccountAuditRow],
+) -> date:
+    if not corrections:
+        return account.opening_balance_on
+
+    transitions: dict[date, date] = {}
+    for audit in corrections:
+        if audit.event_type != "account_baseline_corrected":
+            raise AccountPersistenceUnavailable
+        previous = _audit_baseline_date(audit, "previousOpeningBalanceOn")
+        corrected = _audit_baseline_date(audit, "openingBalanceOn")
+        if corrected >= previous or previous in transitions:
+            raise AccountPersistenceUnavailable
+        transitions[previous] = corrected
+
+    # Corrections move strictly backwards, so the greatest previous date is the
+    # first correction's source and therefore the original onboarding date.
+    original = max(transitions)
+    cursor = original
+    visited = 0
+    while cursor in transitions:
+        cursor = transitions[cursor]
+        visited += 1
+    if visited != len(transitions) or cursor != account.opening_balance_on:
+        raise AccountPersistenceUnavailable
+    return original
+
+
+def _audit_baseline_date(audit: FinanceAccountAuditRow, key: str) -> date:
     details = audit.details
     if not isinstance(details, dict):  # pragma: no cover - guarded by CHECK
         raise AccountPersistenceUnavailable
-    raw = details.get("previousOpeningBalanceOn")
+    raw = details.get(key)
     if not isinstance(raw, str):  # pragma: no cover - guarded by CHECK
         raise AccountPersistenceUnavailable
     try:
@@ -507,13 +606,14 @@ def _write_result(
     user: UserRow,
     account: FinanceAccountRow,
     idempotent_replay: bool,
+    opening_balance_on: date | None = None,
 ) -> AccountWriteResult:
     _require_consistent_profile(user=user, accounts=(account,))
     timezone = user.canonical_timezone
     if timezone is None:  # pragma: no cover - guarded above
         raise AccountPersistenceUnavailable
     return AccountWriteResult(
-        account=_to_contract(account),
+        account=_to_contract(account, opening_balance_on=opening_balance_on),
         canonical_timezone=timezone,
         timezone_revision=1,
         idempotent_replay=idempotent_replay,
@@ -530,7 +630,11 @@ def _to_directory_snapshot(account: FinanceAccountRow) -> FinanceAccountSnapshot
     )
 
 
-def _to_contract(account: FinanceAccountRow) -> CommittedFinanceAccount:
+def _to_contract(
+    account: FinanceAccountRow,
+    *,
+    opening_balance_on: date | None = None,
+) -> CommittedFinanceAccount:
     return CommittedFinanceAccount(
         account_id=account.id,
         user_id=account.user_id,
@@ -538,7 +642,11 @@ def _to_contract(account: FinanceAccountRow) -> CommittedFinanceAccount:
         name=account.name,
         currency=account.currency,
         opening_balance=account.opening_balance,
-        opening_balance_on=account.opening_balance_on,
+        opening_balance_on=(
+            opening_balance_on
+            if opening_balance_on is not None
+            else account.opening_balance_on
+        ),
         opening_timezone=account.opening_timezone,
         status=account.status,  # type: ignore[arg-type]
         is_default=account.is_default,  # type: ignore[arg-type]

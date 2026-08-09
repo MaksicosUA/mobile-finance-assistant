@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 import pytest
@@ -18,13 +19,20 @@ from mobile_finance_api.account_core import (
     AccountCommandConflict,
     AccountConfirmationMismatch,
     AccountCore,
+    AccountPersistenceUnavailable,
     AccountUnavailable,
     BaselineCorrectionSnapshot,
     BaselineRejected,
     BaselineWriteResult,
 )
 from mobile_finance_api.auth import AuthenticatedUser
+from mobile_finance_api.db_models import FinanceAccountAuditRow, FinanceAccountRow
 from mobile_finance_api.main import create_app
+from mobile_finance_api.postgres_finance_account_repository import (
+    _baseline_replay_result,
+    _opening_replay_account_query,
+    _original_opening_balance_on,
+)
 
 _USER_ID = UUID("11111111-1111-4111-8111-111111111111")
 _ACCOUNT_ID = UUID("33333333-3333-4333-8333-333333333333")
@@ -202,6 +210,126 @@ def test_baseline_replay_returns_the_original_and_corrects_once() -> None:
         assert repository.invalidations == [_CORRECTION_ID]
 
     asyncio.run(scenario())
+
+
+def test_baseline_replay_returns_original_receipt_after_later_correction() -> None:
+    async def scenario() -> None:
+        repository = _MemoryBaselineRepository()
+        core = _core(repository)
+        first_draft = _draft()
+        second_draft = _draft(
+            commandId=str(_OTHER_CORRECTION_ID),
+            openingBalanceOn="2025-01-01",
+        )
+
+        first = await core.commit_baseline(
+            user_id=_USER_ID,
+            draft=first_draft,
+            expected_draft_hash=baseline_draft_hash(first_draft),
+            confirmed_at=_NOW,
+        )
+        second = await core.commit_baseline(
+            user_id=_USER_ID,
+            draft=second_draft,
+            expected_draft_hash=baseline_draft_hash(second_draft),
+            confirmed_at=_NOW,
+        )
+        replayed_first = await core.commit_baseline(
+            user_id=_USER_ID,
+            draft=first_draft,
+            expected_draft_hash=baseline_draft_hash(first_draft),
+            confirmed_at=_NOW,
+        )
+
+        assert first.account.opening_balance_on == date(2026, 1, 1)
+        assert second.account.opening_balance_on == date(2025, 1, 1)
+        assert repository.snapshot_baseline == date(2025, 1, 1)
+        assert replayed_first.idempotent_replay is True
+        assert replayed_first.previous_opening_balance_on == _CURRENT_BASELINE
+        assert replayed_first.account.opening_balance_on == date(2026, 1, 1)
+        assert replayed_first.account.name == second.account.name
+        assert replayed_first.account.opening_balance == second.account.opening_balance
+        assert repository.corrections == 2
+        assert repository.invalidations == [_CORRECTION_ID, _OTHER_CORRECTION_ID]
+
+    asyncio.run(scenario())
+
+
+def test_postgres_replay_reconstructs_receipts_after_two_corrections() -> None:
+    first = _correction_audit(
+        command_id=_CORRECTION_ID,
+        previous=_CURRENT_BASELINE,
+        corrected=date(2026, 1, 1),
+    )
+    second = _correction_audit(
+        command_id=_OTHER_CORRECTION_ID,
+        previous=date(2026, 1, 1),
+        corrected=date(2025, 1, 1),
+    )
+    live_account = _account_row(opening_balance_on=date(2025, 1, 1))
+
+    replayed_first = _baseline_replay_result(account=live_account, audit=first)
+
+    assert replayed_first.idempotent_replay is True
+    assert replayed_first.previous_opening_balance_on == _CURRENT_BASELINE
+    assert replayed_first.account.opening_balance_on == date(2026, 1, 1)
+    assert replayed_first.account.name == live_account.name
+    assert replayed_first.account.opening_balance == live_account.opening_balance
+    assert replayed_first.account.command_id == live_account.command_id
+    # Audit query order is intentionally irrelevant. The strict decreasing
+    # chain, not timestamps, identifies the original onboarding date.
+    assert _original_opening_balance_on(
+        account=live_account,
+        corrections=(second, first),
+    ) == date(2026, 8, 2)
+
+
+def test_postgres_opening_replay_handles_zero_or_one_correction() -> None:
+    original = _account_row(opening_balance_on=_CURRENT_BASELINE)
+    assert _original_opening_balance_on(account=original, corrections=()) == date(
+        2026, 8, 2
+    )
+
+    first = _correction_audit(
+        command_id=_CORRECTION_ID,
+        previous=_CURRENT_BASELINE,
+        corrected=date(2026, 1, 1),
+    )
+    corrected = _account_row(opening_balance_on=date(2026, 1, 1))
+    assert _original_opening_balance_on(
+        account=corrected,
+        corrections=(first,),
+    ) == date(2026, 8, 2)
+
+
+def test_postgres_opening_replay_locks_account_before_audit_chain_read() -> None:
+    query = _opening_replay_account_query(
+        user_id=_USER_ID,
+        command_id=_OPEN_COMMAND_ID,
+    )
+
+    # Both opening-command replay paths use this query before reading baseline
+    # correction audits. The lock closes the READ COMMITTED split-snapshot race.
+    assert str(query).rstrip().endswith("FOR UPDATE")
+
+
+def test_postgres_opening_replay_fails_closed_for_a_broken_audit_chain() -> None:
+    first = _correction_audit(
+        command_id=_CORRECTION_ID,
+        previous=_CURRENT_BASELINE,
+        corrected=date(2026, 1, 1),
+    )
+    disconnected = _correction_audit(
+        command_id=_OTHER_CORRECTION_ID,
+        previous=date(2025, 6, 1),
+        corrected=date(2025, 1, 1),
+    )
+
+    with pytest.raises(AccountPersistenceUnavailable):
+        _original_opening_balance_on(
+            account=_account_row(opening_balance_on=date(2025, 1, 1)),
+            corrections=(first, disconnected),
+        )
 
 
 def test_baseline_rejects_reused_command_identity_with_new_content() -> None:
@@ -490,6 +618,47 @@ class _MemoryBaselineRepository:
             previous_opening_balance_on=previous,
             idempotent_replay=False,
         )
+
+
+def _account_row(*, opening_balance_on: date) -> FinanceAccountRow:
+    return FinanceAccountRow(
+        id=_ACCOUNT_ID,
+        user_id=_USER_ID,
+        command_id=_OPEN_COMMAND_ID,
+        command_payload_hash=b"o" * 32,
+        schema_version="1",
+        name="Synthetic current account",
+        currency="EUR",
+        opening_balance=Decimal("1250.50"),
+        opening_balance_on=opening_balance_on,
+        opening_timezone="Europe/Berlin",
+        status="active",
+        is_default=True,
+        confirmed_at=_NOW,
+        created_at=_NOW,
+    )
+
+
+def _correction_audit(
+    *,
+    command_id: UUID,
+    previous: date,
+    corrected: date,
+) -> FinanceAccountAuditRow:
+    return FinanceAccountAuditRow(
+        id=command_id,
+        account_id=_ACCOUNT_ID,
+        user_id=_USER_ID,
+        command_id=command_id,
+        event_type="account_baseline_corrected",
+        actor_type="user",
+        payload_hash=b"c" * 32,
+        details={
+            "previousOpeningBalanceOn": previous.isoformat(),
+            "openingBalanceOn": corrected.isoformat(),
+        },
+        created_at=_NOW,
+    )
 
 
 class _StaticAuthenticator:

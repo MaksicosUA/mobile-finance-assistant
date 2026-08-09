@@ -67,6 +67,41 @@ void main() {
     });
 
     test(
+      'rejects non-canonical dates in baseline evaluation responses',
+      () async {
+        final invalidCurrent = _baselineEvaluation(
+          decision: 'NEEDS_CONFIRMATION',
+        )..['currentOpeningBalanceOn'] = '2026-02-30';
+        final invalidEarliest = _baselineEvaluation(
+          decision: 'NEEDS_CONFIRMATION',
+        )..['earliestOperationOn'] = '2026-7-01';
+        final adapter = _QueueAdapter([
+          _JsonResponse(200, invalidCurrent),
+          _JsonResponse(200, invalidEarliest),
+        ]);
+        final api = _api(adapter);
+
+        final current = await api.evaluateBaseline(
+          accessToken: 'access-token',
+          draft: _baselineModel(),
+        );
+        final earliest = await api.evaluateBaseline(
+          accessToken: 'access-token',
+          draft: _baselineModel(),
+        );
+
+        expect(
+          _failure(current).kind,
+          FinanceEntryFailureKind.malformedResponse,
+        );
+        expect(
+          _failure(earliest).kind,
+          FinanceEntryFailureKind.malformedResponse,
+        );
+      },
+    );
+
+    test(
       'commits a baseline correction and reports the previous date',
       () async {
         final adapter = _QueueAdapter([_JsonResponse(200, _baselineCommit())]);
@@ -116,6 +151,170 @@ void main() {
         FinanceEntryFailureKind.malformedResponse,
       );
       expect(_failure(later).kind, FinanceEntryFailureKind.malformedResponse);
+    });
+
+    test(
+      'rejects a non-canonical previous date in a baseline commit response',
+      () async {
+        final adapter = _QueueAdapter([
+          _JsonResponse(200, _baselineCommit(previous: '2026-07-1')),
+        ]);
+        final api = _api(adapter);
+
+        final result = await api.commitBaseline(
+          accessToken: 'access-token',
+          command: _baselineCommand(),
+        );
+
+        expect(
+          _failure(result).kind,
+          FinanceEntryFailureKind.malformedResponse,
+        );
+      },
+    );
+
+    test(
+      'maps baseline HTTP rejection and preserves its structured issues',
+      () async {
+        final adapter = _QueueAdapter([
+          const _JsonResponse(422, {
+            'detail': {
+              'code': 'BASELINE_REJECTED',
+              'issues': <Object?>[],
+              'baselineIssues': [
+                {
+                  'code': 'BASELINE_AFTER_EXISTING_OPERATION',
+                  'field': 'openingBalanceOn',
+                },
+              ],
+            },
+          }),
+        ]);
+        final api = _api(adapter);
+
+        final result = await api.commitBaseline(
+          accessToken: 'access-token',
+          command: _baselineCommand(),
+        );
+
+        final failure = _failure(result);
+        expect(failure.kind, FinanceEntryFailureKind.rejected);
+        expect(failure.code, FinanceEntryErrorCode.baselineRejected);
+        expect(failure.issues, isEmpty);
+        expect(failure.baselineIssues, hasLength(1));
+        expect(
+          failure.baselineIssues.single.code,
+          FinanceBaselineIssueCode.baselineAfterExistingOperation,
+        );
+      },
+    );
+
+    test(
+      'maps strict account unavailable 404 for both baseline endpoints',
+      () async {
+        const unavailable = {
+          'detail': {'code': 'ACCOUNT_UNAVAILABLE', 'issues': <Object?>[]},
+        };
+        final adapter = _QueueAdapter([
+          const _JsonResponse(404, unavailable),
+          const _JsonResponse(404, unavailable),
+        ]);
+        final api = _api(adapter);
+
+        final evaluated = await api.evaluateBaseline(
+          accessToken: 'access-token',
+          draft: _baselineModel(),
+        );
+        final committed = await api.commitBaseline(
+          accessToken: 'access-token',
+          command: _baselineCommand(),
+        );
+
+        for (final result in [evaluated, committed]) {
+          final failure = switch (result) {
+            FinanceEntryFailureResult(:final failure) => failure,
+            _ => throw StateError('Expected a baseline failure.'),
+          };
+          expect(failure.kind, FinanceEntryFailureKind.conflict);
+          expect(failure.code, FinanceEntryErrorCode.accountUnavailable);
+          expect(failure.issues, isEmpty);
+          expect(failure.baselineIssues, isEmpty);
+        }
+      },
+    );
+
+    test(
+      'fails closed for malformed or misplaced account unavailable',
+      () async {
+        const unavailable = {
+          'detail': {'code': 'ACCOUNT_UNAVAILABLE', 'issues': <Object?>[]},
+        };
+        final adapter = _QueueAdapter([
+          const _JsonResponse(404, {
+            'detail': {'code': 'ACCOUNT_UNAVAILABLE'},
+          }),
+          const _JsonResponse(422, unavailable),
+          const _JsonResponse(404, unavailable),
+        ]);
+        final api = _api(adapter);
+
+        final malformed = await api.evaluateBaseline(
+          accessToken: 'access-token',
+          draft: _baselineModel(),
+        );
+        final wrongStatus = await api.evaluateBaseline(
+          accessToken: 'access-token',
+          draft: _baselineModel(),
+        );
+        final wrongEndpoint = await api.evaluateAccount(
+          accessToken: 'access-token',
+          draft: FinanceAccountDraft.fromJson(_accountDraft()),
+        );
+
+        expect(
+          _failure(malformed).kind,
+          FinanceEntryFailureKind.malformedResponse,
+        );
+        expect(
+          _failure(wrongStatus).kind,
+          FinanceEntryFailureKind.malformedResponse,
+        );
+        expect(
+          _failure(wrongEndpoint).kind,
+          FinanceEntryFailureKind.malformedResponse,
+        );
+      },
+    );
+
+    test('keeps the legacy account rejection wire shape valid', () async {
+      final adapter = _QueueAdapter([
+        const _JsonResponse(422, {
+          'detail': {
+            'code': 'ACCOUNT_REJECTED',
+            'issues': [
+              {
+                'code': 'OPENING_BALANCE_DATE_IN_FUTURE',
+                'field': 'openingBalanceOn',
+              },
+            ],
+          },
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.evaluateAccount(
+        accessToken: 'access-token',
+        draft: FinanceAccountDraft.fromJson(_accountDraft()),
+      );
+
+      final failure = _failure(result);
+      expect(failure.kind, FinanceEntryFailureKind.rejected);
+      expect(failure.code, FinanceEntryErrorCode.accountRejected);
+      expect(
+        failure.issues.single.code,
+        FinanceIssueCode.openingBalanceDateInFuture,
+      );
+      expect(failure.baselineIssues, isEmpty);
     });
 
     test('lists the strict authoritative account setup', () async {
