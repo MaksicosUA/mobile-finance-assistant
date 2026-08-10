@@ -313,18 +313,25 @@ resolver with timestamps or local counters.
 ## GitHub Actions APKs
 
 Every push, and each manual workflow run, performs the locked dependency,
-localization, formatting, and analysis checks, then runs both test suites,
-before building two separate 14-day artifacts. `flutter test` and `pytest` are
-mandatory gates: a failing test produces no APK.
+localization, formatting, and analysis checks, then runs both test suites, then
+builds and manifest-verifies both debug APKs. `flutter test` and `pytest` are
+mandatory gates: a failing test produces no APK. The `fixture-debug` APK uses
+synthetic Home data; the `network-debug` APK enables authentication and the
+real API. Checkout uses full Git history and the version is resolved once, so
+both variants of a revision share one version.
 
-The `fixture-debug` APK uses synthetic Home data. The
-`network-debug` APK enables authentication and the real API, and includes a
-SHA-256 checksum alongside each APK. Checkout uses full Git history, the
-version is resolved once, and both manifests are verified before upload. Each
-artifact also contains `android-build-version.txt` with the source SHA and
-resolved version. Artifacts built from `main` use the official names; all other
-branches are explicitly prefixed with `preview-` and are not one ordered
-Android upgrade chain.
+Only the `network-debug` APK is published, only from `main`, and only for
+7 days. Two universal ~170 MiB APKs per run with 14-day retention exhausted the
+Actions storage quota, which then failed runs whose checks, tests, and builds
+had all passed. Narrowing publication does not weaken the gate: every branch
+still builds and verifies both APKs, it simply does not store them.
+
+The published artifact carries a SHA-256 checksum and
+`android-build-version.txt` with the source SHA and resolved version. CI signs
+with an ephemeral debug key, so installing a CI APK over a locally built one
+forces an uninstall that clears the session and the encrypted operation outbox.
+Registered-account testing therefore uses `tool/build_android_network_debug.sh`,
+which signs with the stable local debug keystore and upgrades in place.
 
 The network build reads the non-secret repository variables
 `ANDROID_DEBUG_API_BASE_URL` and `HOME_API_TIMEZONE`. Without them it uses

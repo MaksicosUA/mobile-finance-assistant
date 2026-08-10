@@ -124,26 +124,25 @@ jobs:
           sha256sum mobile-finance-assistant-network-debug.apk \
             > mobile-finance-assistant-network-debug.apk.sha256
 
-      - name: Upload fixture debug APK
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ github.ref == 'refs/heads/main' && 'mobile-finance-assistant-fixture-debug' || 'preview-mobile-finance-assistant-fixture-debug' }}-v${{ steps.android_apks.outputs.build_name }}-${{ github.sha }}
-          path: |
-            build/app/outputs/flutter-apk/mobile-finance-assistant-fixture-debug.apk
-            build/app/outputs/flutter-apk/mobile-finance-assistant-fixture-debug.apk.sha256
-            build/app/outputs/flutter-apk/android-build-version.txt
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
-
+      # Both APKs are still built and manifest-verified above on every branch,
+      # so the gate is unchanged. Only publication is narrowed: uploading two
+      # ~170 MiB universal APKs per run with 14-day retention exhausted the
+      # Actions storage quota, which then failed runs whose source checks,
+      # tests, and builds had all passed. The fixture APK is not uploaded at
+      # all because it is a UI preview that adds no verification the build
+      # step has not already done, and CI APKs use an ephemeral debug key, so
+      # installing one forces an uninstall that clears the session and the
+      # encrypted outbox. Registered-account testing uses the locally built
+      # network APK (tool/build_android_network_debug.sh) instead.
       - name: Upload authenticated network debug APK
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ github.ref == 'refs/heads/main' && 'mobile-finance-assistant-network-debug' || 'preview-mobile-finance-assistant-network-debug' }}-v${{ steps.android_apks.outputs.build_name }}-${{ github.sha }}
+          name: mobile-finance-assistant-network-debug-v${{ steps.android_apks.outputs.build_name }}-${{ github.sha }}
           path: |
             build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk
             build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk.sha256
             build/app/outputs/flutter-apk/android-build-version.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
           compression-level: 0
