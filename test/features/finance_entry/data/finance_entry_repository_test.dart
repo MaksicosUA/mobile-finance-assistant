@@ -646,6 +646,18 @@ class _ListApi implements FinanceEntryApiClient {
   }) => throw UnimplementedError();
 
   @override
+  Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts({
+    required String accessToken,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostSettled>> transitionPlannedCost({
+    required String accessToken,
+    required String plannedCostId,
+    required PlannedCostTransitionCommand command,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceBaselineEvaluation>> evaluateBaseline({
     required String accessToken,
     required FinanceBaselineDraft draft,

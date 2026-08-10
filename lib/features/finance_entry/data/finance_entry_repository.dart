@@ -31,6 +31,13 @@ abstract interface class FinanceEntryRepositoryClient {
     PlannedCostDraft draft,
   );
 
+  Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts();
+
+  Future<FinanceEntryResult<PlannedCostSettled>> transitionPlannedCost(
+    String plannedCostId,
+    PlannedCostTransitionCommand command,
+  );
+
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation(
     FinanceOperationDraft draft,
   );
@@ -120,6 +127,27 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
     return _authorized(
       (accessToken) =>
           _api.createPlannedCost(accessToken: accessToken, draft: draft),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts() {
+    return _authorized(
+      (accessToken) => _api.listPlannedCosts(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostSettled>> transitionPlannedCost(
+    String plannedCostId,
+    PlannedCostTransitionCommand command,
+  ) {
+    return _authorized(
+      (accessToken) => _api.transitionPlannedCost(
+        accessToken: accessToken,
+        plannedCostId: plannedCostId,
+        command: command,
+      ),
     );
   }
 

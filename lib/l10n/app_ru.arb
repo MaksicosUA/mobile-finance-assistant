@@ -532,5 +532,33 @@
   "plannedCostDoneAction": "Готово",
   "@plannedCostDoneAction": {
     "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostListTitle": "Запланировано",
+  "@plannedCostListTitle": {
+    "description": "Planned cost list (ADR 0018)."
+  },
+  "plannedCostListEmpty": "Пока ничего не запланировано.",
+  "@plannedCostListEmpty": {
+    "description": "Planned cost list (ADR 0018)."
+  },
+  "plannedCostCancelAction": "Отменить",
+  "@plannedCostCancelAction": {
+    "description": "Planned cost list (ADR 0018)."
+  },
+  "plannedCostCancelSemantics": "Отменить план",
+  "@plannedCostCancelSemantics": {
+    "description": "Planned cost list (ADR 0018)."
+  },
+  "plannedCostDueLabel": "Срок",
+  "@plannedCostDueLabel": {
+    "description": "Planned cost list (ADR 0018)."
+  },
+  "plannedCostOverdueLabel": "Просрочено",
+  "@plannedCostOverdueLabel": {
+    "description": "Planned cost list (ADR 0018)."
+  },
+  "plannedCostCancelFailure": "Не удалось отменить план.",
+  "@plannedCostCancelFailure": {
+    "description": "Planned cost list (ADR 0018)."
   }
 }

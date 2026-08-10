@@ -190,6 +190,30 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
           const SizedBox(height: 24),
           _Message(key: const Key('planned-cost-message'), text: message),
         ],
+        const SizedBox(height: 32),
+        Text(
+          l10n.plannedCostListTitle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        if (state.plans.isEmpty)
+          Text(
+            l10n.plannedCostListEmpty,
+            key: const Key('planned-cost-list-empty'),
+          )
+        else
+          ...state.plans.map(
+            (plan) => _PlanRow(
+              key: Key('planned-cost-plan-${plan.plannedCostId}'),
+              plan: plan,
+              isSettling: state.settlingId == plan.plannedCostId,
+              onCancel: state.settlingId != null || state.isSubmitting
+                  ? null
+                  : () => ref
+                        .read(plannedCostControllerProvider.notifier)
+                        .cancelPlan(plan.plannedCostId),
+            ),
+          ),
         const SizedBox(height: 24),
         FilledButton(
           key: const Key('planned-cost-submit'),
@@ -274,6 +298,75 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
     return failure.kind == FinanceEntryFailureKind.invalidInput
         ? l10n.plannedCostInvalidInput
         : l10n.plannedCostGenericFailure;
+  }
+}
+
+class _PlanRow extends StatelessWidget {
+  const _PlanRow({
+    required this.plan,
+    required this.isSettling,
+    required this.onCancel,
+    super.key,
+  });
+
+  final PlannedCost plan;
+  final bool isSettling;
+  final VoidCallback? onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final materialL10n = MaterialLocalizations.of(context);
+    final due = DateTime.tryParse(plan.plannedOn);
+    final scheme = Theme.of(context).colorScheme;
+    // Overdue is stated in words as well as colour: an obligation must never
+    // be signalled by colour alone.
+    final dueLabel = plan.isDue
+        ? l10n.plannedCostOverdueLabel
+        : l10n.plannedCostDueLabel;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 180,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(plan.title),
+                Text(
+                  due == null
+                      ? dueLabel
+                      : '$dueLabel: ${materialL10n.formatMediumDate(due)}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: plan.isDue ? scheme.error : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text('${plan.amount} ${plan.currency}'),
+          if (isSettling)
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+            )
+          else
+            Semantics(
+              button: true,
+              label: l10n.plannedCostCancelSemantics,
+              child: TextButton(
+                onPressed: onCancel,
+                child: Text(l10n.plannedCostCancelAction),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
