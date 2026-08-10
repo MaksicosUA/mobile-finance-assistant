@@ -981,4 +981,18 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get plannedCostCancelFailure => 'Не удалось отменить план.';
+
+  @override
+  String get plannedCostConfirmAction => 'Оплачено';
+
+  @override
+  String get plannedCostConfirmSemantics => 'Отметить план оплаченным';
+
+  @override
+  String get plannedCostConfirmFailure =>
+      'Не удалось записать операцию. План остался в списке — попробуйте ещё раз.';
+
+  @override
+  String get plannedCostConfirmHint =>
+      '«Оплачено» создаст обычную операцию расхода и уберёт план из списка.';
 }

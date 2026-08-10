@@ -1796,6 +1796,30 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не удалось отменить план.'**
   String get plannedCostCancelFailure;
+
+  /// Planned cost confirmation (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Оплачено'**
+  String get plannedCostConfirmAction;
+
+  /// Planned cost confirmation (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отметить план оплаченным'**
+  String get plannedCostConfirmSemantics;
+
+  /// Planned cost confirmation (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось записать операцию. План остался в списке — попробуйте ещё раз.'**
+  String get plannedCostConfirmFailure;
+
+  /// Planned cost confirmation (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'«Оплачено» создаст обычную операцию расхода и уберёт план из списка.'**
+  String get plannedCostConfirmHint;
 }
 
 class _AppLocalizationsDelegate

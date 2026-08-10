@@ -196,6 +196,13 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
+        if (state.plans.isNotEmpty) ...[
+          Text(
+            l10n.plannedCostConfirmHint,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+        ],
         if (state.plans.isEmpty)
           Text(
             l10n.plannedCostListEmpty,
@@ -212,6 +219,11 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
                   : () => ref
                         .read(plannedCostControllerProvider.notifier)
                         .cancelPlan(plan.plannedCostId),
+              onConfirm: state.settlingId != null || state.isSubmitting
+                  ? null
+                  : () => ref
+                        .read(plannedCostControllerProvider.notifier)
+                        .confirmPlan(plan),
             ),
           ),
         const SizedBox(height: 24),
@@ -306,12 +318,14 @@ class _PlanRow extends StatelessWidget {
     required this.plan,
     required this.isSettling,
     required this.onCancel,
+    required this.onConfirm,
     super.key,
   });
 
   final PlannedCost plan;
   final bool isSettling;
   final VoidCallback? onCancel;
+  final VoidCallback? onConfirm;
 
   @override
   Widget build(BuildContext context) {
@@ -355,15 +369,26 @@ class _PlanRow extends StatelessWidget {
               height: 24,
               child: CircularProgressIndicator.adaptive(strokeWidth: 2),
             )
-          else
+          else ...[
+            Semantics(
+              button: true,
+              label: l10n.plannedCostConfirmSemantics,
+              child: FilledButton.tonal(
+                key: Key('planned-cost-confirm-${plan.plannedCostId}'),
+                onPressed: onConfirm,
+                child: Text(l10n.plannedCostConfirmAction),
+              ),
+            ),
             Semantics(
               button: true,
               label: l10n.plannedCostCancelSemantics,
               child: TextButton(
+                key: Key('planned-cost-cancel-${plan.plannedCostId}'),
                 onPressed: onCancel,
                 child: Text(l10n.plannedCostCancelAction),
               ),
             ),
+          ],
         ],
       ),
     );
