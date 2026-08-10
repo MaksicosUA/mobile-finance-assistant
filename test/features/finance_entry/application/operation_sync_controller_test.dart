@@ -1399,6 +1399,11 @@ final class _FakeFinanceEntryRepository
   }
 
   @override
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
+    PlannedCostDraft draft,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() {
     throw StateError('Unexpected account list.');
   }

@@ -1204,6 +1204,10 @@ final class _FakeFinanceEntryRepository
   final List<FinanceAccountCommitCommand> accountCommands = [];
   final List<FinanceOperationDraft> operationDrafts = [];
   var listCalls = 0;
+  @override
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
+    PlannedCostDraft draft,
+  ) => throw UnimplementedError();
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {

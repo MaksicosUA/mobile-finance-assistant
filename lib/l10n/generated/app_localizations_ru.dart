@@ -876,4 +876,88 @@ class AppLocalizationsRu extends AppLocalizations {
   String operationBeforeOpeningDateDetail(String openingDate) {
     return 'Учёт по счёту начинается $openingDate. Операции раньше этой даты записать нельзя. Дату начала можно перенести назад в настройках счёта.';
   }
+
+  @override
+  String get plannedCostSettingsAction => 'Запланировать трату';
+
+  @override
+  String get plannedCostSettingsDescription => 'Например аренда или подписка';
+
+  @override
+  String get plannedCostTitle => 'Планируемая трата';
+
+  @override
+  String get plannedCostLoading => 'Загружаем счёт';
+
+  @override
+  String get plannedCostDescription =>
+      'Планируемая трата не меняет баланс. Она появится в списке предстоящих платежей, пока вы её не подтвердите.';
+
+  @override
+  String get plannedCostAccountRequired =>
+      'Сначала нужно создать счёт: планируемая трата привязывается к нему.';
+
+  @override
+  String get plannedCostTitleLabel => 'Название';
+
+  @override
+  String get plannedCostTitleHint => 'Аренда';
+
+  @override
+  String get plannedCostAmountLabel => 'Сумма';
+
+  @override
+  String get plannedCostDateLabel => 'Дата платежа';
+
+  @override
+  String get plannedCostChooseDateAction => 'Выбрать дату';
+
+  @override
+  String get plannedCostSubmitAction => 'Запланировать';
+
+  @override
+  String get plannedCostRetryAction => 'Повторить';
+
+  @override
+  String get plannedCostAcceptedTitle => 'Трата запланирована';
+
+  @override
+  String get plannedCostAcceptedDescription =>
+      'Она не влияет на баланс и ждёт подтверждения.';
+
+  @override
+  String get plannedCostHomePending => 'Обновляем главный экран';
+
+  @override
+  String get plannedCostHomeUpdated => 'Главный экран обновлён';
+
+  @override
+  String get plannedCostHomeDelayed => 'Главный экран обновится чуть позже';
+
+  @override
+  String get plannedCostHomeFailed => 'Не удалось обновить главный экран';
+
+  @override
+  String get plannedCostInvalidInput => 'Проверьте название, сумму и дату.';
+
+  @override
+  String get plannedCostIssueAccountUnavailable => 'Счёт недоступен.';
+
+  @override
+  String get plannedCostIssueCurrencyMismatch =>
+      'Валюта не совпадает с валютой счёта.';
+
+  @override
+  String get plannedCostIssueUnsupportedCurrency =>
+      'Эта валюта пока не поддерживается.';
+
+  @override
+  String get plannedCostIssueBeforeBaseline =>
+      'Дата раньше начала учёта по счёту. Выберите более позднюю дату.';
+
+  @override
+  String get plannedCostGenericFailure => 'Не удалось запланировать трату.';
+
+  @override
+  String get plannedCostDoneAction => 'Готово';
 }

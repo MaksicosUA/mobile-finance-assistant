@@ -763,6 +763,192 @@ final class FinanceOperationCommit {
   final CommittedFinanceOperation operation;
 }
 
+/// Codes a planned-cost write may be refused with (ADR 0018).
+enum PlannedCostIssueCode {
+  accountUnavailable,
+  accountCurrencyMismatch,
+  unsupportedCurrency,
+  planBeforeAccountBaseline,
+  invalidLifecycleTransition,
+  confirmingOperationMissing,
+}
+
+@immutable
+final class PlannedCostIssue {
+  const PlannedCostIssue({required this.code, required this.field});
+
+  factory PlannedCostIssue.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'code', 'field'});
+    return PlannedCostIssue(
+      code: _plannedCostIssueCode(_requiredString(json, 'code')),
+      field: _requiredString(json, 'field'),
+    );
+  }
+
+  final PlannedCostIssueCode code;
+  final String field;
+}
+
+/// An intended future payment before the server has accepted it.
+///
+/// A plan is a forecast, so unlike an operation it needs no evaluate/confirm
+/// handshake: nothing it can do moves the authoritative balance (ADR 0018).
+@immutable
+final class PlannedCostDraft {
+  const PlannedCostDraft({
+    required this.commandId,
+    required this.accountId,
+    required this.amount,
+    required this.currency,
+    required this.title,
+    required this.plannedOn,
+    required this.requestedAt,
+    this.category,
+  });
+
+  factory PlannedCostDraft.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'commandId',
+      'accountId',
+      'amount',
+      'currency',
+      'title',
+      'category',
+      'plannedOn',
+      'requestedAt',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return PlannedCostDraft(
+      commandId: _requiredUuid(json, 'commandId'),
+      accountId: _requiredUuid(json, 'accountId'),
+      amount: _positiveMoney(json, 'amount'),
+      currency: _currency(json, 'currency'),
+      title: _boundedText(json, 'title', maximumLength: 100),
+      category: _optionalBoundedText(json, 'category', maximumLength: 100),
+      plannedOn: _date(json, 'plannedOn'),
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final String accountId;
+  final String amount;
+  final String currency;
+  final String title;
+  final String? category;
+  final String plannedOn;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'accountId': accountId,
+    'amount': amount,
+    'currency': currency,
+    'title': title,
+    'category': category,
+    'plannedOn': plannedOn,
+    'requestedAt': requestedAt,
+  };
+}
+
+/// A plan as the server stores it.
+@immutable
+final class PlannedCost {
+  const PlannedCost({
+    required this.plannedCostId,
+    required this.accountId,
+    required this.amount,
+    required this.currency,
+    required this.title,
+    required this.plannedOn,
+    required this.status,
+    required this.isDue,
+    this.category,
+  });
+
+  factory PlannedCost.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'plannedCostId',
+      'userId',
+      'accountId',
+      'commandId',
+      'amount',
+      'currency',
+      'title',
+      'category',
+      'plannedOn',
+      'status',
+      'isDue',
+      'confirmedOperationId',
+      'createdAt',
+      'updatedAt',
+    });
+    final isDue = json['isDue'];
+    if (isDue is! bool) throw const FormatException('Invalid isDue.');
+    return PlannedCost(
+      plannedCostId: _requiredUuid(json, 'plannedCostId'),
+      accountId: _requiredUuid(json, 'accountId'),
+      amount: _positiveMoney(json, 'amount'),
+      currency: _currency(json, 'currency'),
+      title: _boundedText(json, 'title', maximumLength: 100),
+      category: _optionalBoundedText(json, 'category', maximumLength: 100),
+      plannedOn: _date(json, 'plannedOn'),
+      status: _boundedText(json, 'status', maximumLength: 16),
+      isDue: isDue,
+    );
+  }
+
+  final String plannedCostId;
+  final String accountId;
+  final String amount;
+  final String currency;
+  final String title;
+  final String? category;
+  final String plannedOn;
+  final String status;
+  final bool isDue;
+}
+
+@immutable
+final class PlannedCostCreated {
+  const PlannedCostCreated({
+    required this.plannedCost,
+    required this.idempotentReplay,
+  });
+
+  final PlannedCost plannedCost;
+  final bool idempotentReplay;
+}
+
+void validatePlannedCostDraft(PlannedCostDraft draft) {
+  PlannedCostDraft.fromJson(draft.toJson());
+}
+
+PlannedCostIssueCode _plannedCostIssueCode(String value) => switch (value) {
+  'ACCOUNT_UNAVAILABLE' => PlannedCostIssueCode.accountUnavailable,
+  'ACCOUNT_CURRENCY_MISMATCH' => PlannedCostIssueCode.accountCurrencyMismatch,
+  'UNSUPPORTED_CURRENCY' => PlannedCostIssueCode.unsupportedCurrency,
+  'PLAN_BEFORE_ACCOUNT_BASELINE' =>
+    PlannedCostIssueCode.planBeforeAccountBaseline,
+  'INVALID_LIFECYCLE_TRANSITION' =>
+    PlannedCostIssueCode.invalidLifecycleTransition,
+  'CONFIRMING_OPERATION_MISSING' =>
+    PlannedCostIssueCode.confirmingOperationMissing,
+  _ => throw FormatException('Unsupported planned cost issue code: $value'),
+};
+
+String plannedCostWireTimestamp(DateTime value) => _utcWireTimestamp(value);
+
+String plannedCostWireDate(DateTime value) {
+  final utc = DateTime.utc(value.year, value.month, value.day);
+  if (utc.year < 1900 || utc.year > 2100) {
+    throw ArgumentError.value(value, 'value', 'Date is outside v1 range.');
+  }
+  return utc.toIso8601String().substring(0, 10);
+}
+
 void validateAccountDraft(FinanceAccountDraft draft) {
   FinanceAccountDraft.fromJson(draft.toJson());
 }

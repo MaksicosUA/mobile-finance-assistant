@@ -647,6 +647,10 @@ final class _FakeFinanceEntryRepository
   final List<FinanceBaselineDraft> baselineDrafts = [];
   final List<FinanceBaselineCommitCommand> baselineCommands = [];
   int listCalls = 0;
+  @override
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
+    PlannedCostDraft draft,
+  ) => throw UnimplementedError();
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {

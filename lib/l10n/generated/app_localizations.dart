@@ -1598,6 +1598,162 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Учёт по счёту начинается {openingDate}. Операции раньше этой даты записать нельзя. Дату начала можно перенести назад в настройках счёта.'**
   String operationBeforeOpeningDateDetail(String openingDate);
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Запланировать трату'**
+  String get plannedCostSettingsAction;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Например аренда или подписка'**
+  String get plannedCostSettingsDescription;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Планируемая трата'**
+  String get plannedCostTitle;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Загружаем счёт'**
+  String get plannedCostLoading;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Планируемая трата не меняет баланс. Она появится в списке предстоящих платежей, пока вы её не подтвердите.'**
+  String get plannedCostDescription;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала нужно создать счёт: планируемая трата привязывается к нему.'**
+  String get plannedCostAccountRequired;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Название'**
+  String get plannedCostTitleLabel;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Аренда'**
+  String get plannedCostTitleHint;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сумма'**
+  String get plannedCostAmountLabel;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата платежа'**
+  String get plannedCostDateLabel;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Выбрать дату'**
+  String get plannedCostChooseDateAction;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Запланировать'**
+  String get plannedCostSubmitAction;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторить'**
+  String get plannedCostRetryAction;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Трата запланирована'**
+  String get plannedCostAcceptedTitle;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Она не влияет на баланс и ждёт подтверждения.'**
+  String get plannedCostAcceptedDescription;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновляем главный экран'**
+  String get plannedCostHomePending;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Главный экран обновлён'**
+  String get plannedCostHomeUpdated;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Главный экран обновится чуть позже'**
+  String get plannedCostHomeDelayed;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось обновить главный экран'**
+  String get plannedCostHomeFailed;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверьте название, сумму и дату.'**
+  String get plannedCostInvalidInput;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Счёт недоступен.'**
+  String get plannedCostIssueAccountUnavailable;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Валюта не совпадает с валютой счёта.'**
+  String get plannedCostIssueCurrencyMismatch;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Эта валюта пока не поддерживается.'**
+  String get plannedCostIssueUnsupportedCurrency;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата раньше начала учёта по счёту. Выберите более позднюю дату.'**
+  String get plannedCostIssueBeforeBaseline;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось запланировать трату.'**
+  String get plannedCostGenericFailure;
+
+  /// Planned cost flow (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get plannedCostDoneAction;
 }
 
 class _AppLocalizationsDelegate
