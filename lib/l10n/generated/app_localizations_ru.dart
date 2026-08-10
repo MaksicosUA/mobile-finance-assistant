@@ -960,4 +960,25 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get plannedCostDoneAction => 'Готово';
+
+  @override
+  String get plannedCostListTitle => 'Запланировано';
+
+  @override
+  String get plannedCostListEmpty => 'Пока ничего не запланировано.';
+
+  @override
+  String get plannedCostCancelAction => 'Отменить';
+
+  @override
+  String get plannedCostCancelSemantics => 'Отменить план';
+
+  @override
+  String get plannedCostDueLabel => 'Срок';
+
+  @override
+  String get plannedCostOverdueLabel => 'Просрочено';
+
+  @override
+  String get plannedCostCancelFailure => 'Не удалось отменить план.';
 }

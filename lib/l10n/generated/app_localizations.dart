@@ -1754,6 +1754,48 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Готово'**
   String get plannedCostDoneAction;
+
+  /// Planned cost list (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Запланировано'**
+  String get plannedCostListTitle;
+
+  /// Planned cost list (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока ничего не запланировано.'**
+  String get plannedCostListEmpty;
+
+  /// Planned cost list (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменить'**
+  String get plannedCostCancelAction;
+
+  /// Planned cost list (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отменить план'**
+  String get plannedCostCancelSemantics;
+
+  /// Planned cost list (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Срок'**
+  String get plannedCostDueLabel;
+
+  /// Planned cost list (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Просрочено'**
+  String get plannedCostOverdueLabel;
+
+  /// Planned cost list (ADR 0018).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось отменить план.'**
+  String get plannedCostCancelFailure;
 }
 
 class _AppLocalizationsDelegate

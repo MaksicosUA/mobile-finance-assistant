@@ -141,6 +141,69 @@ void main() {
     expect(find.textContaining('не влияет на баланс'), findsOneWidget);
     expect(find.byKey(const Key('planned-cost-home-status')), findsOneWidget);
   });
+
+  testWidgets('outstanding plans are listed and can be cancelled', (
+    tester,
+  ) async {
+    final repository = _FakeRepository(
+      plans: const [
+        PlannedCost(
+          plannedCostId: _planId,
+          accountId: _accountId,
+          amount: '800.00',
+          currency: 'EUR',
+          title: 'Аренда',
+          plannedOn: '2026-09-01',
+          status: 'planned',
+          isDue: false,
+        ),
+      ],
+      settleResult: FinanceEntrySuccess<PlannedCostSettled>(
+        requestId: 'req_synthetic_planned_cost',
+        value: const PlannedCostSettled(
+          plannedCost: PlannedCost(
+            plannedCostId: _planId,
+            accountId: _accountId,
+            amount: '800.00',
+            currency: 'EUR',
+            title: 'Аренда',
+            plannedOn: '2026-09-01',
+            status: 'cancelled',
+            isDue: false,
+          ),
+          idempotentReplay: false,
+        ),
+      ),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    final row = find.byKey(const Key('planned-cost-plan-$_planId'));
+    await tester.scrollUntilVisible(
+      row,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(row, findsOneWidget);
+
+    await tester.tap(find.text('Отменить'));
+    await tester.pumpAndSettle();
+
+    expect(repository.settled, [_planId]);
+    expect(find.byKey(const Key('planned-cost-list-empty')), findsOneWidget);
+  });
+
+  testWidgets('an empty plan list says so instead of showing nothing', (
+    tester,
+  ) async {
+    await _pumpPage(tester, repository: _FakeRepository());
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('planned-cost-list-empty')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byKey(const Key('planned-cost-list-empty')), findsOneWidget);
+  });
 }
 
 Future<void> _pumpPage(
@@ -189,13 +252,36 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
     this.hasAccount = true,
     this.listFailure,
     this.createResult,
+    this.plans = const [],
+    this.settleResult,
   });
 
+  final List<PlannedCost> plans;
+  final FinanceEntryResult<PlannedCostSettled>? settleResult;
+  final List<String> settled = [];
   final bool hasAccount;
   final FinanceEntryFailure? listFailure;
   final FinanceEntryResult<PlannedCostCreated>? createResult;
   final List<PlannedCostDraft> drafts = [];
   int listCalls = 0;
+  @override
+  Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts() async {
+    return FinanceEntrySuccess<PlannedCostList>(
+      requestId: 'req_synthetic_planned_cost',
+      value: PlannedCostList(evaluatedOn: '2026-08-09', plans: plans),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostSettled>> transitionPlannedCost(
+    String plannedCostId,
+    PlannedCostTransitionCommand command,
+  ) async {
+    settled.add(plannedCostId);
+    final result = settleResult;
+    if (result == null) throw UnimplementedError();
+    return result;
+  }
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {

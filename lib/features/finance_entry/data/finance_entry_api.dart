@@ -43,6 +43,16 @@ abstract interface class FinanceEntryApiClient {
     required PlannedCostDraft draft,
   });
 
+  Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts({
+    required String accessToken,
+  });
+
+  Future<FinanceEntryResult<PlannedCostSettled>> transitionPlannedCost({
+    required String accessToken,
+    required String plannedCostId,
+    required PlannedCostTransitionCommand command,
+  });
+
   Future<FinanceEntryResult<FinanceOperationCommit>> commitOperation({
     required String accessToken,
     required FinanceOperationCommitCommand command,
@@ -237,6 +247,52 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     );
   }
 
+  @override
+  Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts({
+    required String accessToken,
+  }) {
+    return _request(
+      method: 'GET',
+      path: '/api/v1/planned-costs',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.plannedCost,
+      parse: (json, statusCode) => _parsePlannedCostList(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostSettled>> transitionPlannedCost({
+    required String accessToken,
+    required String plannedCostId,
+    required PlannedCostTransitionCommand command,
+  }) {
+    try {
+      validatePlannedCostTransition(command);
+      validatePlannedCostId(plannedCostId);
+    } on Object {
+      return Future<FinanceEntryResult<PlannedCostSettled>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/planned-costs/$plannedCostId/transition',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200},
+      contract: _ContractKind.plannedCost,
+      parse: (json, statusCode) => _parsePlannedCostSettled(
+        json,
+        statusCode: statusCode,
+        plannedCostId: plannedCostId,
+      ),
+    );
+  }
+
   Future<FinanceEntryResult<T>> _request<T>({
     required String method,
     required String path,
@@ -351,6 +407,44 @@ PlannedCostCreated _parsePlannedCostCreated(
     throw const FormatException('Server plan does not match the command.');
   }
   return PlannedCostCreated(plannedCost: plannedCost, idempotentReplay: replay);
+}
+
+PlannedCostList _parsePlannedCostList(Map<String, Object?> json, int status) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {'schemaVersion', 'evaluatedOn', 'plannedCosts'});
+  _requireSchema(json);
+  final raw = json['plannedCosts'];
+  if (raw is! List<Object?> || raw.length > 200) {
+    throw const FormatException('Invalid planned cost list.');
+  }
+  return PlannedCostList(
+    evaluatedOn: _accountDate(json, 'evaluatedOn'),
+    plans: raw
+        .map((item) => PlannedCost.fromJson(_object(item)))
+        .toList(growable: false),
+  );
+}
+
+PlannedCostSettled _parsePlannedCostSettled(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required String plannedCostId,
+}) {
+  if (statusCode != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {'schemaVersion', 'idempotentReplay', 'plannedCost'});
+  _requireSchema(json);
+  final replay = json['idempotentReplay'];
+  if (replay is! bool) throw const FormatException('Invalid idempotentReplay.');
+  final plannedCost = PlannedCost.fromJson(_object(json['plannedCost']));
+  if (plannedCost.plannedCostId != plannedCostId) {
+    throw const FormatException('Server settled a different plan.');
+  }
+  // A settled plan is terminal; a server still reporting it outstanding would
+  // contradict the transition it just acknowledged.
+  if (plannedCost.status == 'planned' || plannedCost.isDue) {
+    throw const FormatException('Settled plan is still outstanding.');
+  }
+  return PlannedCostSettled(plannedCost: plannedCost, idempotentReplay: replay);
 }
 
 FinanceAccountSetup _parseAccountSetup(

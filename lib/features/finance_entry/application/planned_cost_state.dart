@@ -36,8 +36,11 @@ final class PlannedCostEditing extends PlannedCostState {
     this.amount = '',
     this.isSubmitting = false,
     this.failure,
+    this.settlingId,
     List<PlannedCostIssue> issues = const [],
-  }) : issues = List<PlannedCostIssue>.unmodifiable(issues);
+    List<PlannedCost> plans = const [],
+  }) : issues = List<PlannedCostIssue>.unmodifiable(issues),
+       plans = List<PlannedCost>.unmodifiable(plans);
 
   final FinanceAccount account;
   final String title;
@@ -55,6 +58,14 @@ final class PlannedCostEditing extends PlannedCostState {
   final FinanceEntryFailure? failure;
   final List<PlannedCostIssue> issues;
 
+  /// Outstanding plans only. A settled plan is no longer an obligation and
+  /// disappears from the list rather than lingering as history.
+  final List<PlannedCost> plans;
+
+  /// The plan a cancellation is currently in flight for, so only that row
+  /// shows progress instead of the whole screen.
+  final String? settlingId;
+
   PlannedCostEditing copyWith({
     String? title,
     String? amount,
@@ -62,7 +73,10 @@ final class PlannedCostEditing extends PlannedCostState {
     bool? isSubmitting,
     FinanceEntryFailure? failure,
     List<PlannedCostIssue>? issues,
+    List<PlannedCost>? plans,
+    String? settlingId,
     bool clearFailure = false,
+    bool clearSettlingId = false,
   }) {
     return PlannedCostEditing(
       account: account,
@@ -74,6 +88,8 @@ final class PlannedCostEditing extends PlannedCostState {
       isSubmitting: isSubmitting ?? this.isSubmitting,
       failure: clearFailure ? null : (failure ?? this.failure),
       issues: issues ?? this.issues,
+      plans: plans ?? this.plans,
+      settlingId: clearSettlingId ? null : (settlingId ?? this.settlingId),
     );
   }
 }

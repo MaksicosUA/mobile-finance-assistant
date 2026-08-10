@@ -922,6 +922,106 @@ final class PlannedCostCreated {
   final bool idempotentReplay;
 }
 
+/// The terminal states a plan can be moved to (ADR 0018).
+///
+/// `skip` and `cancel` are distinct because recurrence will need them to mean
+/// different things: skipping one month is not cancelling the plan.
+enum PlannedCostTransition { confirm, skip, cancel }
+
+@immutable
+final class PlannedCostTransitionCommand {
+  const PlannedCostTransitionCommand({
+    required this.commandId,
+    required this.transition,
+    required this.requestedAt,
+    this.operationCommandId,
+  });
+
+  factory PlannedCostTransitionCommand.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'commandId',
+      'transition',
+      'operationCommandId',
+      'requestedAt',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    final transition = _plannedCostTransition(
+      _requiredString(json, 'transition'),
+    );
+    final operationCommandId = json['operationCommandId'] == null
+        ? null
+        : _requiredUuid(json, 'operationCommandId');
+    // Confirmation settles real money, so it must name the operation that did
+    // it; nothing else may carry one.
+    if ((transition == PlannedCostTransition.confirm) !=
+        (operationCommandId != null)) {
+      throw const FormatException('Invalid planned cost confirmation.');
+    }
+    return PlannedCostTransitionCommand(
+      commandId: _requiredUuid(json, 'commandId'),
+      transition: transition,
+      operationCommandId: operationCommandId,
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final PlannedCostTransition transition;
+  final String? operationCommandId;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'transition': transition.name,
+    'operationCommandId': operationCommandId,
+    'requestedAt': requestedAt,
+  };
+}
+
+@immutable
+final class PlannedCostSettled {
+  const PlannedCostSettled({
+    required this.plannedCost,
+    required this.idempotentReplay,
+  });
+
+  final PlannedCost plannedCost;
+  final bool idempotentReplay;
+}
+
+@immutable
+final class PlannedCostList {
+  PlannedCostList({required this.evaluatedOn, required List<PlannedCost> plans})
+    : plans = List<PlannedCost>.unmodifiable(plans);
+
+  /// The local date the server derived `isDue` against, so the client never
+  /// has to guess which day the server considered "today".
+  final String evaluatedOn;
+  final List<PlannedCost> plans;
+}
+
+/// Validates an identifier before it is interpolated into a request path.
+/// A non-UUID value must never reach the URL.
+String validatePlannedCostId(String value) {
+  if (!_uuidPattern.hasMatch(value)) {
+    throw const FormatException('Invalid planned cost id.');
+  }
+  return value;
+}
+
+void validatePlannedCostTransition(PlannedCostTransitionCommand command) {
+  PlannedCostTransitionCommand.fromJson(command.toJson());
+}
+
+PlannedCostTransition _plannedCostTransition(String value) => switch (value) {
+  'confirm' => PlannedCostTransition.confirm,
+  'skip' => PlannedCostTransition.skip,
+  'cancel' => PlannedCostTransition.cancel,
+  _ => throw FormatException('Unsupported planned cost transition: $value'),
+};
+
 void validatePlannedCostDraft(PlannedCostDraft draft) {
   PlannedCostDraft.fromJson(draft.toJson());
 }

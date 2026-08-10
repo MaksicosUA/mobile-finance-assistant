@@ -14,6 +14,7 @@ const _accountId = '22222222-2222-4222-8222-222222222222';
 const _accountCommandId = '33333333-3333-4333-8333-333333333333';
 const _planCommandId = '44444444-4444-4444-8444-444444444444';
 const _planId = '55555555-5555-4555-8555-555555555555';
+const _otherPlanId = '66666666-6666-4666-8666-666666666666';
 
 void main() {
   group('PlannedCostController', () {
@@ -190,6 +191,96 @@ void main() {
       expect(state.failure?.kind, FinanceEntryFailureKind.invalidInput);
     });
 
+    test(
+      'loading also lists outstanding plans and drops settled ones',
+      () async {
+        final repository = _FakeRepository(
+          listResults: [_success(_setup(_account('2026-07-10')))],
+          plans: [
+            _plan(plannedOn: '2026-09-01'),
+            _plan(
+              plannedOn: '2026-09-05',
+              id: _otherPlanId,
+              status: 'cancelled',
+            ),
+          ],
+        );
+        final container = _container(repository);
+        addTearDown(container.dispose);
+
+        await container.read(plannedCostControllerProvider.notifier).load();
+
+        final state =
+            container.read(plannedCostControllerProvider) as PlannedCostEditing;
+        // A settled plan is no longer an obligation.
+        expect(state.plans, hasLength(1));
+        expect(state.plans.single.plannedCostId, _planId);
+      },
+    );
+
+    test('cancelling removes the plan from the outstanding list', () async {
+      final repository = _FakeRepository(
+        listResults: [_success(_setup(_account('2026-07-10')))],
+        plans: [_plan(plannedOn: '2026-09-01')],
+        onTransition: (id) => _success(
+          PlannedCostSettled(
+            plannedCost: _plan(plannedOn: '2026-09-01', status: 'cancelled'),
+            idempotentReplay: false,
+          ),
+        ),
+      );
+      final container = _container(repository);
+      addTearDown(container.dispose);
+      final controller = container.read(plannedCostControllerProvider.notifier);
+      await controller.load();
+
+      await controller.cancelPlan(_planId);
+
+      expect(repository.settled, [_planId]);
+      final state =
+          container.read(plannedCostControllerProvider) as PlannedCostEditing;
+      expect(state.plans, isEmpty);
+      expect(state.settlingId, isNull);
+    });
+
+    test('a failed cancellation keeps the plan and reports it', () async {
+      final repository = _FakeRepository(
+        listResults: [_success(_setup(_account('2026-07-10')))],
+        plans: [_plan(plannedOn: '2026-09-01')],
+        onTransition: (_) => _failureResult<PlannedCostSettled>(
+          FinanceEntryFailureKind.serviceUnavailable,
+        ),
+      );
+      final container = _container(repository);
+      addTearDown(container.dispose);
+      final controller = container.read(plannedCostControllerProvider.notifier);
+      await controller.load();
+
+      await controller.cancelPlan(_planId);
+
+      final state =
+          container.read(plannedCostControllerProvider) as PlannedCostEditing;
+      // The plan is still outstanding, so it must still be shown.
+      expect(state.plans, hasLength(1));
+      expect(state.settlingId, isNull);
+      expect(state.failure?.kind, FinanceEntryFailureKind.serviceUnavailable);
+    });
+
+    test('a listing failure does not block planning', () async {
+      final repository = _FailingListRepository(
+        listResults: [_success(_setup(_account('2026-07-10')))],
+      );
+      final container = _container(repository);
+      addTearDown(container.dispose);
+
+      await container.read(plannedCostControllerProvider.notifier).load();
+
+      final state =
+          container.read(plannedCostControllerProvider) as PlannedCostEditing;
+      expect(state.plans, isEmpty);
+      expect(state.failure, isNull);
+    });
+
     test('an unauthorized failure asks for sign-in', () async {
       final repository = _FakeRepository(
         listResults: [
@@ -301,27 +392,62 @@ FinanceAccount _account(String openingBalanceOn) => FinanceAccount(
   createdAt: '2026-07-10T10:00:00.000Z',
 );
 
-PlannedCost _plan({required String plannedOn}) => PlannedCost(
-  plannedCostId: _planId,
+PlannedCost _plan({
+  required String plannedOn,
+  String id = _planId,
+  String status = 'planned',
+}) => PlannedCost(
+  plannedCostId: id,
   accountId: _accountId,
   amount: '800.50',
   currency: 'EUR',
   title: 'Аренда',
   plannedOn: plannedOn,
-  status: 'planned',
+  status: status,
   isDue: false,
 );
+
+class _FailingListRepository extends _FakeRepository {
+  _FailingListRepository({super.listResults});
+
+  @override
+  Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts() async {
+    return _failureResult<PlannedCostList>(
+      FinanceEntryFailureKind.serviceUnavailable,
+    );
+  }
+}
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
   _FakeRepository({
     List<FinanceEntryResult<FinanceAccountSetup>> listResults = const [],
     this.onCreate,
+    this.plans = const [],
+    this.onTransition,
   }) : _listResults = List.of(listResults);
 
   final List<FinanceEntryResult<FinanceAccountSetup>> _listResults;
   final FinanceEntryResult<PlannedCostCreated> Function(PlannedCostDraft)?
   onCreate;
+  final List<PlannedCost> plans;
+  final FinanceEntryResult<PlannedCostSettled> Function(String)? onTransition;
   final List<PlannedCostDraft> drafts = [];
+  final List<String> settled = [];
+  @override
+  Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts() async {
+    return _success(PlannedCostList(evaluatedOn: '2026-08-09', plans: plans));
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostSettled>> transitionPlannedCost(
+    String plannedCostId,
+    PlannedCostTransitionCommand command,
+  ) async {
+    settled.add(plannedCostId);
+    final handler = onTransition;
+    if (handler == null) throw UnimplementedError();
+    return handler(plannedCostId);
+  }
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {

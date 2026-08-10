@@ -175,6 +175,7 @@ class PlannedCostController extends Notifier<PlannedCostState> {
             return;
           }
           state = _editingState(value.account!);
+          await _loadPlans(requestGeneration);
         case FinanceEntryFailureResult(:final failure):
           if (_requiresAuthentication(failure)) {
             state = const PlannedCostAuthenticationRequired();
@@ -188,6 +189,111 @@ class PlannedCostController extends Notifier<PlannedCostState> {
       }
     } finally {
       _endRequest(requestGeneration);
+    }
+  }
+
+  /// Cancels one outstanding plan.
+  ///
+  /// Cancel, not skip: with no recurrence yet the two would look identical to
+  /// a user, and cancel is what "this plan was wrong" means. Skip becomes
+  /// meaningful only once a rule generates instances.
+  Future<void> cancelPlan(String plannedCostId) async {
+    final current = state;
+    if (_requestInFlight || current is! PlannedCostEditing) return;
+    if (current.settlingId != null) return;
+
+    late final PlannedCostTransitionCommand command;
+    try {
+      command = PlannedCostTransitionCommand(
+        commandId: _newCommandId,
+        transition: PlannedCostTransition.cancel,
+        requestedAt: plannedCostWireTimestamp(_now),
+      );
+      validatePlannedCostTransition(command);
+      validatePlannedCostId(plannedCostId);
+    } on Object {
+      state = current.copyWith(failure: _invalidInputFailure());
+      return;
+    }
+
+    final requestGeneration = _beginRequest();
+    state = current.copyWith(
+      settlingId: plannedCostId,
+      clearFailure: true,
+      issues: const [],
+    );
+    try {
+      final result = await _repository.transitionPlannedCost(
+        plannedCostId,
+        command,
+      );
+      if (!_isCurrentRequest(requestGeneration)) return;
+      switch (result) {
+        case FinanceEntrySuccess():
+          final latest = state;
+          if (latest is! PlannedCostEditing) return;
+          // A settled plan stops being an obligation, so it leaves the list.
+          state = latest.copyWith(
+            plans: latest.plans
+                .where((plan) => plan.plannedCostId != plannedCostId)
+                .toList(growable: false),
+            clearSettlingId: true,
+          );
+          unawaited(_convergeHomeAfterSettledPlan());
+        case FinanceEntryFailureResult(:final failure):
+          if (_requiresAuthentication(failure)) {
+            state = const PlannedCostAuthenticationRequired();
+            return;
+          }
+          final latest = state;
+          if (latest is! PlannedCostEditing) return;
+          state = latest.copyWith(failure: failure, clearSettlingId: true);
+      }
+    } on Object {
+      final latest = state;
+      if (_isCurrentRequest(requestGeneration) &&
+          latest is PlannedCostEditing) {
+        state = latest.copyWith(
+          failure: _unexpectedFailure(),
+          clearSettlingId: true,
+        );
+      }
+    } finally {
+      _endRequest(requestGeneration);
+    }
+  }
+
+  Future<void> _loadPlans(int requestGeneration) async {
+    try {
+      final result = await _repository.listPlannedCosts();
+      if (!_isCurrentRequest(requestGeneration)) return;
+      final current = state;
+      if (current is! PlannedCostEditing) return;
+      switch (result) {
+        case FinanceEntrySuccess(:final value):
+          state = current.copyWith(
+            plans: value.plans
+                .where((plan) => plan.status == 'planned')
+                .toList(growable: false),
+          );
+        case FinanceEntryFailureResult():
+          // The list is secondary: failing to read it must not block planning.
+          return;
+      }
+    } on Object {
+      return;
+    }
+  }
+
+  Future<void> _convergeHomeAfterSettledPlan() async {
+    try {
+      await ref
+          .read(homeControllerProvider.notifier)
+          .convergeAfterAcceptedWrite();
+    } on Object {
+      // Home convergence is best-effort here: the plan is already settled
+      // server-side, and Home refreshes on its own schedule.
+      return;
     }
   }
 
