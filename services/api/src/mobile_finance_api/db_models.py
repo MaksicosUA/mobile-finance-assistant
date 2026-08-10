@@ -1323,10 +1323,14 @@ class HomeProjectionPaymentRow(Base):
             "amount >= 0 AND base_amount >= 0",
             name="ck_home_projection_upcoming_payments_nonnegative_amounts",
         ),
+        # `due_on` is authoritative and `due_at` is an optional exact instant.
+        # Their agreement cannot be a CHECK here: the timezone lives on the
+        # snapshot row, and a CHECK may not contain a subquery. The projection
+        # builder enforces it instead, covered by a test.
         Index(
             "ix_home_projection_upcoming_payments_order",
             "snapshot_id",
-            "due_at",
+            "due_on",
             "payment_id",
         ),
     )
@@ -1338,7 +1342,11 @@ class HomeProjectionPaymentRow(Base):
     )
     payment_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
-    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    due_on: Mapped[date] = mapped_column(Date, nullable=False)
+    due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
     base_amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)

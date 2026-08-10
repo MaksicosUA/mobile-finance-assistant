@@ -210,7 +210,7 @@ class PostgresHomeRepository:
                         select(HomeProjectionPaymentRow)
                         .where(HomeProjectionPaymentRow.snapshot_id == snapshot.id)
                         .order_by(
-                            HomeProjectionPaymentRow.due_at.asc(),
+                            HomeProjectionPaymentRow.due_on.asc(),
                             HomeProjectionPaymentRow.payment_id.asc(),
                         )
                         .limit(4)
@@ -407,6 +407,7 @@ def _projected_home(
             HomePayment(
                 id=row.payment_id,
                 title=row.title,
+                due_on=row.due_on,
                 due_at=row.due_at,
                 amount=row.amount,
                 currency=row.currency,

@@ -56,6 +56,34 @@ class ProjectionOperation:
 
 
 @dataclass(frozen=True, slots=True)
+class ProjectionPlannedCost:
+    """Forecast source fact. Never contributes to an authoritative total."""
+
+    planned_cost_id: UUID
+    user_id: UUID
+    account_id: UUID
+    title: str
+    amount: Decimal
+    currency: str
+    planned_on: date
+    status: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectedUpcomingPayment:
+    payment_id: str
+    title: str
+    due_on: date
+    # Optional by design: a planned cost has a calendar date and no time of
+    # day, and inventing one would contradict ADR 0007.
+    due_at: datetime | None
+    amount: Decimal
+    currency: str
+    status: Literal["scheduled", "overdue"]
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectedTrendPoint:
     point_date: date
     amount: Decimal
@@ -98,6 +126,7 @@ class ProjectedHomeRevision:
     trend_total: Decimal
     trend_points: tuple[ProjectedTrendPoint, ...]
     recent_transactions: tuple[ProjectedTransaction, ...]
+    upcoming_payments: tuple[ProjectedUpcomingPayment, ...]
     available_actions: tuple[str, ...]
     warnings: tuple[ProjectedWarning, ...]
 
@@ -107,6 +136,7 @@ def build_current_home_revision(
     account: ProjectionAccount,
     operations: tuple[ProjectionOperation, ...],
     generated_at: datetime,
+    planned_costs: tuple[ProjectionPlannedCost, ...] = (),
 ) -> ProjectedHomeRevision:
     """Build one schema-v2 projection from authoritative source facts."""
 
@@ -118,6 +148,7 @@ def build_current_home_revision(
             account=account,
             operations=operations,
             generated_at=generated_at,
+            planned_costs=planned_costs,
         )
 
 
@@ -126,6 +157,7 @@ def _build_current_home_revision(
     account: ProjectionAccount,
     operations: tuple[ProjectionOperation, ...],
     generated_at: datetime,
+    planned_costs: tuple[ProjectionPlannedCost, ...],
 ) -> ProjectedHomeRevision:
 
     generated_at = _aware_utc(generated_at)
@@ -284,6 +316,31 @@ def _build_current_home_revision(
         for operation in recent_operations
     )
 
+    # Outstanding obligations only. confirmed/skipped/cancelled are terminal and
+    # are no longer something the user owes. An already-due plan stays in the
+    # block on purpose: it is the one a user most needs to see.
+    upcoming_payments = tuple(
+        ProjectedUpcomingPayment(
+            payment_id=str(plan.planned_cost_id),
+            title=plan.title,
+            due_on=plan.planned_on,
+            due_at=None,
+            amount=_finite(plan.amount),
+            currency=plan.currency,
+            status="overdue" if plan.planned_on < cutoff_local_date else "scheduled",
+        )
+        for plan in sorted(
+            (
+                _validated_planned_cost(plan, account=account)
+                for plan in planned_costs
+                if plan.status == "planned"
+                and plan.account_id == account.account_id
+                and _aware_utc(plan.created_at) <= data_as_of
+            ),
+            key=lambda plan: (plan.planned_on, str(plan.planned_cost_id)),
+        )[:3]
+    )
+
     relevant_legacy = tuple(
         operation
         for operation in checked_operations
@@ -336,6 +393,7 @@ def _build_current_home_revision(
         ),
         trend_points=trend_points,
         recent_transactions=recent_transactions,
+        upcoming_payments=upcoming_payments,
         available_actions=("voice_entry",),
         warnings=tuple(warnings),
     )
@@ -354,6 +412,26 @@ def _validated_account(account: ProjectionAccount) -> str:
     except ValueError as error:
         raise HomeProjectionInvariantError("invalid authoritative timezone") from error
     return timezone_name
+
+
+def _validated_planned_cost(
+    plan: ProjectionPlannedCost,
+    *,
+    account: ProjectionAccount,
+) -> ProjectionPlannedCost:
+    _aware_utc(plan.created_at)
+    if plan.user_id != account.user_id:
+        raise HomeProjectionInvariantError("planned cost belongs to another user")
+    if plan.currency != account.currency:
+        raise HomeProjectionInvariantError(
+            "planned cost currency does not match account"
+        )
+    if plan.amount <= 0:
+        raise HomeProjectionInvariantError("planned cost amount must be positive")
+    _finite(plan.amount)
+    if not plan.title.strip():
+        raise HomeProjectionInvariantError("planned cost title must not be blank")
+    return plan
 
 
 def _validated_operation(

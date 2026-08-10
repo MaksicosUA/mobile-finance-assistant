@@ -129,6 +129,7 @@ class UpcomingPayment {
   const UpcomingPayment({
     required this.id,
     required this.title,
+    required this.dueOn,
     required this.dueAt,
     required this.amount,
     required this.status,
@@ -136,7 +137,13 @@ class UpcomingPayment {
 
   final String id;
   final String title;
-  final DateTime dueAt;
+
+  /// Authoritative local due date. A planned cost has a calendar date and no
+  /// time of day, so this is what the UI must present and compare.
+  final DateTime dueOn;
+
+  /// Exact instant, only when one is genuinely known. Never synthesized.
+  final DateTime? dueAt;
   final Money amount;
   final PaymentStatus status;
 }

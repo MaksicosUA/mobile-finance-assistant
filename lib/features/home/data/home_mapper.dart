@@ -58,7 +58,10 @@ abstract final class HomeMapper {
             return UpcomingPayment(
               id: payment.id,
               title: payment.title,
-              dueAt: DateTime.parse(payment.dueAt),
+              dueOn: _date(payment.dueOn),
+              dueAt: payment.dueAt == null
+                  ? null
+                  : DateTime.parse(payment.dueAt!),
               amount: Money(amount: payment.amount, currency: payment.currency),
               status: _paymentStatus(payment.status),
             );

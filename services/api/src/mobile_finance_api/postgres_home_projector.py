@@ -19,10 +19,13 @@ from .db_models import (
     FinanceOperationRow,
     FinanceOutboxEventRow,
     HomeProjectionActionRow,
+    HomeProjectionPaymentRow,
     HomeProjectionSnapshotRow,
     HomeProjectionTransactionRow,
     HomeProjectionTrendPointRow,
     HomeProjectionWarningRow,
+    PlannedCostOutboxEventRow,
+    PlannedCostRow,
     UserRow,
 )
 from .home_projection import (
@@ -30,6 +33,7 @@ from .home_projection import (
     ProjectedHomeRevision,
     ProjectionAccount,
     ProjectionOperation,
+    ProjectionPlannedCost,
     build_current_home_revision,
 )
 from .projector_supervision import (
@@ -40,7 +44,7 @@ from .projector_supervision import (
 )
 from .timezones import validated_iana_timezone_key
 
-type _EventKind = Literal["account", "operation"]
+type _EventKind = Literal["account", "operation", "planned_cost"]
 
 _LOGGER = logging.getLogger("mobile_finance_api.home_projector")
 _PROJECTION_SCHEMA_VERSION = 2
@@ -254,6 +258,13 @@ class PostgresHomeProjector:
                         | (FinanceOutboxEventRow.next_attempt_at > now)
                     ),
                 ),
+                select(PlannedCostOutboxEventRow.user_id.label("user_id")).where(
+                    PlannedCostOutboxEventRow.published_at.is_(None),
+                    (
+                        PlannedCostOutboxEventRow.dead_lettered_at.is_not(None)
+                        | (PlannedCostOutboxEventRow.next_attempt_at > now)
+                    ),
+                ),
             ).subquery()
             account_query = (
                 select(
@@ -322,6 +333,42 @@ class PostgresHomeProjector:
                     FinanceOperationRow.user_id.not_in(excluded_user_ids)
                 )
             operation_row = (await database.execute(operation_query)).one_or_none()
+            planned_cost_query = (
+                select(
+                    PlannedCostOutboxEventRow.id,
+                    PlannedCostOutboxEventRow.user_id,
+                    PlannedCostOutboxEventRow.created_at,
+                )
+                .join(UserRow, UserRow.id == PlannedCostOutboxEventRow.user_id)
+                .join(
+                    FinanceAccountRow,
+                    FinanceAccountRow.user_id == PlannedCostOutboxEventRow.user_id,
+                )
+                .where(
+                    PlannedCostOutboxEventRow.published_at.is_(None),
+                    PlannedCostOutboxEventRow.dead_lettered_at.is_(None),
+                    PlannedCostOutboxEventRow.next_attempt_at.is_not(None),
+                    PlannedCostOutboxEventRow.next_attempt_at <= now,
+                    UserRow.disabled_at.is_(None),
+                    FinanceAccountRow.status == "active",
+                    FinanceAccountRow.is_default.is_(True),
+                    PlannedCostOutboxEventRow.user_id.not_in(
+                        select(blocked_users.c.user_id)
+                    ),
+                )
+                .order_by(
+                    PlannedCostOutboxEventRow.created_at.asc(),
+                    PlannedCostOutboxEventRow.id.asc(),
+                )
+                .limit(1)
+            )
+            if excluded_user_ids:
+                planned_cost_query = planned_cost_query.where(
+                    PlannedCostOutboxEventRow.user_id.not_in(excluded_user_ids)
+                )
+            planned_cost_row = (
+                await database.execute(planned_cost_query)
+            ).one_or_none()
 
         candidates = tuple(
             candidate
@@ -341,6 +388,14 @@ class PostgresHomeProjector:
                     event_id=operation_row.id,
                     user_id=operation_row.user_id,
                     created_at=_aware_utc(operation_row.created_at),
+                ),
+                None
+                if planned_cost_row is None
+                else _OutboxCandidate(
+                    kind="planned_cost",
+                    event_id=planned_cost_row.id,
+                    user_id=planned_cost_row.user_id,
+                    created_at=_aware_utc(planned_cost_row.created_at),
                 ),
             )
             if candidate is not None
@@ -438,16 +493,48 @@ class PostgresHomeProjector:
                     )
                 ).all()
             )
+            planned_costs = tuple(
+                (
+                    await database.scalars(
+                        select(PlannedCostRow)
+                        .where(PlannedCostRow.user_id == user_id)
+                        .order_by(
+                            PlannedCostRow.created_at.asc(),
+                            PlannedCostRow.id.asc(),
+                        )
+                    )
+                ).all()
+            )
+            planned_cost_events = tuple(
+                (
+                    await database.scalars(
+                        select(PlannedCostOutboxEventRow)
+                        .where(
+                            PlannedCostOutboxEventRow.user_id == user_id,
+                            PlannedCostOutboxEventRow.published_at.is_(None),
+                        )
+                        .order_by(
+                            PlannedCostOutboxEventRow.created_at.asc(),
+                            PlannedCostOutboxEventRow.id.asc(),
+                        )
+                        .with_for_update()
+                    )
+                ).all()
+            )
             eligibility_at = _aware_utc(self._clock())
             if _stream_is_blocked(
                 account_events=account_events,
                 operation_events=operation_events,
+                planned_cost_events=planned_cost_events,
                 eligibility_at=eligibility_at,
             ):
                 raise _ProjectionStreamBlocked
-            if require_pending and not account_events and not operation_events:
+            pending_events = bool(
+                account_events or operation_events or planned_cost_events
+            )
+            if require_pending and not pending_events:
                 return False
-            if not require_pending and (account_events or operation_events):
+            if not require_pending and pending_events:
                 # Event validation/acknowledgement belongs to consume_next.
                 # A poison event must not make the calendar reconciliation
                 # publish a revision or block unrelated users.
@@ -459,6 +546,10 @@ class PostgresHomeProjector:
             _validate_operation_events(
                 operation_events,
                 operations_by_id=operations_by_id,
+            )
+            _validate_planned_cost_events(
+                planned_cost_events,
+                planned_costs_by_id={plan.id: plan for plan in planned_costs},
             )
 
             generated_at = _aware_utc(self._clock())
@@ -492,6 +583,7 @@ class PostgresHomeProjector:
                 account=_account_fact(account),
                 operations=tuple(_operation_fact(row) for row in operations),
                 generated_at=generated_at,
+                planned_costs=tuple(_planned_cost_fact(row) for row in planned_costs),
             )
             latest = await database.scalar(
                 select(HomeProjectionSnapshotRow)
@@ -510,7 +602,7 @@ class PostgresHomeProjector:
                 raise HomeProjectionInvariantError(
                     "newer Home projection schema is already authoritative"
                 )
-            has_pending = bool(account_events or operation_events)
+            has_pending = pending_events
             if not has_pending and not _reconciliation_due(
                 latest=latest,
                 projection=projection,
@@ -565,6 +657,16 @@ class PostgresHomeProjector:
                 operation_event.last_failed_at = None
                 operation_event.failure_code = None
                 operation_event.dead_lettered_at = None
+            for planned_cost_event in planned_cost_events:
+                planned_cost_event.published_at = projection.generated_at
+                planned_cost_event.attempt_count = min(
+                    planned_cost_event.attempt_count + 1,
+                    32767,
+                )
+                planned_cost_event.next_attempt_at = None
+                planned_cost_event.last_failed_at = None
+                planned_cost_event.failure_code = None
+                planned_cost_event.dead_lettered_at = None
         return True
 
     async def _record_failed_attempt(self, error: _OutboxContractError) -> None:
@@ -590,6 +692,27 @@ class PostgresHomeProjector:
                         policy=self._retry_policy,
                     )
                     _apply_retry_decision(account_event, decision=decision)
+                return
+            if error.kind == "planned_cost":
+                planned_cost_event = await database.scalar(
+                    select(PlannedCostOutboxEventRow)
+                    .where(
+                        PlannedCostOutboxEventRow.id == error.event_id,
+                        PlannedCostOutboxEventRow.published_at.is_(None),
+                        PlannedCostOutboxEventRow.dead_lettered_at.is_(None),
+                    )
+                    .with_for_update()
+                )
+                if planned_cost_event is not None:
+                    decision = event_retry_decision(
+                        previous_validation_failure_count=(
+                            planned_cost_event.validation_failure_count
+                        ),
+                        failed_at=failed_at,
+                        failure_code=error.failure_code,
+                        policy=self._retry_policy,
+                    )
+                    _apply_retry_decision(planned_cost_event, decision=decision)
                 return
             operation_event = await database.scalar(
                 select(FinanceOutboxEventRow)
@@ -696,23 +819,63 @@ def _validate_operation_events(
             raise _OutboxContractError(kind="operation", event_id=event.id)
 
 
+def _validate_planned_cost_events(
+    events: Sequence[PlannedCostOutboxEventRow],
+    *,
+    planned_costs_by_id: dict[UUID, PlannedCostRow],
+) -> None:
+    for event in events:
+        plan = planned_costs_by_id.get(event.aggregate_id)
+        if plan is None or plan.user_id != event.user_id:
+            raise _OutboxContractError(kind="planned_cost", event_id=event.id)
+        if event.aggregate_type != "planned_cost" or event.event_type not in {
+            "finance.planned_cost.created.v1",
+            "finance.planned_cost.transitioned.v1",
+        }:
+            raise _OutboxContractError(kind="planned_cost", event_id=event.id)
+        # Identifier-only, and bound to the command that produced the event:
+        # creation carries the plan's own command, a transition carries its own.
+        if event.payload != {
+            "schemaVersion": "1",
+            "plannedCostId": str(plan.id),
+            "userId": str(plan.user_id),
+            "commandId": str(event.command_id),
+        }:
+            raise _OutboxContractError(kind="planned_cost", event_id=event.id)
+        if (
+            event.event_type == "finance.planned_cost.created.v1"
+            and event.command_id != plan.command_id
+        ):
+            raise _OutboxContractError(kind="planned_cost", event_id=event.id)
+
+
 def _stream_is_blocked(
     *,
     account_events: Sequence[FinanceAccountOutboxEventRow],
     operation_events: Sequence[FinanceOutboxEventRow],
+    planned_cost_events: Sequence[PlannedCostOutboxEventRow],
     eligibility_at: datetime,
 ) -> bool:
-    return any(
-        _event_is_blocked(event, eligibility_at=eligibility_at)
-        for event in account_events
-    ) or any(
-        _event_is_blocked(event, eligibility_at=eligibility_at)
-        for event in operation_events
+    return (
+        any(
+            _event_is_blocked(event, eligibility_at=eligibility_at)
+            for event in account_events
+        )
+        or any(
+            _event_is_blocked(event, eligibility_at=eligibility_at)
+            for event in operation_events
+        )
+        or any(
+            _event_is_blocked(event, eligibility_at=eligibility_at)
+            for event in planned_cost_events
+        )
     )
 
 
 def _event_is_blocked(
-    event: FinanceAccountOutboxEventRow | FinanceOutboxEventRow,
+    event: FinanceAccountOutboxEventRow
+    | FinanceOutboxEventRow
+    | PlannedCostOutboxEventRow,
     *,
     eligibility_at: datetime,
 ) -> bool:
@@ -724,7 +887,9 @@ def _event_is_blocked(
 
 
 def _apply_retry_decision(
-    event: FinanceAccountOutboxEventRow | FinanceOutboxEventRow,
+    event: FinanceAccountOutboxEventRow
+    | FinanceOutboxEventRow
+    | PlannedCostOutboxEventRow,
     *,
     decision: EventRetryDecision,
 ) -> None:
@@ -763,6 +928,20 @@ def _operation_fact(row: FinanceOperationRow) -> ProjectionOperation:
         occurred_on=row.occurred_on,
         occurred_at=row.occurred_at,
         captured_timezone=row.captured_timezone,
+        status=row.status,
+        created_at=row.created_at,
+    )
+
+
+def _planned_cost_fact(row: PlannedCostRow) -> ProjectionPlannedCost:
+    return ProjectionPlannedCost(
+        planned_cost_id=row.id,
+        user_id=row.user_id,
+        account_id=row.account_id,
+        title=row.title,
+        amount=row.amount,
+        currency=row.currency,
+        planned_on=row.planned_on,
         status=row.status,
         created_at=row.created_at,
     )
@@ -811,6 +990,20 @@ def _projection_children(
             status="confirmed",
         )
         for position, transaction in enumerate(projection.recent_transactions)
+    )
+    children.extend(
+        HomeProjectionPaymentRow(
+            snapshot_id=snapshot_id,
+            payment_id=payment.payment_id,
+            title=payment.title,
+            due_on=payment.due_on,
+            due_at=payment.due_at,
+            amount=payment.amount,
+            base_amount=payment.amount,
+            currency=payment.currency,
+            status=payment.status,
+        )
+        for payment in projection.upcoming_payments
     )
     children.extend(
         HomeProjectionActionRow(

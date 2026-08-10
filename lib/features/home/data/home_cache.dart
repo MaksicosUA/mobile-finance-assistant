@@ -134,7 +134,10 @@ final class EncryptedFileHomeCache implements HomeCache {
   }
 
   static const int _envelopeVersion = 1;
-  static const int _cacheSchemaVersion = 2;
+  // 3: upcoming payments gained an authoritative `dueOn` and a nullable
+  // `dueAt`. A snapshot cached before that has no `dueOn`, so it must be
+  // discarded rather than parsed; the cache is replaceable by design.
+  static const int _cacheSchemaVersion = 3;
   static const int _nonceLength = 12;
   static const int _keyLength = 32;
   static const int _macLength = 16;

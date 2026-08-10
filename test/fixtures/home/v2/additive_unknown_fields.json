@@ -38,6 +38,7 @@
     {
       "id": "payment_fixture_unknown",
       "title": "Синтетический платёж",
+      "dueOn": "2026-07-16",
       "dueAt": "2026-07-16T07:00:00Z",
       "amount": "12.34",
       "currency": "EUR",
@@ -70,7 +71,10 @@
       "status": "pending"
     }
   ],
-  "availableActions": ["voice_entry", "future_action"],
+  "availableActions": [
+    "voice_entry",
+    "future_action"
+  ],
   "warnings": [
     {
       "code": "future_warning",

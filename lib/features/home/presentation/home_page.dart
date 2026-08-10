@@ -387,7 +387,10 @@ class _PopulatedHome extends StatelessWidget {
 
     final paymentItems = snapshot.upcomingPayments
         .map((payment) {
-          final date = materialL10n.formatMediumDate(payment.dueAt);
+          // The authoritative fact is the local due date. Formatting an exact
+          // instant here would shift the shown day for a device in another
+          // timezone, which is why the contract carries dueOn separately.
+          final date = materialL10n.formatMediumDate(payment.dueOn);
           final dueLabel = switch (payment.status) {
             PaymentStatus.scheduled => l10n.paymentDueDate(date),
             PaymentStatus.overdue => l10n.paymentOverdueDate(date),
