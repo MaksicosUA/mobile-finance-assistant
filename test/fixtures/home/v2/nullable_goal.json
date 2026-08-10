@@ -2,7 +2,9 @@
   "generatedAt": "2026-07-11T01:20:00Z",
   "dataAsOf": "2026-07-11T01:19:58Z",
   "baseCurrency": "EUR",
-  "user": { "displayName": "Максим" },
+  "user": {
+    "displayName": "Максим"
+  },
   "balance": {
     "amount": "3240.50",
     "deltaAmount": "182.40",
@@ -20,8 +22,14 @@
     "period": "30d",
     "total": "847.20",
     "points": [
-      { "date": "2026-07-10", "amount": "20.00" },
-      { "date": "2026-07-11", "amount": "34.00" }
+      {
+        "date": "2026-07-10",
+        "amount": "20.00"
+      },
+      {
+        "date": "2026-07-11",
+        "amount": "34.00"
+      }
     ]
   },
   "primaryGoal": null,
@@ -29,6 +37,7 @@
     {
       "id": "payment_fixture_1",
       "title": "Аренда",
+      "dueOn": "2026-07-16",
       "dueAt": "2026-07-16T07:00:00Z",
       "amount": "530.00",
       "currency": "EUR",
@@ -48,6 +57,9 @@
       "status": "confirmed"
     }
   ],
-  "availableActions": ["voice_entry", "analytics"],
+  "availableActions": [
+    "voice_entry",
+    "analytics"
+  ],
   "warnings": []
 }

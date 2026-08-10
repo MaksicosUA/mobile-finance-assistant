@@ -226,6 +226,7 @@ class SyntheticHomeRepository:
                 HomePayment(
                     id="payment_synthetic_1",
                     title="Аренда",
+                    due_on=date(2026, 7, 16),
                     due_at=datetime(2026, 7, 16, 7, tzinfo=UTC),
                     amount=Decimal("530.00"),
                     currency="EUR",
@@ -234,6 +235,7 @@ class SyntheticHomeRepository:
                 HomePayment(
                     id="payment_synthetic_2",
                     title="Интернет",
+                    due_on=date(2026, 7, 20),
                     due_at=datetime(2026, 7, 20, 7, tzinfo=UTC),
                     amount=Decimal("39.99"),
                     currency="EUR",
@@ -242,6 +244,7 @@ class SyntheticHomeRepository:
                 HomePayment(
                     id="payment_synthetic_3",
                     title="Страховка",
+                    due_on=date(2026, 7, 23),
                     due_at=datetime(2026, 7, 23, 7, tzinfo=UTC),
                     amount=Decimal("74.00"),
                     currency="EUR",

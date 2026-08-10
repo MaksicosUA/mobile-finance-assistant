@@ -209,9 +209,14 @@ class HomeGoal(ApiModel):
 
 
 class HomePayment(ApiModel):
+    # `dueOn` is the authoritative local date of the obligation. `dueAt` is an
+    # exact instant and stays nullable, because a planned cost has a calendar
+    # date and no time of day; inventing one would contradict ADR 0007. This
+    # mirrors the occurredOn/occurredAt split already made for transactions.
     id: OpaqueId
     title: NonEmptyText
-    due_at: UtcTimestamp = Field(alias="dueAt")
+    due_on: date = Field(alias="dueOn")
+    due_at: UtcTimestamp | None = Field(default=None, alias="dueAt")
     amount: DecimalString
     currency: CurrencyCode
     status: OpenEnumValue
@@ -318,6 +323,23 @@ class HomeV1Balance(ApiModel):
     delta_percent: DecimalString = Field(alias="deltaPercent")
 
 
+class HomeV1Payment(ApiModel):
+    """Original Home v1 payment shape, which cannot express a date-only due."""
+
+    id: OpaqueId
+    title: NonEmptyText
+    due_at: UtcTimestamp = Field(alias="dueAt")
+    amount: DecimalString
+    currency: CurrencyCode
+    status: OpenEnumValue
+
+    @model_validator(mode="after")
+    def amount_is_nonnegative(self) -> Self:
+        if self.amount < 0:
+            raise ValueError("upcoming payment amount cannot be negative")
+        return self
+
+
 class HomeV1Transaction(ApiModel):
     """Original Home v1 transaction shape without date-only semantics."""
 
@@ -351,7 +373,7 @@ class HomeV1Response(ApiModel):
     month_summary: HomeMonthSummary = Field(alias="monthSummary")
     trend: HomeTrend
     primary_goal: HomeGoal | None = Field(alias="primaryGoal")
-    upcoming_payments: tuple[HomePayment, ...] = Field(
+    upcoming_payments: tuple[HomeV1Payment, ...] = Field(
         alias="upcomingPayments",
         max_length=3,
     )
@@ -382,7 +404,9 @@ class HomeV1Response(ApiModel):
             month_summary=home.month_summary,
             trend=home.trend,
             primary_goal=home.primary_goal,
-            upcoming_payments=home.upcoming_payments,
+            upcoming_payments=tuple(
+                _home_v1_payment(payment) for payment in home.upcoming_payments
+            ),
             recent_transactions=tuple(
                 _home_v1_transaction(transaction)
                 for transaction in home.recent_transactions
@@ -429,6 +453,22 @@ class HomeV1Response(ApiModel):
                 "or partial warnings"
             )
         return self
+
+
+def _home_v1_payment(payment: HomePayment) -> HomeV1Payment:
+    # A planned cost carries a calendar date and no instant, so it is simply not
+    # representable in v1. Fail closed rather than synthesizing local midnight:
+    # a fabricated time is the defect this split exists to remove (ADR 0011).
+    if payment.due_at is None or payment.due_at.date() != payment.due_on:
+        raise ValueError("Home revision cannot be represented by v1")
+    return HomeV1Payment(
+        id=payment.id,
+        title=payment.title,
+        due_at=payment.due_at,
+        amount=payment.amount,
+        currency=payment.currency,
+        status=payment.status,
+    )
 
 
 def _home_v1_transaction(transaction: HomeTransaction) -> HomeV1Transaction:

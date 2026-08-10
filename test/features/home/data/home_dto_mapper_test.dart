@@ -216,6 +216,36 @@ void main() {
         expect(snapshot.recentTransactions, hasLength(3));
       },
     );
+
+    test(
+      'treats the local due date as authoritative and the instant as optional',
+      () async {
+        final snapshot = await loadHomeFixtureSnapshot('populated.json');
+        final payments = snapshot.upcomingPayments;
+
+        // A planned cost carries a calendar date and no time of day, so the
+        // contract sends no instant rather than inventing local midnight.
+        expect(payments.first.dueOn, DateTime.utc(2026, 7, 16));
+        expect(payments.first.dueAt, isNull);
+
+        // An instant is still carried through when one is genuinely known.
+        expect(payments[1].dueOn, DateTime.utc(2026, 7, 20));
+        expect(payments[1].dueAt, DateTime.utc(2026, 7, 20, 7));
+      },
+    );
+
+    test('rejects a payment without an authoritative due date', () async {
+      final json = await loadHomeFixtureJson('populated.json');
+      final payments = List<Object?>.from(
+        json['upcomingPayments']! as List<Object?>,
+      );
+      final first = Map<String, Object?>.from(
+        payments.first! as Map<String, Object?>,
+      )..remove('dueOn');
+      json['upcomingPayments'] = <Object?>[first, ...payments.skip(1)];
+
+      expect(() => HomeDto.fromJson(json), throwsFormatException);
+    });
   });
 }
 

@@ -307,6 +307,7 @@ class HomePaymentDto {
   const HomePaymentDto({
     required this.id,
     required this.title,
+    required this.dueOn,
     required this.dueAt,
     required this.amount,
     required this.currency,
@@ -317,7 +318,14 @@ class HomePaymentDto {
     return HomePaymentDto(
       id: _nonEmptyString(json['id'], r'$.upcomingPayments[].id'),
       title: _nonEmptyString(json['title'], r'$.upcomingPayments[].title'),
-      dueAt: _utcTimestamp(json['dueAt'], r'$.upcomingPayments[].dueAt'),
+      dueOn: _date(json['dueOn'], r'$.upcomingPayments[].dueOn'),
+      // Nullable by contract: a planned cost has a local date and no time of
+      // day, so the server sends no instant rather than inventing one.
+      dueAt: _requiredNullableUtcTimestamp(
+        json,
+        'dueAt',
+        r'$.upcomingPayments[].dueAt',
+      ),
       amount: _decimal(json['amount'], r'$.upcomingPayments[].amount'),
       currency: _currency(json['currency'], r'$.upcomingPayments[].currency'),
       status: _nonEmptyString(json['status'], r'$.upcomingPayments[].status'),
@@ -326,7 +334,8 @@ class HomePaymentDto {
 
   final String id;
   final String title;
-  final String dueAt;
+  final String dueOn;
+  final String? dueAt;
   final String amount;
   final String currency;
   final String status;

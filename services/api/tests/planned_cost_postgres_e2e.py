@@ -15,6 +15,7 @@ import asyncio
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -46,6 +47,7 @@ from mobile_finance_api.postgres_finance_account_repository import (
 from mobile_finance_api.postgres_finance_repository import (
     PostgresFinanceOperationRepository,
 )
+from mobile_finance_api.postgres_home_projector import PostgresHomeProjector
 from mobile_finance_api.postgres_home_repository import PostgresHomeRepository
 from mobile_finance_api.postgres_planned_cost_repository import (
     PostgresPlannedCostRepository,
@@ -540,6 +542,57 @@ async def _exercise() -> tuple[AsyncEngine, AsyncSessionFactory]:
         )
         assert bounded.status_code == 200, bounded.text
         assert len(bounded.json()["plannedCosts"]) == 1
+
+        # --- the projector turns outstanding plans into Home payments ------
+        # Both earlier plans are settled by now, so create one that is still
+        # outstanding; only an obligation belongs in the block.
+        outstanding = await client.post(
+            "/api/v1/planned-costs",
+            json=_plan_body(
+                account_id=account_id,
+                title="Страховка",
+                plannedOn=FUTURE_ON.isoformat(),
+            ),
+            headers=identity.headers,
+        )
+        assert outstanding.status_code == 201, outstanding.text
+        outstanding_id = UUID(outstanding.json()["plannedCost"]["plannedCostId"])
+
+        projector = PostgresHomeProjector(session_factory=session_factory)
+        await projector.drain_pending()
+
+        home = await client.get(
+            "/api/v2/home",
+            params={"period": "current_month", "timezone": TIMEZONE},
+            headers=identity.headers,
+        )
+        assert home.status_code == 200, home.text
+        block = home.json()["upcomingPayments"]
+        # The confirmed plan and the cancelled one are settled, so only the
+        # future outstanding plan remains an obligation.
+        assert len(block) == 1, block
+        payment = block[0]
+        assert payment["id"] == str(outstanding_id)
+        assert payment["dueOn"] == FUTURE_ON.isoformat()
+        # A planned cost has no time of day, so no instant is invented.
+        assert payment["dueAt"] is None
+        # Scale is a storage artifact of NUMERIC(38,18); compare money, not text.
+        assert Decimal(payment["amount"]) == Decimal("800.00")
+        assert payment["status"] == "scheduled"
+
+        # A forecast must never move an authoritative total. One 800.00 expense
+        # was committed above, so the month expense reflects that operation
+        # alone and not the identically sized plan.
+        assert Decimal(home.json()["monthSummary"]["expense"]) == Decimal("800.00")
+
+        # v1 cannot express a date-only obligation and must fail closed rather
+        # than fabricate local midnight.
+        legacy = await client.get(
+            "/api/v1/home",
+            params={"period": "current_month", "timezone": TIMEZONE},
+            headers=identity.headers,
+        )
+        assert legacy.status_code == 503, legacy.text
 
         # --- another user can neither see nor settle the plan --------------
         intruder = await _register(

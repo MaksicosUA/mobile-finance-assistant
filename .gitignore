@@ -55,3 +55,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local-only pinned Flutter toolchain and Pub cache. These must never enter the
+# repository: they are ~1 GB, and an untracked tree also makes
+# tool/resolve_android_build_version.sh reject the checkout as unclean.
+/.toolchains/
