@@ -14,9 +14,11 @@ from .database import create_database
 from .finance_core import FinanceCore
 from .main import create_app
 from .passwords import PasswordService
+from .planned_cost_core import PlannedCostCore
 from .postgres_finance_account_repository import PostgresFinanceAccountRepository
 from .postgres_finance_repository import PostgresFinanceOperationRepository
 from .postgres_home_repository import PostgresHomeRepository
+from .postgres_planned_cost_repository import PostgresPlannedCostRepository
 from .tokens import AccessTokenCodec
 
 settings = require_runtime_settings()
@@ -49,6 +51,11 @@ app = create_app(
             session_factory=session_factory,
         ),
         account_directory=finance_accounts,
+    ),
+    planned_cost_core=PlannedCostCore(
+        repository=PostgresPlannedCostRepository(
+            session_factory=session_factory,
+        ),
     ),
     database_engine=engine,
 )
