@@ -312,26 +312,37 @@ resolver with timestamps or local counters.
 
 ## GitHub Actions APKs
 
-Every push, and each manual workflow run, performs the locked dependency,
-localization, formatting, and analysis checks, then runs both test suites, then
-builds and manifest-verifies both debug APKs. `flutter test` and `pytest` are
-mandatory gates: a failing test produces no APK. The `fixture-debug` APK uses
-synthetic Home data; the `network-debug` APK enables authentication and the
-real API. Checkout uses full Git history and the version is resolved once, so
-both variants of a revision share one version.
+Every push runs the locked dependency, localization, formatting, and analysis
+checks, then both test suites. `flutter test` and `pytest` are mandatory gates.
+That is the whole run for ordinary work, and it takes about three minutes.
 
-Only the `network-debug` APK is published, only from `main`, and only for
-7 days. Two universal ~170 MiB APKs per run with 14-day retention exhausted the
-Actions storage quota, which then failed runs whose checks, tests, and builds
-had all passed. Narrowing publication does not weaken the gate: every branch
-still builds and verifies both APKs, it simply does not store them.
+**The APK is built on demand, not on every push.** Trigger it by running the
+workflow manually, or by pushing a `v*` tag for a delivery. The build costs
+roughly 7.5 of the 10.5 minutes a full run takes, this repository is private so
+those minutes are metered, and a CI APK is signed with an ephemeral key — it
+cannot be installed over a locally built one without an uninstall that clears
+the session and the encrypted operation outbox. Building it on every push
+therefore paid for an artifact nobody could use.
 
-The published artifact carries a SHA-256 checksum and
-`android-build-version.txt` with the source SHA and resolved version. CI signs
-with an ephemeral debug key, so installing a CI APK over a locally built one
-forces an uninstall that clears the session and the encrypted operation outbox.
-Registered-account testing therefore uses `tool/build_android_network_debug.sh`,
-which signs with the stable local debug keystore and upgrades in place.
+When it does run, the build produces both variants and verifies both manifests:
+`fixture-debug` uses synthetic Home data, `network-debug` enables authentication
+and the real API. Checkout uses full Git history and the version is resolved
+once, so both variants of a revision share one version. Only `network-debug` is
+published, with a SHA-256 checksum, `android-build-version.txt`, and 7-day
+retention; a tag build keeps the plain artifact name, anything else is prefixed
+`preview-`.
+
+Because dispatch and tag builds have no push predecessor, the ADR 0013
+descendant check is skipped in CI and monotonic delivery versions are enforced
+by passing the previous delivered revision to
+`tool/resolve_android_build_version.sh` explicitly. Every other resolver
+rejection — dirty or shallow checkout, malformed or regressing epoch, overflow —
+still applies.
+
+For day-to-day device testing use `tool/build_android_network_debug.sh`, which
+signs with the stable local debug keystore and upgrades in place. Note that
+`flutter build apk --release` is **not** production-ready: the release config
+still signs with the debug key (issue 0005).
 
 The network build reads the non-secret repository variables
 `ANDROID_DEBUG_API_BASE_URL` and `HOME_API_TIMEZONE`. Without them it uses

@@ -1,5 +1,14 @@
-name: Android debug APKs
+name: Checks and on-demand Android APKs
 
+# Every push runs the full quality gate. The Android APK is built only on
+# demand, because that build is roughly 7.5 of the 10.5 minutes each run costs
+# and this repository is private, so those minutes are metered. Debug APKs
+# produced here are also signed with an ephemeral key and cannot be installed
+# over a locally built one without clearing the session and encrypted outbox,
+# so building one on every push paid for an artifact nobody could use.
+#
+# Build an APK by running this workflow manually, or by pushing a `v*` tag for
+# a delivery.
 on:
   push:
   workflow_dispatch:
@@ -16,6 +25,8 @@ jobs:
     name: Checks and Android debug builds
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      BUILD_APKS: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
 
     steps:
       - name: Check out source
@@ -24,7 +35,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Java and the Android SDK exist only for the Gradle build, so they are
+      # installed only when an APK is actually produced.
       - name: Set up Java
+        if: env.BUILD_APKS == 'true'
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
           distribution: temurin
@@ -52,6 +66,7 @@ jobs:
           flutter config --no-analytics
 
       - name: Install Android SDK packages
+        if: env.BUILD_APKS == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -105,16 +120,24 @@ jobs:
           .ci-venv/bin/pip install --quiet -e . httpx==0.28.1 pytest==9.1.1
           PYTHONPATH=src .ci-venv/bin/pytest
 
+      # ANDROID_PREVIOUS_REVISION is intentionally empty. The ADR 0013 guard
+      # compared a push against `github.event.before`, which only exists for
+      # branch pushes; this build now runs on manual dispatch and on tags,
+      # where there is no such predecessor. Monotonic delivery versions are
+      # therefore enforced by tool/resolve_android_build_version.sh at the
+      # point of delivery, not by this workflow. See ADR 0013.
       - name: Build and verify versioned debug APKs
+        if: env.BUILD_APKS == 'true'
         id: android_apks
         shell: bash
         env:
           API_BASE_URL: ${{ vars.ANDROID_DEBUG_API_BASE_URL || 'http://127.0.0.1:8000' }}
           HOME_API_TIMEZONE: ${{ vars.HOME_API_TIMEZONE || 'Europe/Berlin' }}
-          ANDROID_PREVIOUS_REVISION: ${{ github.event_name == 'push' && github.event.before || '' }}
+          ANDROID_PREVIOUS_REVISION: ""
         run: tool/build_android_apks.sh --github-output "$GITHUB_OUTPUT"
 
       - name: Create APK checksums
+        if: env.BUILD_APKS == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -124,21 +147,17 @@ jobs:
           sha256sum mobile-finance-assistant-network-debug.apk \
             > mobile-finance-assistant-network-debug.apk.sha256
 
-      # Both APKs are still built and manifest-verified above on every branch,
-      # so the gate is unchanged. Only publication is narrowed: uploading two
-      # ~170 MiB universal APKs per run with 14-day retention exhausted the
-      # Actions storage quota, which then failed runs whose source checks,
-      # tests, and builds had all passed. The fixture APK is not uploaded at
-      # all because it is a UI preview that adds no verification the build
-      # step has not already done, and CI APKs use an ephemeral debug key, so
-      # installing one forces an uninstall that clears the session and the
-      # encrypted outbox. Registered-account testing uses the locally built
-      # network APK (tool/build_android_network_debug.sh) instead.
+      # Only the network APK is published. The fixture APK is a UI preview that
+      # adds no verification the build step has not already performed, and two
+      # universal ~160 MiB artifacts per run previously exhausted the Actions
+      # storage quota. A tag build keeps the plain name; anything else is a
+      # preview and is prefixed, because previews are not one ordered Android
+      # upgrade chain (ADR 0013).
       - name: Upload authenticated network debug APK
-        if: github.ref == 'refs/heads/main'
+        if: env.BUILD_APKS == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mobile-finance-assistant-network-debug-v${{ steps.android_apks.outputs.build_name }}-${{ github.sha }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && 'mobile-finance-assistant-network-debug' || 'preview-mobile-finance-assistant-network-debug' }}-v${{ steps.android_apks.outputs.build_name }}-${{ github.sha }}
           path: |
             build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk
             build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk.sha256
