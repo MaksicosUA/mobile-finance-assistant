@@ -222,6 +222,37 @@ PYTHONPATH=services/api/src uv run --project services/api \
   python services/api/tool/generate_operation_contract.py
 ```
 
+An intended future payment is a *planned cost*, a separate forecast entity that
+never moves the authoritative balance (ADR 0018):
+
+- `POST /api/v1/planned-costs` records one plan, idempotent on `commandId`;
+- `POST /api/v1/planned-costs/{id}/transition` moves it once to `confirmed`,
+  `skipped`, or `cancelled`;
+- `GET /api/v1/planned-costs` lists plans and reports the local `evaluatedOn`
+  date used to derive `isDue`.
+
+A planned amount is excluded from balance, monthly income and expense, net
+flow, and the trend series. `isDue` is derived at read time from the account's
+canonical timezone and is never stored. A plan may not precede the account
+baseline, because such a plan could never be confirmed into a legal operation.
+
+Confirming a plan does not create money on this path. The client first commits
+a normal operation through `/api/v1/operations/*`, then reports that
+`operationCommandId` on the transition; the server resolves it to the stored
+operation and fails closed with `CONFIRMING_OPERATION_MISSING` when none
+exists. Committing the operation first is deliberate: a lost transition leaves
+a visible outstanding plan, while the reverse order could hide a real payment.
+
+Planned-cost changes write an identifier-only event to a separate
+`planned_cost_outbox_events` table. The Home projector does not consume it yet;
+the rows accumulate so the upcoming-payments slice needs no backfill. The
+checked-in planned cost contract is regenerated with:
+
+```bash
+PYTHONPATH=services/api/src uv run --project services/api \
+  python services/api/tool/generate_planned_cost_contract.py
+```
+
 Then run the mobile network build against an HTTPS endpoint:
 
 ```bash

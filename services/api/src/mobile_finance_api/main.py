@@ -32,6 +32,8 @@ from .auth_service import AuthenticationService, UnavailableAuthenticationServic
 from .finance_core import FinanceCore, UnavailableFinanceOperationRepository
 from .models import HomeResponse, HomeV1Response
 from .operation_routes import router as operation_router
+from .planned_cost_core import PlannedCostCore, UnavailablePlannedCostRepository
+from .planned_cost_routes import router as planned_cost_router
 from .repository import (
     HomeCanonicalTimezoneMismatch,
     HomeQuery,
@@ -83,7 +85,12 @@ class RequestIdMiddleware:
                         )
                 path = str(scope.get("path", ""))
                 if path.startswith(
-                    ("/api/v1/auth/", "/api/v1/accounts", "/api/v1/operations/")
+                    (
+                        "/api/v1/auth/",
+                        "/api/v1/accounts",
+                        "/api/v1/operations/",
+                        "/api/v1/planned-costs",
+                    )
                 ):
                     headers["Cache-Control"] = "no-store"
                     headers["Pragma"] = "no-cache"
@@ -245,6 +252,7 @@ def create_app(
     authentication_service: AuthenticationService | None = None,
     account_core: AccountCore | None = None,
     finance_core: FinanceCore | None = None,
+    planned_cost_core: PlannedCostCore | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
@@ -289,6 +297,11 @@ def create_app(
             account_directory=unavailable_accounts,
         )
     )
+    application.state.planned_cost_core = (
+        planned_cost_core
+        if planned_cost_core is not None
+        else PlannedCostCore(repository=UnavailablePlannedCostRepository())
+    )
 
     @application.exception_handler(RequestValidationError)
     async def redacted_request_validation_error(
@@ -299,6 +312,11 @@ def create_app(
             return JSONResponse(
                 status_code=422,
                 content={"detail": {"code": "MALFORMED_OPERATION", "issues": []}},
+            )
+        if request.url.path.startswith("/api/v1/planned-costs"):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": {"code": "MALFORMED_PLANNED_COST", "issues": []}},
             )
         if not request.url.path.startswith("/api/v1/auth/"):
             return await request_validation_exception_handler(request, error)
@@ -319,6 +337,7 @@ def create_app(
     application.include_router(auth_router)
     application.include_router(account_router)
     application.include_router(operation_router)
+    application.include_router(planned_cost_router)
     application.include_router(router)
     return application
 

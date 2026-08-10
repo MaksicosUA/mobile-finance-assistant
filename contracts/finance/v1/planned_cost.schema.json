@@ -1,0 +1,445 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobile-finance-assistant.local/contracts/finance/v1/planned_cost.schema.json",
+  "title": "Planned cost v1 messages",
+  "description": "Strict messages for forecast-only planned costs and their idempotent lifecycle transitions.",
+  "$defs": {
+    "CreatePlannedCostCommand": {
+      "additionalProperties": false,
+      "description": "Untrusted request to record one intended future payment.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "accountId": {
+          "format": "uuid",
+          "title": "Accountid",
+          "type": "string"
+        },
+        "amount": {
+          "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "plannedOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Plannedon",
+          "type": "string"
+        },
+        "requestedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Requestedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "accountId",
+        "amount",
+        "currency",
+        "title",
+        "plannedOn",
+        "requestedAt"
+      ],
+      "title": "CreatePlannedCostCommand",
+      "type": "object"
+    },
+    "CreatePlannedCostResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "plannedCost": {
+          "$ref": "#/$defs/PlannedCost"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "plannedCost"
+      ],
+      "title": "CreatePlannedCostResponse",
+      "type": "object"
+    },
+    "ListPlannedCostsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "evaluatedOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Evaluatedon",
+          "type": "string"
+        },
+        "plannedCosts": {
+          "items": {
+            "$ref": "#/$defs/PlannedCost"
+          },
+          "title": "Plannedcosts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "evaluatedOn",
+        "plannedCosts"
+      ],
+      "title": "ListPlannedCostsResponse",
+      "type": "object"
+    },
+    "PlannedCost": {
+      "additionalProperties": false,
+      "description": "Authoritative forecast row. Never part of an authoritative money total.",
+      "properties": {
+        "plannedCostId": {
+          "format": "uuid",
+          "title": "Plannedcostid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "title": "Userid",
+          "type": "string"
+        },
+        "accountId": {
+          "format": "uuid",
+          "title": "Accountid",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "amount": {
+          "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Category"
+        },
+        "plannedOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Plannedon",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "confirmed",
+            "skipped",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "isDue": {
+          "title": "Isdue",
+          "type": "boolean"
+        },
+        "confirmedOperationId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confirmedoperationid"
+        },
+        "createdAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "updatedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Updatedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plannedCostId",
+        "userId",
+        "accountId",
+        "commandId",
+        "amount",
+        "currency",
+        "title",
+        "category",
+        "plannedOn",
+        "status",
+        "isDue",
+        "confirmedOperationId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "title": "PlannedCost",
+      "type": "object"
+    },
+    "PlannedCostErrorDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "MALFORMED_PLANNED_COST",
+            "COMMAND_CONFLICT",
+            "PLANNED_COST_REJECTED",
+            "PLANNED_COST_NOT_FOUND",
+            "PLANNED_COST_PERSISTENCE_UNAVAILABLE"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlannedCostIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "PlannedCostErrorDetail",
+      "type": "object"
+    },
+    "PlannedCostErrorResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "$ref": "#/$defs/PlannedCostErrorDetail"
+        }
+      },
+      "required": [
+        "detail"
+      ],
+      "title": "PlannedCostErrorResponse",
+      "type": "object"
+    },
+    "PlannedCostIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "ACCOUNT_UNAVAILABLE",
+            "ACCOUNT_CURRENCY_MISMATCH",
+            "UNSUPPORTED_CURRENCY",
+            "PLAN_BEFORE_ACCOUNT_BASELINE",
+            "INVALID_LIFECYCLE_TRANSITION",
+            "CONFIRMING_OPERATION_MISSING"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "accountId",
+            "currency",
+            "plannedOn",
+            "transition",
+            "operationCommandId"
+          ],
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "field"
+      ],
+      "title": "PlannedCostIssue",
+      "type": "object"
+    },
+    "TransitionPlannedCostCommand": {
+      "additionalProperties": false,
+      "description": "Untrusted request to move one planned cost to a terminal status.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "transition": {
+          "enum": [
+            "confirm",
+            "skip",
+            "cancel"
+          ],
+          "title": "Transition",
+          "type": "string"
+        },
+        "operationCommandId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operationcommandid"
+        },
+        "requestedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Requestedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "transition",
+        "requestedAt"
+      ],
+      "title": "TransitionPlannedCostCommand",
+      "type": "object"
+    },
+    "TransitionPlannedCostResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "plannedCost": {
+          "$ref": "#/$defs/PlannedCost"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "plannedCost"
+      ],
+      "title": "TransitionPlannedCostResponse",
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/CreatePlannedCostCommand"
+    },
+    {
+      "$ref": "#/$defs/TransitionPlannedCostCommand"
+    },
+    {
+      "$ref": "#/$defs/CreatePlannedCostResponse"
+    },
+    {
+      "$ref": "#/$defs/TransitionPlannedCostResponse"
+    },
+    {
+      "$ref": "#/$defs/ListPlannedCostsResponse"
+    },
+    {
+      "$ref": "#/$defs/PlannedCostErrorResponse"
+    }
+  ]
+}
