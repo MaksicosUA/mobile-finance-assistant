@@ -9,9 +9,15 @@ import 'app_settings.dart';
 import 'app_settings_controller.dart';
 
 class SettingsPage extends ConsumerWidget {
-  const SettingsPage({super.key, this.onCorrectOpeningDate, this.onSignOut});
+  const SettingsPage({
+    super.key,
+    this.onCorrectOpeningDate,
+    this.onPlanCost,
+    this.onSignOut,
+  });
 
   final VoidCallback? onCorrectOpeningDate;
+  final VoidCallback? onPlanCost;
   final Future<void> Function()? onSignOut;
 
   @override
@@ -115,7 +121,9 @@ class SettingsPage extends ConsumerWidget {
                   l10n.settingsNote,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                if (onCorrectOpeningDate != null || onSignOut != null) ...[
+                if (onCorrectOpeningDate != null ||
+                    onPlanCost != null ||
+                    onSignOut != null) ...[
                   const SizedBox(height: AppSpacing.lg),
                   _SectionLabel(l10n.accountSection),
                   const SizedBox(height: AppSpacing.sm),
@@ -128,6 +136,20 @@ class SettingsPage extends ConsumerWidget {
                         label: l10n.baselineSettingsAction,
                         description: l10n.baselineSettingsDescription,
                         onPressed: onCorrectOpeningDate!,
+                      ),
+                    ),
+                    if (onPlanCost != null || onSignOut != null)
+                      const SizedBox(height: AppSpacing.sm),
+                  ],
+                  if (onPlanCost != null) ...[
+                    Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: _SettingsActionRow(
+                        key: const Key('settings-plan-cost'),
+                        icon: Icons.event_repeat_outlined,
+                        label: l10n.plannedCostSettingsAction,
+                        description: l10n.plannedCostSettingsDescription,
+                        onPressed: onPlanCost!,
                       ),
                     ),
                     if (onSignOut != null)

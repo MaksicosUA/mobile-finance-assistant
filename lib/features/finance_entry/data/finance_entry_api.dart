@@ -38,6 +38,11 @@ abstract interface class FinanceEntryApiClient {
     required FinanceOperationDraft draft,
   });
 
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost({
+    required String accessToken,
+    required PlannedCostDraft draft,
+  });
+
   Future<FinanceEntryResult<FinanceOperationCommit>> commitOperation({
     required String accessToken,
     required FinanceOperationCommitCommand command,
@@ -204,6 +209,34 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     );
   }
 
+  @override
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost({
+    required String accessToken,
+    required PlannedCostDraft draft,
+  }) {
+    try {
+      validatePlannedCostDraft(draft);
+    } on Object {
+      return Future<FinanceEntryResult<PlannedCostCreated>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/planned-costs',
+      accessToken: accessToken,
+      body: draft.toJson(),
+      // 201 on the first accepted command, 200 on an idempotent replay.
+      acceptedStatuses: const {200, 201},
+      contract: _ContractKind.plannedCost,
+      parse: (json, statusCode) =>
+          _parsePlannedCostCreated(json, statusCode: statusCode, draft: draft),
+    );
+  }
+
   Future<FinanceEntryResult<T>> _request<T>({
     required String method,
     required String path,
@@ -295,6 +328,29 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       );
     }
   }
+}
+
+PlannedCostCreated _parsePlannedCostCreated(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required PlannedCostDraft draft,
+}) {
+  _expectKeys(json, const {'schemaVersion', 'idempotentReplay', 'plannedCost'});
+  _requireSchema(json);
+  final replay = json['idempotentReplay'];
+  if (replay is! bool) throw const FormatException('Invalid idempotentReplay.');
+  // A replay is exactly the 200 case; a first acceptance is exactly 201.
+  if (replay != (statusCode == 200)) {
+    throw const FormatException('Replay flag disagrees with status.');
+  }
+  final plannedCost = PlannedCost.fromJson(_object(json['plannedCost']));
+  if (plannedCost.accountId != draft.accountId ||
+      plannedCost.plannedOn != draft.plannedOn ||
+      plannedCost.title != draft.title ||
+      plannedCost.currency != draft.currency) {
+    throw const FormatException('Server plan does not match the command.');
+  }
+  return PlannedCostCreated(plannedCost: plannedCost, idempotentReplay: replay);
 }
 
 FinanceAccountSetup _parseAccountSetup(
@@ -603,10 +659,12 @@ FinanceEntryResult<T> _httpFailure<T>({
     final kind = switch (detail.code) {
       FinanceEntryErrorCode.accountRejected ||
       FinanceEntryErrorCode.baselineRejected ||
-      FinanceEntryErrorCode.operationRejected =>
+      FinanceEntryErrorCode.operationRejected ||
+      FinanceEntryErrorCode.plannedCostRejected =>
         FinanceEntryFailureKind.rejected,
       FinanceEntryErrorCode.malformedAccount ||
-      FinanceEntryErrorCode.malformedOperation =>
+      FinanceEntryErrorCode.malformedOperation ||
+      FinanceEntryErrorCode.malformedPlannedCost =>
         FinanceEntryFailureKind.invalidInput,
       _ when statusCode == 409 => FinanceEntryFailureKind.conflict,
       _ => FinanceEntryFailureKind.invalidInput,
@@ -617,6 +675,7 @@ FinanceEntryResult<T> _httpFailure<T>({
       code: detail.code,
       issues: detail.issues,
       baselineIssues: detail.baselineIssues,
+      plannedCostIssues: detail.plannedCostIssues,
     );
   }
   return _failure(kind: FinanceEntryFailureKind.unknown, requestId: requestId);
@@ -680,6 +739,21 @@ _ErrorDetail? _tryErrorDetail(
     if (!_errorAllowed(code, contract)) {
       throw const FormatException('Wrong Finance error contract.');
     }
+    // Planned cost issues are a separate code space (ADR 0018), so they are
+    // parsed into their own list instead of being forced into FinanceIssue.
+    if (contract == _ContractKind.plannedCost) {
+      final plannedCostIssues = _plannedCostIssues(detail['issues']);
+      final rejected = code == FinanceEntryErrorCode.plannedCostRejected;
+      if (rejected != plannedCostIssues.isNotEmpty) {
+        throw const FormatException('Inconsistent planned cost detail.');
+      }
+      return _ErrorDetail(
+        code: code,
+        issues: const <FinanceIssue>[],
+        baselineIssues: const <FinanceBaselineIssue>[],
+        plannedCostIssues: plannedCostIssues,
+      );
+    }
     final issueContract = contract == _ContractKind.operation
         ? _ContractKind.operation
         : _ContractKind.account;
@@ -701,6 +775,7 @@ _ErrorDetail? _tryErrorDetail(
       code: code,
       issues: issues,
       baselineIssues: baselineIssues,
+      plannedCostIssues: const <PlannedCostIssue>[],
     );
   } on Object {
     return null;
@@ -731,6 +806,8 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
       FinanceIssueCode.unsupportedCurrency,
     }.contains(code),
     _ContractKind.baseline => false,
+    // Planned cost rejections use their own issue codes, never FinanceIssue.
+    _ContractKind.plannedCost => false,
     _ContractKind.operation => const {
       FinanceIssueCode.accountRequired,
       FinanceIssueCode.accountUnavailable,
@@ -775,7 +852,22 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.malformedOperation,
       FinanceEntryErrorCode.operationRejected,
     }.contains(code),
+    _ContractKind.plannedCost => const {
+      FinanceEntryErrorCode.malformedPlannedCost,
+      FinanceEntryErrorCode.plannedCostRejected,
+      FinanceEntryErrorCode.plannedCostNotFound,
+      FinanceEntryErrorCode.plannedCostPersistenceUnavailable,
+    }.contains(code),
   };
+}
+
+List<PlannedCostIssue> _plannedCostIssues(Object? raw) {
+  if (raw is! List<Object?> || raw.length > 16) {
+    throw const FormatException('Invalid planned cost issues.');
+  }
+  return raw
+      .map((item) => PlannedCostIssue.fromJson(_object(item)))
+      .toList(growable: false);
 }
 
 FinanceEntryErrorCode _errorCode(String value) => switch (value) {
@@ -789,6 +881,11 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'ACCOUNT_UNAVAILABLE' => FinanceEntryErrorCode.accountUnavailable,
   'BASELINE_REJECTED' => FinanceEntryErrorCode.baselineRejected,
   'OPERATION_REJECTED' => FinanceEntryErrorCode.operationRejected,
+  'MALFORMED_PLANNED_COST' => FinanceEntryErrorCode.malformedPlannedCost,
+  'PLANNED_COST_REJECTED' => FinanceEntryErrorCode.plannedCostRejected,
+  'PLANNED_COST_NOT_FOUND' => FinanceEntryErrorCode.plannedCostNotFound,
+  'PLANNED_COST_PERSISTENCE_UNAVAILABLE' =>
+    FinanceEntryErrorCode.plannedCostPersistenceUnavailable,
   'AUTHENTICATION_UNAVAILABLE' =>
     FinanceEntryErrorCode.authenticationUnavailable,
   'FINANCE_PERSISTENCE_UNAVAILABLE' =>
@@ -802,6 +899,7 @@ FinanceEntryFailureResult<T> _failure<T>({
   FinanceEntryErrorCode? code,
   List<FinanceIssue> issues = const [],
   List<FinanceBaselineIssue> baselineIssues = const [],
+  List<PlannedCostIssue> plannedCostIssues = const [],
 }) {
   return FinanceEntryFailureResult<T>(
     FinanceEntryFailure(
@@ -810,6 +908,7 @@ FinanceEntryFailureResult<T> _failure<T>({
       code: code,
       issues: issues,
       baselineIssues: baselineIssues,
+      plannedCostIssues: plannedCostIssues,
     ),
   );
 }
@@ -963,16 +1062,18 @@ String? _optionalAccountDate(Map<String, Object?> json, String key) {
   return _accountDate(json, key);
 }
 
-enum _ContractKind { account, baseline, operation }
+enum _ContractKind { account, baseline, operation, plannedCost }
 
 final class _ErrorDetail {
   const _ErrorDetail({
     required this.code,
     required this.issues,
     required this.baselineIssues,
+    required this.plannedCostIssues,
   });
 
   final FinanceEntryErrorCode code;
   final List<FinanceIssue> issues;
   final List<FinanceBaselineIssue> baselineIssues;
+  final List<PlannedCostIssue> plannedCostIssues;
 }

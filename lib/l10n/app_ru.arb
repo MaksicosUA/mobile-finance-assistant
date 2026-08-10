@@ -428,5 +428,109 @@
         "type": "String"
       }
     }
+  },
+  "plannedCostSettingsAction": "Запланировать трату",
+  "@plannedCostSettingsAction": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostSettingsDescription": "Например аренда или подписка",
+  "@plannedCostSettingsDescription": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostTitle": "Планируемая трата",
+  "@plannedCostTitle": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostLoading": "Загружаем счёт",
+  "@plannedCostLoading": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostDescription": "Планируемая трата не меняет баланс. Она появится в списке предстоящих платежей, пока вы её не подтвердите.",
+  "@plannedCostDescription": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostAccountRequired": "Сначала нужно создать счёт: планируемая трата привязывается к нему.",
+  "@plannedCostAccountRequired": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostTitleLabel": "Название",
+  "@plannedCostTitleLabel": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostTitleHint": "Аренда",
+  "@plannedCostTitleHint": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostAmountLabel": "Сумма",
+  "@plannedCostAmountLabel": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostDateLabel": "Дата платежа",
+  "@plannedCostDateLabel": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostChooseDateAction": "Выбрать дату",
+  "@plannedCostChooseDateAction": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostSubmitAction": "Запланировать",
+  "@plannedCostSubmitAction": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostRetryAction": "Повторить",
+  "@plannedCostRetryAction": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostAcceptedTitle": "Трата запланирована",
+  "@plannedCostAcceptedTitle": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostAcceptedDescription": "Она не влияет на баланс и ждёт подтверждения.",
+  "@plannedCostAcceptedDescription": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostHomePending": "Обновляем главный экран",
+  "@plannedCostHomePending": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostHomeUpdated": "Главный экран обновлён",
+  "@plannedCostHomeUpdated": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostHomeDelayed": "Главный экран обновится чуть позже",
+  "@plannedCostHomeDelayed": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostHomeFailed": "Не удалось обновить главный экран",
+  "@plannedCostHomeFailed": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostInvalidInput": "Проверьте название, сумму и дату.",
+  "@plannedCostInvalidInput": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostIssueAccountUnavailable": "Счёт недоступен.",
+  "@plannedCostIssueAccountUnavailable": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostIssueCurrencyMismatch": "Валюта не совпадает с валютой счёта.",
+  "@plannedCostIssueCurrencyMismatch": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostIssueUnsupportedCurrency": "Эта валюта пока не поддерживается.",
+  "@plannedCostIssueUnsupportedCurrency": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostIssueBeforeBaseline": "Дата раньше начала учёта по счёту. Выберите более позднюю дату.",
+  "@plannedCostIssueBeforeBaseline": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostGenericFailure": "Не удалось запланировать трату.",
+  "@plannedCostGenericFailure": {
+    "description": "Planned cost flow (ADR 0018)."
+  },
+  "plannedCostDoneAction": "Готово",
+  "@plannedCostDoneAction": {
+    "description": "Planned cost flow (ADR 0018)."
   }
 }

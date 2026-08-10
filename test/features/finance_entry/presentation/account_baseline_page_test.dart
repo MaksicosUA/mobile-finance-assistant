@@ -202,6 +202,10 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
   final FinanceEntryFailure? listFailure;
   final List<FinanceBaselineCommitCommand> commits = [];
   int listCalls = 0;
+  @override
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
+    PlannedCostDraft draft,
+  ) => throw UnimplementedError();
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {

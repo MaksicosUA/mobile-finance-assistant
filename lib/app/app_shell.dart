@@ -7,6 +7,7 @@ import '../features/auth/application/auth_controller.dart';
 import '../features/finance_entry/application/operation_sync_controller.dart';
 import '../features/finance_entry/domain/operation_outbox.dart';
 import '../features/finance_entry/presentation/account_baseline_page.dart';
+import '../features/finance_entry/presentation/planned_cost_page.dart';
 import '../features/finance_entry/presentation/finance_entry_page.dart';
 import '../features/home/presentation/widgets/home_status_banner.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -101,10 +102,19 @@ class _AppShellState extends ConsumerState<AppShell>
           onCorrectOpeningDate: isNetworkBackendConfigured
               ? _openAccountBaseline
               : null,
+          onPlanCost: isNetworkBackendConfigured ? _openPlannedCost : null,
           onSignOut: isNetworkBackendConfigured
               ? ref.read(authControllerProvider.notifier).signOut
               : null,
         ),
+      ),
+    );
+  }
+
+  void _openPlannedCost() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PlannedCostPage(onSignInRequested: _openSessionExpired),
       ),
     );
   }

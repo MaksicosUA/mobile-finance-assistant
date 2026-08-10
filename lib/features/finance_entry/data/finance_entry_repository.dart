@@ -27,6 +27,10 @@ abstract interface class FinanceEntryRepositoryClient {
     FinanceBaselineCommitCommand command,
   );
 
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
+    PlannedCostDraft draft,
+  );
+
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation(
     FinanceOperationDraft draft,
   );
@@ -104,6 +108,18 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
     return _authorized(
       (accessToken) =>
           _api.commitBaseline(accessToken: accessToken, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
+    PlannedCostDraft draft,
+  ) {
+    // A plan is a forecast, so it needs no commit preflight: nothing here can
+    // change the authoritative balance (ADR 0018).
+    return _authorized(
+      (accessToken) =>
+          _api.createPlannedCost(accessToken: accessToken, draft: draft),
     );
   }
 

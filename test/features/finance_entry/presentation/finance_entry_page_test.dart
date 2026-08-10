@@ -521,6 +521,10 @@ final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
   final FinanceAccountSetup setup;
   final FinanceOperationEvaluation Function(FinanceOperationDraft draft)?
   operationEvaluation;
+  @override
+  Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
+    PlannedCostDraft draft,
+  ) => throw UnimplementedError();
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {
