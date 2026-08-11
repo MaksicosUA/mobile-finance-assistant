@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_finance_assistant/core/network/api_config.dart';
+import 'package:mobile_finance_assistant/core/platform/finance_capture_context.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/application/finance_entry_controller.dart';
+import 'package:mobile_finance_assistant/features/finance_entry/application/operation_sync_controller.dart';
+import 'package:mobile_finance_assistant/features/finance_entry/data/finance_command_id.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/application/planned_cost_controller.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/data/finance_entry_repository.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/domain/finance_entry_models.dart';
@@ -15,6 +18,8 @@ const _accountCommandId = '33333333-3333-4333-8333-333333333333';
 const _planCommandId = '44444444-4444-4444-8444-444444444444';
 const _planId = '55555555-5555-4555-8555-555555555555';
 const _otherPlanId = '66666666-6666-4666-8666-666666666666';
+const _draftHash =
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 void main() {
   group('PlannedCostController', () {
@@ -281,6 +286,92 @@ void main() {
       expect(state.failure, isNull);
     });
 
+    test(
+      'confirming records the operation first and only then settles the plan',
+      () async {
+        final repository = _FakeRepository(
+          listResults: [_success(_setup(_account('2026-07-10')))],
+          plans: [_plan(plannedOn: '2026-08-01')],
+          onTransition: (_) => _success(
+            PlannedCostSettled(
+              plannedCost: _plan(plannedOn: '2026-08-01', status: 'confirmed'),
+              idempotentReplay: false,
+            ),
+          ),
+        );
+        final container = _container(repository);
+        addTearDown(container.dispose);
+        final controller = container.read(
+          plannedCostControllerProvider.notifier,
+        );
+        await controller.load();
+
+        await controller.confirmPlan(_plan(plannedOn: '2026-08-01'));
+
+        // The operation is evaluated before anything settles the plan.
+        expect(repository.evaluatedDrafts, hasLength(1));
+        final draft = repository.evaluatedDrafts.single;
+        expect(draft.amount, '800.50');
+        // A plan that has already come due is recorded on its planned day.
+        expect(draft.occurredOn, '2026-08-01');
+        // The operation command is derived from the plan, so a retry replays
+        // it instead of charging twice.
+        expect(draft.commandId, plannedCostOperationCommandId(_planId));
+
+        final settle = repository.transitions.single;
+        expect(settle.transition, PlannedCostTransition.confirm);
+        expect(settle.operationCommandId, draft.commandId);
+      },
+    );
+
+    test(
+      'a future-dated plan is recorded today, never in the future',
+      () async {
+        final repository = _FakeRepository(
+          listResults: [_success(_setup(_account('2026-07-10')))],
+          plans: [_plan(plannedOn: '2026-12-01')],
+          onTransition: (_) => _success(
+            PlannedCostSettled(
+              plannedCost: _plan(plannedOn: '2026-12-01', status: 'confirmed'),
+              idempotentReplay: false,
+            ),
+          ),
+        );
+        final container = _container(repository);
+        addTearDown(container.dispose);
+        final controller = container.read(
+          plannedCostControllerProvider.notifier,
+        );
+        await controller.load();
+
+        await controller.confirmPlan(_plan(plannedOn: '2026-12-01'));
+
+        expect(repository.evaluatedDrafts.single.occurredOn, '2026-08-09');
+      },
+    );
+
+    test('a rejected operation leaves the plan outstanding', () async {
+      final repository = _FakeRepository(
+        listResults: [_success(_setup(_account('2026-07-10')))],
+        plans: [_plan(plannedOn: '2026-08-01')],
+        evaluationFailure: FinanceEntryFailureKind.serviceUnavailable,
+      );
+      final container = _container(repository);
+      addTearDown(container.dispose);
+      final controller = container.read(plannedCostControllerProvider.notifier);
+      await controller.load();
+
+      await controller.confirmPlan(_plan(plannedOn: '2026-08-01'));
+
+      // Nothing settled, so the obligation must still be visible.
+      expect(repository.transitions, isEmpty);
+      final state =
+          container.read(plannedCostControllerProvider) as PlannedCostEditing;
+      expect(state.plans, hasLength(1));
+      expect(state.settlingId, isNull);
+      expect(state.failure, isNotNull);
+    });
+
     test('an unauthorized failure asks for sign-in', () async {
       final repository = _FakeRepository(
         listResults: [
@@ -320,6 +411,7 @@ void main() {
 ProviderContainer _container(
   _FakeRepository repository, {
   String Function()? commandIdFactory,
+  OperationDeliveryResult? delivery,
 }) {
   final container = ProviderContainer(
     overrides: [
@@ -329,6 +421,12 @@ ProviderContainer _container(
       ),
       financeCommandIdFactoryProvider.overrideWithValue(
         commandIdFactory ?? () => _planCommandId,
+      ),
+      financeCaptureContextSourceProvider.overrideWithValue(
+        const _FixedCaptureContextSource(),
+      ),
+      operationDeliveryCoordinatorProvider.overrideWithValue(
+        _FakeDeliveryCoordinator(delivery),
       ),
       homeSessionStoreProvider.overrideWithValue(const _NullHomeSessionStore()),
       acceptedWriteHomeDelayProvider.overrideWithValue((_) async {}),
@@ -424,6 +522,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     this.onCreate,
     this.plans = const [],
     this.onTransition,
+    this.evaluationFailure,
   }) : _listResults = List.of(listResults);
 
   final List<FinanceEntryResult<FinanceAccountSetup>> _listResults;
@@ -431,8 +530,11 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
   onCreate;
   final List<PlannedCost> plans;
   final FinanceEntryResult<PlannedCostSettled> Function(String)? onTransition;
+  final FinanceEntryFailureKind? evaluationFailure;
   final List<PlannedCostDraft> drafts = [];
   final List<String> settled = [];
+  final List<FinanceOperationDraft> evaluatedDrafts = [];
+  final List<PlannedCostTransitionCommand> transitions = [];
   @override
   Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts() async {
     return _success(PlannedCostList(evaluatedOn: '2026-08-09', plans: plans));
@@ -444,6 +546,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     PlannedCostTransitionCommand command,
   ) async {
     settled.add(plannedCostId);
+    transitions.add(command);
     final handler = onTransition;
     if (handler == null) throw UnimplementedError();
     return handler(plannedCostId);
@@ -487,7 +590,16 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation(
     FinanceOperationDraft draft,
-  ) => throw UnimplementedError();
+  ) async {
+    evaluatedDrafts.add(draft);
+    final failure = evaluationFailure;
+    if (failure != null) {
+      return _failureResult<FinanceOperationEvaluation>(failure);
+    }
+    return _success<FinanceOperationEvaluation>(
+      FinanceOperationNeedsConfirmation(draft: draft, draftHash: _draftHash),
+    );
+  }
 
   @override
   Future<FinanceEntryResult<FinanceOperationCommit>> commitOperation(
@@ -496,6 +608,39 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     required String expectedSessionRevision,
     required FinanceCommitPreflight preflight,
   }) => throw UnimplementedError();
+}
+
+final class _FakeDeliveryCoordinator implements OperationDeliveryCoordinator {
+  _FakeDeliveryCoordinator(this._result);
+
+  final OperationDeliveryResult? _result;
+  final List<FinanceOperationCommitCommand> commands = [];
+
+  @override
+  Future<OperationDeliveryResult> enqueueAndSynchronize({
+    required String expectedPrincipalScopeId,
+    required FinanceOperationCommitCommand command,
+    void Function(FinanceOperationCommit commit)? onAccepted,
+  }) async {
+    commands.add(command);
+    return _result ??
+        const OperationDeliveryAlreadySynced('operation-already-synced');
+  }
+}
+
+final class _FixedCaptureContextSource implements FinanceCaptureContextSource {
+  const _FixedCaptureContextSource();
+
+  @override
+  Future<FinanceCaptureContext> capture({
+    required String canonicalTimezone,
+  }) async => FinanceCaptureContext.fromPlatformValue({
+    'capturedAtUtc': '2026-08-09T12:00:00.000Z',
+    'osTimezone': configuredHomeApiTimezone,
+    'osLocalDate': '2026-08-09',
+    'canonicalTimezone': configuredHomeApiTimezone,
+    'canonicalLocalDate': '2026-08-09',
+  }, expectedCanonicalTimezone: configuredHomeApiTimezone);
 }
 
 class _NullHomeSessionStore implements HomeSessionStore {

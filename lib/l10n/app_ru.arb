@@ -560,5 +560,21 @@
   "plannedCostCancelFailure": "Не удалось отменить план.",
   "@plannedCostCancelFailure": {
     "description": "Planned cost list (ADR 0018)."
+  },
+  "plannedCostConfirmAction": "Оплачено",
+  "@plannedCostConfirmAction": {
+    "description": "Planned cost confirmation (ADR 0018)."
+  },
+  "plannedCostConfirmSemantics": "Отметить план оплаченным",
+  "@plannedCostConfirmSemantics": {
+    "description": "Planned cost confirmation (ADR 0018)."
+  },
+  "plannedCostConfirmFailure": "Не удалось записать операцию. План остался в списке — попробуйте ещё раз.",
+  "@plannedCostConfirmFailure": {
+    "description": "Planned cost confirmation (ADR 0018)."
+  },
+  "plannedCostConfirmHint": "«Оплачено» создаст обычную операцию расхода и уберёт план из списка.",
+  "@plannedCostConfirmHint": {
+    "description": "Planned cost confirmation (ADR 0018)."
   }
 }

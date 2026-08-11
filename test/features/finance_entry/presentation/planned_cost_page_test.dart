@@ -185,7 +185,16 @@ void main() {
     );
     expect(row, findsOneWidget);
 
-    await tester.tap(find.text('Отменить'));
+    final cancel = find.byKey(const Key('planned-cost-cancel-$_planId'));
+    await tester.scrollUntilVisible(
+      cancel,
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(tester.widget<TextButton>(cancel).onPressed, isNotNull);
+    await tester.ensureVisible(cancel);
+    await tester.pumpAndSettle();
+    await tester.tap(cancel, warnIfMissed: true);
     await tester.pumpAndSettle();
 
     expect(repository.settled, [_planId]);

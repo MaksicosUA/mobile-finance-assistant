@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_config.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../home/application/home_controller.dart';
+import '../data/finance_command_id.dart';
 import '../data/finance_entry_repository.dart';
 import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
 import 'finance_entry_controller.dart';
+import 'operation_sync_controller.dart';
 import 'planned_cost_state.dart';
 
 export 'planned_cost_state.dart';
@@ -263,6 +266,186 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     }
   }
 
+  /// Confirms one plan by recording the real operation it stood for.
+  ///
+  /// Order is asymmetric on purpose (ADR 0018): the operation is committed
+  /// first through the normal path and its encrypted delivery outbox, and only
+  /// an accepted operation transitions the plan. A lost transition therefore
+  /// leaves a visible outstanding plan; the reverse order could mark a plan
+  /// paid with no operation behind it and quietly lose the payment.
+  Future<void> confirmPlan(PlannedCost plan, {DateTime? occurredOn}) async {
+    final current = state;
+    if (_requestInFlight || current is! PlannedCostEditing) return;
+    if (current.settlingId != null) return;
+
+    final plannedOn = _parsedDate(plan.plannedOn);
+    if (plannedOn == null) {
+      state = current.copyWith(failure: _invalidInputFailure());
+      return;
+    }
+    final today = _dateOnly(_now.toUtc());
+    // A future-dated plan cannot be recorded on its planned day: an operation
+    // may never be in the future. Default to the planned day when it has
+    // already arrived, otherwise to today.
+    final effectiveDate = occurredOn == null
+        ? (plannedOn.isAfter(today) ? today : plannedOn)
+        : _dateOnly(occurredOn);
+    if (effectiveDate.isAfter(today) ||
+        effectiveDate.isBefore(current.earliestDate)) {
+      state = current.copyWith(failure: _invalidInputFailure());
+      return;
+    }
+
+    final requestGeneration = _beginRequest();
+    state = current.copyWith(
+      settlingId: plan.plannedCostId,
+      clearFailure: true,
+      issues: const [],
+    );
+    try {
+      final timeContext = await ref
+          .read(financeCaptureContextSourceProvider)
+          .capture(canonicalTimezone: configuredHomeApiTimezone);
+      if (!_isCurrentRequest(requestGeneration)) return;
+      final operationCommandId = plannedCostOperationCommandId(
+        plan.plannedCostId,
+      );
+      final draft = FinanceOperationDraft(
+        commandId: operationCommandId,
+        type: FinanceOperationType.expense,
+        amount: plan.amount,
+        currency: plan.currency,
+        accountId: plan.accountId,
+        category: plan.category,
+        merchant: null,
+        capturedAt: timeContext.capturedAtUtc.toIso8601String(),
+        capturedTimezone: timeContext.capturedTimezone,
+        sourceExpression: null,
+        occurredOn: plannedCostWireDate(effectiveDate),
+        occurredAt: null,
+        source: FinanceOperationSource.manualText,
+      );
+      validateOperationDraft(draft);
+
+      final evaluation = await _repository.evaluateOperation(draft);
+      if (!_isCurrentRequest(requestGeneration)) return;
+      final review = switch (evaluation) {
+        FinanceEntrySuccess(:final value)
+            when value is FinanceOperationNeedsConfirmation =>
+          value,
+        _ => null,
+      };
+      if (review == null) {
+        _failSettling(evaluation);
+        return;
+      }
+
+      final delivery = await ref
+          .read(operationDeliveryCoordinatorProvider)
+          .enqueueAndSynchronize(
+            expectedPrincipalScopeId: current.account.userId,
+            command: FinanceOperationCommitCommand.fromReview(
+              review: review,
+              confirmedAt: _now,
+            ),
+            onAccepted: (_) {},
+          );
+      if (!_isCurrentRequest(requestGeneration)) return;
+
+      switch (delivery) {
+        case OperationDeliveryAccepted():
+        case OperationDeliveryAlreadySynced():
+          // The money is recorded; only now may the plan stop being an
+          // obligation.
+          await _transitionConfirmed(
+            plan: plan,
+            operationCommandId: operationCommandId,
+            requestGeneration: requestGeneration,
+          );
+        case OperationDeliveryAuthenticationRequired():
+          state = const PlannedCostAuthenticationRequired();
+        case OperationDeliveryQueued():
+        case OperationDeliveryPermanentFailure():
+        case OperationDeliveryStorageFailure():
+          // The operation did not reach the server, so the plan stays
+          // outstanding and the user can retry; the derived command id makes
+          // that retry a replay rather than a second operation.
+          final latest = state;
+          if (latest is PlannedCostEditing) {
+            state = latest.copyWith(
+              failure: _confirmDeliveryFailure(),
+              clearSettlingId: true,
+            );
+          }
+      }
+    } on Object {
+      final latest = state;
+      if (_isCurrentRequest(requestGeneration) &&
+          latest is PlannedCostEditing) {
+        state = latest.copyWith(
+          failure: _unexpectedFailure(),
+          clearSettlingId: true,
+        );
+      }
+    } finally {
+      _endRequest(requestGeneration);
+    }
+  }
+
+  Future<void> _transitionConfirmed({
+    required PlannedCost plan,
+    required String operationCommandId,
+    required int requestGeneration,
+  }) async {
+    final command = PlannedCostTransitionCommand(
+      commandId: _newCommandId,
+      transition: PlannedCostTransition.confirm,
+      operationCommandId: operationCommandId,
+      requestedAt: plannedCostWireTimestamp(_now),
+    );
+    final result = await _repository.transitionPlannedCost(
+      plan.plannedCostId,
+      command,
+    );
+    if (!_isCurrentRequest(requestGeneration)) return;
+    final latest = state;
+    if (latest is! PlannedCostEditing) return;
+    switch (result) {
+      case FinanceEntrySuccess():
+        state = latest.copyWith(
+          plans: latest.plans
+              .where((item) => item.plannedCostId != plan.plannedCostId)
+              .toList(growable: false),
+          clearSettlingId: true,
+        );
+        unawaited(_convergeHomeAfterSettledPlan());
+      case FinanceEntryFailureResult(:final failure):
+        // The operation is already recorded, so this is not a lost payment:
+        // the plan simply still shows as outstanding until a retry succeeds.
+        state = latest.copyWith(
+          failure: failure,
+          issues: failure.plannedCostIssues,
+          clearSettlingId: true,
+        );
+    }
+  }
+
+  void _failSettling(FinanceEntryResult<FinanceOperationEvaluation> result) {
+    if (result is FinanceEntryFailureResult<FinanceOperationEvaluation> &&
+        _requiresAuthentication(result.failure)) {
+      state = const PlannedCostAuthenticationRequired();
+      return;
+    }
+    final latest = state;
+    if (latest is! PlannedCostEditing) return;
+    state = latest.copyWith(
+      failure: result is FinanceEntryFailureResult<FinanceOperationEvaluation>
+          ? result.failure
+          : _confirmDeliveryFailure(),
+      clearSettlingId: true,
+    );
+  }
+
   Future<void> _loadPlans(int requestGeneration) async {
     try {
       final result = await _repository.listPlannedCosts();
@@ -371,6 +554,11 @@ DateTime? _parsedDate(String value) {
 FinanceEntryFailure _invalidInputFailure() => FinanceEntryFailure(
   kind: FinanceEntryFailureKind.invalidInput,
   requestId: 'req_local_planned_cost_input',
+);
+
+FinanceEntryFailure _confirmDeliveryFailure() => FinanceEntryFailure(
+  kind: FinanceEntryFailureKind.serviceUnavailable,
+  requestId: 'req_local_planned_cost_confirm',
 );
 
 FinanceEntryFailure _unexpectedFailure() => FinanceEntryFailure(
