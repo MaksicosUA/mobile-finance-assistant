@@ -185,7 +185,12 @@ class OperationDraft(OperationApiModel):
     amount: MoneyInput
     currency: CurrencyCode
     account_id: UUID | None = Field(default=None, alias="accountId")
+    # Kept exactly as the user wrote it, alongside the catalogue link that
+    # groups it. The text is evidence; the link is what reports read (ADR 0020).
     category: OptionalShortText | None = None
+    # Optional and additive: an older client omits it and stays valid, and
+    # "uncategorized" remains a real state rather than a gap to guess at.
+    category_id: UUID | None = Field(default=None, alias="categoryId")
     merchant: OptionalMerchant | None = None
     captured_at: UtcTimestamp = Field(alias="capturedAt")
     captured_timezone: TimezoneName = Field(alias="capturedTimezone")
@@ -213,6 +218,8 @@ class OperationIssue(OperationApiModel):
         "CONFIRMATION_BEFORE_CAPTURE",
         "UNSUPPORTED_DATE_EXPRESSION",
         "UNSUPPORTED_CURRENCY",
+        "CATEGORY_UNAVAILABLE",
+        "CATEGORY_DIRECTION_MISMATCH",
     ]
     field: Literal[
         "accountId",
@@ -221,6 +228,7 @@ class OperationIssue(OperationApiModel):
         "confirmedAt",
         "sourceExpression",
         "currency",
+        "categoryId",
     ]
 
 
@@ -264,6 +272,7 @@ class CommittedOperation(OperationApiModel):
     currency: CurrencyCode
     account_id: UUID | None = Field(alias="accountId")
     category: OptionalShortText | None
+    category_id: UUID | None = Field(alias="categoryId")
     merchant: OptionalMerchant | None
     captured_at: UtcTimestamp = Field(alias="capturedAt")
     captured_timezone: TimezoneName = Field(alias="capturedTimezone")

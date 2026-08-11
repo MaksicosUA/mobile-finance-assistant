@@ -441,6 +441,7 @@ final class FinanceOperationDraft {
     required this.currency,
     required this.accountId,
     required this.category,
+    this.categoryId,
     required this.merchant,
     required this.capturedAt,
     required this.capturedTimezone,
@@ -458,6 +459,7 @@ final class FinanceOperationDraft {
     required this.currency,
     required this.accountId,
     required this.category,
+    required this.categoryId,
     required this.merchant,
     required this.capturedAt,
     required this.capturedTimezone,
@@ -474,7 +476,11 @@ final class FinanceOperationDraft {
   final String amount;
   final String currency;
   final String? accountId;
+  // What the user wrote, kept beside the catalogue link that groups it.
   final String? category;
+  // The catalogue link. Null until the picker lands; the server treats an
+  // absent link as "uncategorized" rather than guessing (ADR 0020).
+  final String? categoryId;
   final String? merchant;
   final String capturedAt;
   final String capturedTimezone;
@@ -486,23 +492,27 @@ final class FinanceOperationDraft {
   final Map<String, Object?>? _canonicalWire;
 
   factory FinanceOperationDraft.fromJson(Map<String, Object?> json) {
-    _expectKeys(json, const {
-      'schemaVersion',
-      'commandId',
-      'type',
-      'amount',
-      'currency',
-      'accountId',
-      'category',
-      'merchant',
-      'capturedAt',
-      'capturedTimezone',
-      'sourceExpression',
-      'dateResolverVersion',
-      'occurredOn',
-      'occurredAt',
-      'source',
-    });
+    _expectKeys(
+      json,
+      const {
+        'schemaVersion',
+        'commandId',
+        'type',
+        'amount',
+        'currency',
+        'accountId',
+        'category',
+        'merchant',
+        'capturedAt',
+        'capturedTimezone',
+        'sourceExpression',
+        'dateResolverVersion',
+        'occurredOn',
+        'occurredAt',
+        'source',
+      },
+      optional: const {'categoryId'},
+    );
     _requireSchemaVersion(json);
     return FinanceOperationDraft._canonical(
       commandId: _requiredUuid(json, 'commandId'),
@@ -511,6 +521,7 @@ final class FinanceOperationDraft {
       currency: _currency(json, 'currency'),
       accountId: _optionalUuid(json, 'accountId'),
       category: _optionalBoundedText(json, 'category', maximumLength: 100),
+      categoryId: _optionalUuid(json, 'categoryId'),
       merchant: _optionalBoundedText(json, 'merchant', maximumLength: 160),
       capturedAt: _timestamp(json, 'capturedAt'),
       capturedTimezone: _timezone(json, 'capturedTimezone'),
@@ -542,6 +553,7 @@ final class FinanceOperationDraft {
       'currency': currency,
       'accountId': accountId,
       'category': category,
+      'categoryId': categoryId,
       'merchant': merchant,
       'capturedAt': capturedAt,
       'capturedTimezone': capturedTimezone,
@@ -665,6 +677,7 @@ final class CommittedFinanceOperation {
     required this.currency,
     required this.accountId,
     required this.category,
+    required this.categoryId,
     required this.merchant,
     required this.capturedAt,
     required this.capturedTimezone,
@@ -685,6 +698,7 @@ final class CommittedFinanceOperation {
   final String currency;
   final String? accountId;
   final String? category;
+  final String? categoryId;
   final String? merchant;
   final String capturedAt;
   final String capturedTimezone;
@@ -697,27 +711,31 @@ final class CommittedFinanceOperation {
   final String createdAt;
 
   factory CommittedFinanceOperation.fromJson(Map<String, Object?> json) {
-    _expectKeys(json, const {
-      'operationId',
-      'userId',
-      'commandId',
-      'type',
-      'amount',
-      'currency',
-      'accountId',
-      'category',
-      'merchant',
-      'capturedAt',
-      'capturedTimezone',
-      'sourceExpression',
-      'dateResolverVersion',
-      'occurredOn',
-      'occurredAt',
-      'source',
-      'status',
-      'confirmedAt',
-      'createdAt',
-    });
+    _expectKeys(
+      json,
+      const {
+        'operationId',
+        'userId',
+        'commandId',
+        'type',
+        'amount',
+        'currency',
+        'accountId',
+        'category',
+        'merchant',
+        'capturedAt',
+        'capturedTimezone',
+        'sourceExpression',
+        'dateResolverVersion',
+        'occurredOn',
+        'occurredAt',
+        'source',
+        'status',
+        'confirmedAt',
+        'createdAt',
+      },
+      optional: const {'categoryId'},
+    );
     if (json['status'] != 'confirmed') {
       throw const FormatException('Invalid Finance operation status.');
     }
@@ -730,6 +748,7 @@ final class CommittedFinanceOperation {
       currency: _currency(json, 'currency'),
       accountId: _optionalUuid(json, 'accountId'),
       category: _optionalBoundedText(json, 'category', maximumLength: 100),
+      categoryId: _optionalUuid(json, 'categoryId'),
       merchant: _optionalBoundedText(json, 'merchant', maximumLength: 160),
       capturedAt: _timestamp(json, 'capturedAt'),
       capturedTimezone: _timezone(json, 'capturedTimezone'),
@@ -1462,9 +1481,21 @@ String _utcWireTimestamp(DateTime value) {
   return utc.toIso8601String();
 }
 
-void _expectKeys(Map<String, Object?> json, Set<String> expected) {
-  if (json.length != expected.length ||
-      !json.keys.toSet().containsAll(expected)) {
+/// Rejects unknown fields, and requires every field except [optional].
+///
+/// [optional] exists for additively introduced fields. A payload written before
+/// such a field existed must still load: the encrypted outbox persists a
+/// command before its first send (ADR 0014), so an app update that made an
+/// older stored command unreadable would trip the fail-closed delivery lock
+/// over a field the command never needed.
+void _expectKeys(
+  Map<String, Object?> json,
+  Set<String> expected, {
+  Set<String> optional = const <String>{},
+}) {
+  final keys = json.keys.toSet();
+  if (!keys.containsAll(expected) ||
+      !expected.union(optional).containsAll(keys)) {
     throw const FormatException('Unexpected Finance contract fields.');
   }
 }

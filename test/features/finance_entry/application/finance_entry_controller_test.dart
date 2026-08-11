@@ -1115,6 +1115,7 @@ CommittedFinanceOperation _committedOperation(
     currency: draft.currency,
     accountId: draft.accountId,
     category: draft.category,
+    categoryId: null,
     merchant: draft.merchant,
     capturedAt: draft.capturedAt,
     capturedTimezone: draft.capturedTimezone,

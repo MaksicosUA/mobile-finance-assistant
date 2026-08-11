@@ -29,6 +29,7 @@ from .auth import (
 )
 from .auth_routes import router as auth_router
 from .auth_service import AuthenticationService, UnavailableAuthenticationService
+from .category_routes import router as category_router
 from .finance_core import FinanceCore, UnavailableFinanceOperationRepository
 from .goal_core import GoalCore, UnavailableGoalRepository
 from .goal_routes import router as goal_router
@@ -36,6 +37,7 @@ from .models import HomeResponse, HomeV1Response
 from .operation_routes import router as operation_router
 from .planned_cost_core import PlannedCostCore, UnavailablePlannedCostRepository
 from .planned_cost_routes import router as planned_cost_router
+from .postgres_category_repository import UnavailableCategoryRepository
 from .repository import (
     HomeCanonicalTimezoneMismatch,
     HomeQuery,
@@ -256,6 +258,7 @@ def create_app(
     finance_core: FinanceCore | None = None,
     planned_cost_core: PlannedCostCore | None = None,
     goal_core: GoalCore | None = None,
+    category_repository: object | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
@@ -310,6 +313,11 @@ def create_app(
         if goal_core is not None
         else GoalCore(repository=UnavailableGoalRepository())
     )
+    application.state.category_repository = (
+        category_repository
+        if category_repository is not None
+        else UnavailableCategoryRepository()
+    )
 
     @application.exception_handler(RequestValidationError)
     async def redacted_request_validation_error(
@@ -352,6 +360,7 @@ def create_app(
     application.include_router(operation_router)
     application.include_router(planned_cost_router)
     application.include_router(goal_router)
+    application.include_router(category_router)
     application.include_router(router)
     return application
 

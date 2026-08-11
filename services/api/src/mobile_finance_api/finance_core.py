@@ -52,6 +52,39 @@ class OperationWriteResult:
     idempotent_replay: bool
 
 
+@dataclass(frozen=True, slots=True)
+class FinanceCategorySnapshot:
+    """The catalogue facts a draft is validated against (ADR 0020)."""
+
+    category_id: UUID
+    user_id: UUID
+    direction: str
+    archived: bool
+
+
+class FinanceCategoryDirectory(Protocol):
+    async def get_category(
+        self,
+        *,
+        user_id: UUID,
+        category_id: UUID,
+    ) -> FinanceCategorySnapshot | None:
+        """Return an owned category without exposing another user's catalogue."""
+
+
+class UnavailableFinanceCategoryDirectory:
+    """Used when no catalogue is wired; a draft may then carry no category."""
+
+    async def get_category(
+        self,
+        *,
+        user_id: UUID,
+        category_id: UUID,
+    ) -> FinanceCategorySnapshot | None:
+        del user_id, category_id
+        return None
+
+
 class FinanceOperationRepository(Protocol):
     async def replay_existing(
         self,
@@ -102,9 +135,15 @@ class FinanceCore:
         *,
         repository: FinanceOperationRepository,
         account_directory: FinanceAccountDirectory,
+        category_directory: FinanceCategoryDirectory | None = None,
     ) -> None:
         self._repository = repository
         self._account_directory = account_directory
+        self._category_directory = (
+            category_directory
+            if category_directory is not None
+            else UnavailableFinanceCategoryDirectory()
+        )
 
     async def evaluate(
         self,
@@ -113,7 +152,8 @@ class FinanceCore:
         draft: OperationDraft,
     ) -> EvaluateOperationResponse:
         account = await self._account_for_draft(user_id=user_id, draft=draft)
-        issues = _evaluate_issues(draft, account=account)
+        category = await self._category_for_draft(user_id=user_id, draft=draft)
+        issues = _evaluate_issues(draft, account=account, category=category)
         if issues:
             return EvaluateOperationResponse(
                 decision="REJECT",
@@ -210,6 +250,22 @@ class FinanceCore:
         except Exception as error:
             raise FinancePersistenceUnavailable from error
 
+    async def _category_for_draft(
+        self,
+        *,
+        user_id: UUID,
+        draft: OperationDraft,
+    ) -> FinanceCategorySnapshot | None:
+        if draft.category_id is None:
+            return None
+        try:
+            return await self._category_directory.get_category(
+                user_id=user_id,
+                category_id=draft.category_id,
+            )
+        except Exception as error:
+            raise FinancePersistenceUnavailable from error
+
 
 def draft_hash(draft: OperationDraft) -> str:
     return _canonical_hash(draft.model_dump(mode="json", by_alias=True))
@@ -244,6 +300,7 @@ def _evaluate_issues(
     draft: OperationDraft,
     *,
     account: FinanceAccountSnapshot | None,
+    category: FinanceCategorySnapshot | None = None,
 ) -> tuple[OperationIssue, ...]:
     issues: list[OperationIssue] = []
     timezone = ZoneInfo(draft.captured_timezone)
@@ -266,6 +323,22 @@ def _evaluate_issues(
                 OperationIssue(
                     code="OPERATION_BEFORE_ACCOUNT_BASELINE",
                     field="occurredOn",
+                )
+            )
+    if draft.category_id is not None:
+        # An archived category still groups history but must not be chosen for
+        # something new, so it reads as unavailable here (ADR 0020).
+        if category is None or category.archived:
+            issues.append(
+                OperationIssue(code="CATEGORY_UNAVAILABLE", field="categoryId")
+            )
+        elif category.direction != draft.operation_type:
+            # Filing an expense under an income category would silently corrupt
+            # every later breakdown.
+            issues.append(
+                OperationIssue(
+                    code="CATEGORY_DIRECTION_MISMATCH",
+                    field="categoryId",
                 )
             )
     # A versioned ISO currency registry and conversion provenance are not yet
