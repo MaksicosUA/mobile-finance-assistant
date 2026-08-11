@@ -31,6 +31,8 @@ final _defaultCaptureContext = _captureContext(
   canonicalLocalDate: '2026-07-29',
 );
 
+const _categoryId = '99999999-9999-4999-8999-999999999999';
+
 void main() {
   group('FinanceEntryController', () {
     test(
@@ -975,6 +977,101 @@ void main() {
     });
   });
 
+  group('category link (ADR 0020)', () {
+    test('a chosen category reaches the draft beside its name', () async {
+      final repository = _FakeFinanceEntryRepository(
+        listResult: _success(_initializedAccountSetup(_account())),
+        onEvaluateOperation: (draft) => _success(
+          FinanceOperationNeedsConfirmation(
+            draft: draft,
+            draftHash: _draftHash,
+          ),
+        ),
+      );
+      final container = _container(repository);
+      addTearDown(container.dispose);
+      final controller = container.read(
+        financeEntryControllerProvider.notifier,
+      );
+      await controller.load();
+
+      await controller.evaluateOperation(
+        OperationEntryInput(
+          type: FinanceOperationType.expense,
+          amount: '25.00',
+          occurredOn: DateTime(2026, 7, 29),
+          category: 'Продукты',
+          categoryId: _categoryId,
+        ),
+      );
+
+      final draft = repository.operationDrafts.single;
+      expect(draft.categoryId, _categoryId);
+      // The text is the evidence of what the user chose and travels with it.
+      expect(draft.category, 'Продукты');
+    });
+
+    test('free text keeps working with no link at all', () async {
+      final repository = _FakeFinanceEntryRepository(
+        listResult: _success(_initializedAccountSetup(_account())),
+        onEvaluateOperation: (draft) => _success(
+          FinanceOperationNeedsConfirmation(
+            draft: draft,
+            draftHash: _draftHash,
+          ),
+        ),
+      );
+      final container = _container(repository);
+      addTearDown(container.dispose);
+      final controller = container.read(
+        financeEntryControllerProvider.notifier,
+      );
+      await controller.load();
+
+      await controller.evaluateOperation(
+        OperationEntryInput(
+          type: FinanceOperationType.expense,
+          amount: '25.00',
+          occurredOn: DateTime(2026, 7, 29),
+          category: 'Что-то своё',
+        ),
+      );
+
+      final draft = repository.operationDrafts.single;
+      expect(draft.categoryId, isNull);
+      expect(draft.category, 'Что-то своё');
+    });
+
+    test('a link without a name is refused before any request', () async {
+      // A grouped operation with no record of what the user chose would make a
+      // wrong link impossible to see later.
+      final repository = _FakeFinanceEntryRepository(
+        listResult: _success(_initializedAccountSetup(_account())),
+      );
+      final container = _container(repository);
+      addTearDown(container.dispose);
+      final controller = container.read(
+        financeEntryControllerProvider.notifier,
+      );
+      await controller.load();
+
+      await controller.evaluateOperation(
+        OperationEntryInput(
+          type: FinanceOperationType.expense,
+          amount: '25.00',
+          occurredOn: DateTime(2026, 7, 29),
+          categoryId: _categoryId,
+        ),
+      );
+
+      final state =
+          container.read(financeEntryControllerProvider)
+              as FinanceOperationEditing;
+      expect(state.failure?.kind, FinanceEntryFailureKind.invalidInput);
+      expect(repository.operationDrafts, isEmpty);
+    });
+  });
+
   group('money input boundary', () {
     test('operation amount rejects zero and floating-point notation', () {
       for (final value in const ['0', '0.0', '0,000', '1e2', 'NaN']) {
@@ -1190,6 +1287,9 @@ final class _FakeOperationDeliveryCoordinator
 
 final class _FakeFinanceEntryRepository
     implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories() =>
+      throw UnimplementedError();
   @override
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
     SavingsGoalDraft draft,

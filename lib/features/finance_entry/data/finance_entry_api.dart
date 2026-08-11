@@ -53,6 +53,10 @@ abstract interface class FinanceEntryApiClient {
     required PlannedCostTransitionCommand command,
   });
 
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories({
+    required String accessToken,
+  });
+
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
     required String accessToken,
     required SavingsGoalDraft draft,
@@ -315,6 +319,20 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
   }
 
   @override
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories({
+    required String accessToken,
+  }) {
+    return _request(
+      method: 'GET',
+      path: '/api/v1/categories',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.category,
+      parse: (json, statusCode) => _parseCategoryList(json, statusCode),
+    );
+  }
+
+  @override
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
     required String accessToken,
     required SavingsGoalDraft draft,
@@ -569,6 +587,31 @@ PlannedCostSettled _parsePlannedCostSettled(
     throw const FormatException('Settled plan is still outstanding.');
   }
   return PlannedCostSettled(plannedCost: plannedCost, idempotentReplay: replay);
+}
+
+FinanceCategoryList _parseCategoryList(Map<String, Object?> json, int status) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {'schemaVersion', 'categories'});
+  _requireSchema(json);
+  final raw = json['categories'];
+  if (raw is! List<Object?> || raw.length > 500) {
+    throw const FormatException('Invalid category list.');
+  }
+  final categories = raw
+      .map((item) => FinanceCategory.fromJson(_object(item)))
+      .toList(growable: false);
+  // The catalogue exists so one name means one category. A listing that shows
+  // the same name twice in one direction contradicts that, so it is malformed
+  // rather than something to render.
+  final seen = <String>{};
+  for (final category in categories) {
+    if (!seen.add(
+      '${category.direction.wireName}:${category.name.toLowerCase()}',
+    )) {
+      throw const FormatException('Duplicate category name in one direction.');
+    }
+  }
+  return FinanceCategoryList(categories: categories);
 }
 
 SavingsGoalCreated _parseGoalCreated(
@@ -1151,6 +1194,7 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     // FinanceIssue.
     _ContractKind.plannedCost => false,
     _ContractKind.goal => false,
+    _ContractKind.category => false,
     _ContractKind.operation => const {
       FinanceIssueCode.accountRequired,
       FinanceIssueCode.accountUnavailable,
@@ -1207,6 +1251,9 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.goalNotFound,
       FinanceEntryErrorCode.goalPersistenceUnavailable,
     }.contains(code),
+    _ContractKind.category => const {
+      FinanceEntryErrorCode.categoryPersistenceUnavailable,
+    }.contains(code),
   };
 }
 
@@ -1244,6 +1291,8 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'GOAL_NOT_FOUND' => FinanceEntryErrorCode.goalNotFound,
   'GOAL_PERSISTENCE_UNAVAILABLE' =>
     FinanceEntryErrorCode.goalPersistenceUnavailable,
+  'CATEGORY_PERSISTENCE_UNAVAILABLE' =>
+    FinanceEntryErrorCode.categoryPersistenceUnavailable,
   'MALFORMED_PLANNED_COST' => FinanceEntryErrorCode.malformedPlannedCost,
   'PLANNED_COST_REJECTED' => FinanceEntryErrorCode.plannedCostRejected,
   'PLANNED_COST_NOT_FOUND' => FinanceEntryErrorCode.plannedCostNotFound,
@@ -1427,7 +1476,7 @@ String? _optionalAccountDate(Map<String, Object?> json, String key) {
   return _accountDate(json, key);
 }
 
-enum _ContractKind { account, baseline, operation, plannedCost, goal }
+enum _ContractKind { account, baseline, operation, plannedCost, goal, category }
 
 final class _ErrorDetail {
   const _ErrorDetail({

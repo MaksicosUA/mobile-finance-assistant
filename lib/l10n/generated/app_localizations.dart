@@ -2018,6 +2018,132 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'На цели меньше денег, чем вы пытаетесь забрать.'**
   String get savingsGoalIssueWithdrawalTooLarge;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Без категории'**
+  String get categoryPickerNone;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Другое (ввести текстом)'**
+  String get categoryPickerOther;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Своя категория'**
+  String get categoryPickerOtherLabel;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Загружаем категории'**
+  String get categoryPickerLoading;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Список категорий недоступен — впишите название вручную.'**
+  String get categoryPickerUnavailable;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Продукты'**
+  String get categorySeedGroceries;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Кафе и рестораны'**
+  String get categorySeedEatingOut;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Транспорт'**
+  String get categorySeedTransport;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Жильё'**
+  String get categorySeedHousing;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Связь и интернет'**
+  String get categorySeedUtilities;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Здоровье'**
+  String get categorySeedHealth;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Одежда'**
+  String get categorySeedClothing;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Развлечения'**
+  String get categorySeedEntertainment;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Образование'**
+  String get categorySeedEducation;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Подарки'**
+  String get categorySeedGiftsOut;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Прочее'**
+  String get categorySeedOtherExpense;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Зарплата'**
+  String get categorySeedSalary;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Подработка'**
+  String get categorySeedFreelance;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Подарки'**
+  String get categorySeedGiftsIn;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Проценты'**
+  String get categorySeedInterest;
+
+  /// Category catalogue (ADR 0020).
+  ///
+  /// In ru, this message translates to:
+  /// **'Прочее'**
+  String get categorySeedOtherIncome;
 }
 
 class _AppLocalizationsDelegate

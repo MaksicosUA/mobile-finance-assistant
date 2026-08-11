@@ -318,6 +318,11 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
       amount = normalizeMoneyInput(input.amount);
       category = _optionalText(input.category, maximumLength: 100);
       merchant = _optionalText(input.merchant, maximumLength: 160);
+      // A link without its text would leave the operation with a group and no
+      // record of what the user actually chose.
+      if (input.categoryId != null && category == null) {
+        throw const FormatException('A linked category needs its name.');
+      }
     } on Object {
       state = FinanceOperationEditing(
         account: current.account,
@@ -354,6 +359,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
         currency: current.account.currency,
         accountId: current.account.accountId,
         category: category,
+        categoryId: input.categoryId,
         merchant: merchant,
         capturedAt: timeContext.capturedAtUtc.toIso8601String(),
         capturedTimezone: timeContext.capturedTimezone,

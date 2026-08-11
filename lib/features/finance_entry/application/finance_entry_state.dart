@@ -23,13 +23,21 @@ final class OperationEntryInput {
     required this.amount,
     required this.occurredOn,
     this.category,
+    this.categoryId,
     this.merchant,
   });
 
   final FinanceOperationType type;
   final String amount;
   final DateTime occurredOn;
+
+  /// What the user chose or typed, kept as written (ADR 0020).
   final String? category;
+
+  /// The catalogue link, null when the user typed free text instead of
+  /// choosing. Free text stays available so losing the picker never blocks
+  /// recording money.
+  final String? categoryId;
   final String? merchant;
 }
 

@@ -1107,4 +1107,68 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get savingsGoalIssueWithdrawalTooLarge =>
       'На цели меньше денег, чем вы пытаетесь забрать.';
+
+  @override
+  String get categoryPickerNone => 'Без категории';
+
+  @override
+  String get categoryPickerOther => 'Другое (ввести текстом)';
+
+  @override
+  String get categoryPickerOtherLabel => 'Своя категория';
+
+  @override
+  String get categoryPickerLoading => 'Загружаем категории';
+
+  @override
+  String get categoryPickerUnavailable =>
+      'Список категорий недоступен — впишите название вручную.';
+
+  @override
+  String get categorySeedGroceries => 'Продукты';
+
+  @override
+  String get categorySeedEatingOut => 'Кафе и рестораны';
+
+  @override
+  String get categorySeedTransport => 'Транспорт';
+
+  @override
+  String get categorySeedHousing => 'Жильё';
+
+  @override
+  String get categorySeedUtilities => 'Связь и интернет';
+
+  @override
+  String get categorySeedHealth => 'Здоровье';
+
+  @override
+  String get categorySeedClothing => 'Одежда';
+
+  @override
+  String get categorySeedEntertainment => 'Развлечения';
+
+  @override
+  String get categorySeedEducation => 'Образование';
+
+  @override
+  String get categorySeedGiftsOut => 'Подарки';
+
+  @override
+  String get categorySeedOtherExpense => 'Прочее';
+
+  @override
+  String get categorySeedSalary => 'Зарплата';
+
+  @override
+  String get categorySeedFreelance => 'Подработка';
+
+  @override
+  String get categorySeedGiftsIn => 'Подарки';
+
+  @override
+  String get categorySeedInterest => 'Проценты';
+
+  @override
+  String get categorySeedOtherIncome => 'Прочее';
 }
