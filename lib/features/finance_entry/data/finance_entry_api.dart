@@ -53,6 +53,27 @@ abstract interface class FinanceEntryApiClient {
     required PlannedCostTransitionCommand command,
   });
 
+  Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
+    required String accessToken,
+    required SavingsGoalDraft draft,
+  });
+
+  Future<FinanceEntryResult<SavingsGoalList>> listGoals({
+    required String accessToken,
+  });
+
+  Future<FinanceEntryResult<GoalContributionRecorded>> recordGoalContribution({
+    required String accessToken,
+    required String goalId,
+    required GoalContributionCommand command,
+  });
+
+  Future<FinanceEntryResult<SavingsGoalCancelled>> cancelGoal({
+    required String accessToken,
+    required String goalId,
+    required FinanceGoalCancelCommand command,
+  });
+
   Future<FinanceEntryResult<FinanceOperationCommit>> commitOperation({
     required String accessToken,
     required FinanceOperationCommitCommand command,
@@ -293,6 +314,109 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     );
   }
 
+  @override
+  Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
+    required String accessToken,
+    required SavingsGoalDraft draft,
+  }) {
+    try {
+      validateSavingsGoalDraft(draft);
+    } on Object {
+      return Future<FinanceEntryResult<SavingsGoalCreated>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/goals',
+      accessToken: accessToken,
+      body: draft.toJson(),
+      // 201 on the first accepted command, 200 on an idempotent replay.
+      acceptedStatuses: const {200, 201},
+      contract: _ContractKind.goal,
+      parse: (json, statusCode) =>
+          _parseGoalCreated(json, statusCode: statusCode, draft: draft),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalList>> listGoals({
+    required String accessToken,
+  }) {
+    return _request(
+      method: 'GET',
+      path: '/api/v1/goals',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.goal,
+      parse: (json, statusCode) => _parseGoalList(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<GoalContributionRecorded>> recordGoalContribution({
+    required String accessToken,
+    required String goalId,
+    required GoalContributionCommand command,
+  }) {
+    try {
+      validateGoalContributionCommand(command);
+      validateGoalId(goalId);
+    } on Object {
+      return Future<FinanceEntryResult<GoalContributionRecorded>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/goals/$goalId/contributions',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200, 201},
+      contract: _ContractKind.goal,
+      parse: (json, statusCode) => _parseGoalContributionRecorded(
+        json,
+        statusCode: statusCode,
+        goalId: goalId,
+        command: command,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalCancelled>> cancelGoal({
+    required String accessToken,
+    required String goalId,
+    required FinanceGoalCancelCommand command,
+  }) {
+    try {
+      validateGoalId(goalId);
+    } on Object {
+      return Future<FinanceEntryResult<SavingsGoalCancelled>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/goals/$goalId/cancel',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200},
+      contract: _ContractKind.goal,
+      parse: (json, statusCode) =>
+          _parseGoalCancelled(json, statusCode: statusCode, goalId: goalId),
+    );
+  }
+
   Future<FinanceEntryResult<T>> _request<T>({
     required String method,
     required String path,
@@ -445,6 +569,101 @@ PlannedCostSettled _parsePlannedCostSettled(
     throw const FormatException('Settled plan is still outstanding.');
   }
   return PlannedCostSettled(plannedCost: plannedCost, idempotentReplay: replay);
+}
+
+SavingsGoalCreated _parseGoalCreated(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required SavingsGoalDraft draft,
+}) {
+  _expectKeys(json, const {'schemaVersion', 'idempotentReplay', 'goal'});
+  _requireSchema(json);
+  final replay = json['idempotentReplay'];
+  if (replay is! bool) throw const FormatException('Invalid idempotentReplay.');
+  // A replay is exactly the 200 case; a first acceptance is exactly 201.
+  if (replay != (statusCode == 200)) {
+    throw const FormatException('Replay flag disagrees with status.');
+  }
+  final goal = SavingsGoal.fromJson(_object(json['goal']));
+  if (goal.accountId != draft.accountId ||
+      goal.title != draft.title ||
+      goal.targetOn != draft.targetOn ||
+      goal.currency != draft.currency) {
+    throw const FormatException('Server goal does not match the command.');
+  }
+  return SavingsGoalCreated(goal: goal, idempotentReplay: replay);
+}
+
+SavingsGoalList _parseGoalList(Map<String, Object?> json, int status) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {'schemaVersion', 'evaluatedOn', 'goals'});
+  _requireSchema(json);
+  final raw = json['goals'];
+  if (raw is! List<Object?> || raw.length > 200) {
+    throw const FormatException('Invalid goal list.');
+  }
+  return SavingsGoalList(
+    evaluatedOn: _accountDate(json, 'evaluatedOn'),
+    goals: raw
+        .map((item) => SavingsGoal.fromJson(_object(item)))
+        .toList(growable: false),
+  );
+}
+
+GoalContributionRecorded _parseGoalContributionRecorded(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required String goalId,
+  required GoalContributionCommand command,
+}) {
+  _expectKeys(json, const {
+    'schemaVersion',
+    'idempotentReplay',
+    'contribution',
+    'goal',
+  });
+  _requireSchema(json);
+  final replay = json['idempotentReplay'];
+  if (replay is! bool) throw const FormatException('Invalid idempotentReplay.');
+  if (replay != (statusCode == 200)) {
+    throw const FormatException('Replay flag disagrees with status.');
+  }
+  final contribution = GoalContribution.fromJson(_object(json['contribution']));
+  final goal = SavingsGoal.fromJson(_object(json['goal']));
+  if (contribution.goalId != goalId || goal.goalId != goalId) {
+    throw const FormatException('Server answered about a different goal.');
+  }
+  if (contribution.direction != command.direction ||
+      contribution.amount != command.amount) {
+    throw const FormatException('Server entry does not match the command.');
+  }
+  return GoalContributionRecorded(
+    contribution: contribution,
+    goal: goal,
+    idempotentReplay: replay,
+  );
+}
+
+SavingsGoalCancelled _parseGoalCancelled(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required String goalId,
+}) {
+  if (statusCode != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {'schemaVersion', 'idempotentReplay', 'goal'});
+  _requireSchema(json);
+  final replay = json['idempotentReplay'];
+  if (replay is! bool) throw const FormatException('Invalid idempotentReplay.');
+  final goal = SavingsGoal.fromJson(_object(json['goal']));
+  if (goal.goalId != goalId) {
+    throw const FormatException('Server cancelled a different goal.');
+  }
+  // A server still reporting the goal active would contradict the
+  // cancellation it just acknowledged.
+  if (goal.isActive) {
+    throw const FormatException('Cancelled goal is still active.');
+  }
+  return SavingsGoalCancelled(goal: goal, idempotentReplay: replay);
 }
 
 FinanceAccountSetup _parseAccountSetup(
@@ -714,6 +933,16 @@ FinanceEntryResult<T> _httpFailure<T>({
   }
   if (statusCode == 404) {
     final detail = _tryErrorDetail(bytes, contract: contract);
+    // A goal the client listed can be gone by the time it acts on it, which is
+    // a stale view rather than a broken response.
+    if (contract == _ContractKind.goal &&
+        detail?.code == FinanceEntryErrorCode.goalNotFound) {
+      return _failure(
+        kind: FinanceEntryFailureKind.conflict,
+        requestId: requestId,
+        code: detail!.code,
+      );
+    }
     if (contract != _ContractKind.baseline ||
         detail?.code != FinanceEntryErrorCode.accountUnavailable) {
       return _failure(
@@ -754,11 +983,12 @@ FinanceEntryResult<T> _httpFailure<T>({
       FinanceEntryErrorCode.accountRejected ||
       FinanceEntryErrorCode.baselineRejected ||
       FinanceEntryErrorCode.operationRejected ||
-      FinanceEntryErrorCode.plannedCostRejected =>
-        FinanceEntryFailureKind.rejected,
+      FinanceEntryErrorCode.plannedCostRejected ||
+      FinanceEntryErrorCode.goalRejected => FinanceEntryFailureKind.rejected,
       FinanceEntryErrorCode.malformedAccount ||
       FinanceEntryErrorCode.malformedOperation ||
-      FinanceEntryErrorCode.malformedPlannedCost =>
+      FinanceEntryErrorCode.malformedPlannedCost ||
+      FinanceEntryErrorCode.malformedGoalCommand =>
         FinanceEntryFailureKind.invalidInput,
       _ when statusCode == 409 => FinanceEntryFailureKind.conflict,
       _ => FinanceEntryFailureKind.invalidInput,
@@ -770,6 +1000,7 @@ FinanceEntryResult<T> _httpFailure<T>({
       issues: detail.issues,
       baselineIssues: detail.baselineIssues,
       plannedCostIssues: detail.plannedCostIssues,
+      goalIssues: detail.goalIssues,
     );
   }
   return _failure(kind: FinanceEntryFailureKind.unknown, requestId: requestId);
@@ -835,6 +1066,22 @@ _ErrorDetail? _tryErrorDetail(
     }
     // Planned cost issues are a separate code space (ADR 0018), so they are
     // parsed into their own list instead of being forced into FinanceIssue.
+    if (contract == _ContractKind.goal) {
+      // Goal issues are their own code space (ADR 0019), parsed into their own
+      // list rather than forced into FinanceIssue.
+      final goalIssues = _goalIssues(detail['issues']);
+      final rejected = code == FinanceEntryErrorCode.goalRejected;
+      if (rejected != goalIssues.isNotEmpty) {
+        throw const FormatException('Inconsistent goal detail.');
+      }
+      return _ErrorDetail(
+        code: code,
+        issues: const <FinanceIssue>[],
+        baselineIssues: const <FinanceBaselineIssue>[],
+        plannedCostIssues: const <PlannedCostIssue>[],
+        goalIssues: goalIssues,
+      );
+    }
     if (contract == _ContractKind.plannedCost) {
       final plannedCostIssues = _plannedCostIssues(detail['issues']);
       final rejected = code == FinanceEntryErrorCode.plannedCostRejected;
@@ -900,8 +1147,10 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
       FinanceIssueCode.unsupportedCurrency,
     }.contains(code),
     _ContractKind.baseline => false,
-    // Planned cost rejections use their own issue codes, never FinanceIssue.
+    // Planned cost and goal rejections use their own issue codes, never
+    // FinanceIssue.
     _ContractKind.plannedCost => false,
+    _ContractKind.goal => false,
     _ContractKind.operation => const {
       FinanceIssueCode.accountRequired,
       FinanceIssueCode.accountUnavailable,
@@ -952,7 +1201,22 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.plannedCostNotFound,
       FinanceEntryErrorCode.plannedCostPersistenceUnavailable,
     }.contains(code),
+    _ContractKind.goal => const {
+      FinanceEntryErrorCode.malformedGoalCommand,
+      FinanceEntryErrorCode.goalRejected,
+      FinanceEntryErrorCode.goalNotFound,
+      FinanceEntryErrorCode.goalPersistenceUnavailable,
+    }.contains(code),
   };
+}
+
+List<SavingsGoalIssue> _goalIssues(Object? raw) {
+  if (raw is! List<Object?> || raw.length > 16) {
+    throw const FormatException('Invalid goal issues.');
+  }
+  return raw
+      .map((item) => SavingsGoalIssue.fromJson(_object(item)))
+      .toList(growable: false);
 }
 
 List<PlannedCostIssue> _plannedCostIssues(Object? raw) {
@@ -975,6 +1239,11 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'ACCOUNT_UNAVAILABLE' => FinanceEntryErrorCode.accountUnavailable,
   'BASELINE_REJECTED' => FinanceEntryErrorCode.baselineRejected,
   'OPERATION_REJECTED' => FinanceEntryErrorCode.operationRejected,
+  'MALFORMED_GOAL_COMMAND' => FinanceEntryErrorCode.malformedGoalCommand,
+  'GOAL_REJECTED' => FinanceEntryErrorCode.goalRejected,
+  'GOAL_NOT_FOUND' => FinanceEntryErrorCode.goalNotFound,
+  'GOAL_PERSISTENCE_UNAVAILABLE' =>
+    FinanceEntryErrorCode.goalPersistenceUnavailable,
   'MALFORMED_PLANNED_COST' => FinanceEntryErrorCode.malformedPlannedCost,
   'PLANNED_COST_REJECTED' => FinanceEntryErrorCode.plannedCostRejected,
   'PLANNED_COST_NOT_FOUND' => FinanceEntryErrorCode.plannedCostNotFound,
@@ -994,6 +1263,7 @@ FinanceEntryFailureResult<T> _failure<T>({
   List<FinanceIssue> issues = const [],
   List<FinanceBaselineIssue> baselineIssues = const [],
   List<PlannedCostIssue> plannedCostIssues = const [],
+  List<SavingsGoalIssue> goalIssues = const [],
 }) {
   return FinanceEntryFailureResult<T>(
     FinanceEntryFailure(
@@ -1003,6 +1273,7 @@ FinanceEntryFailureResult<T> _failure<T>({
       issues: issues,
       baselineIssues: baselineIssues,
       plannedCostIssues: plannedCostIssues,
+      goalIssues: goalIssues,
     ),
   );
 }
@@ -1156,7 +1427,7 @@ String? _optionalAccountDate(Map<String, Object?> json, String key) {
   return _accountDate(json, key);
 }
 
-enum _ContractKind { account, baseline, operation, plannedCost }
+enum _ContractKind { account, baseline, operation, plannedCost, goal }
 
 final class _ErrorDetail {
   const _ErrorDetail({
@@ -1164,10 +1435,12 @@ final class _ErrorDetail {
     required this.issues,
     required this.baselineIssues,
     required this.plannedCostIssues,
+    this.goalIssues = const <SavingsGoalIssue>[],
   });
 
   final FinanceEntryErrorCode code;
   final List<FinanceIssue> issues;
   final List<FinanceBaselineIssue> baselineIssues;
   final List<PlannedCostIssue> plannedCostIssues;
+  final List<SavingsGoalIssue> goalIssues;
 }

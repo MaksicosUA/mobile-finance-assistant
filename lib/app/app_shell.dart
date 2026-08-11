@@ -8,6 +8,7 @@ import '../features/finance_entry/application/operation_sync_controller.dart';
 import '../features/finance_entry/domain/operation_outbox.dart';
 import '../features/finance_entry/presentation/account_baseline_page.dart';
 import '../features/finance_entry/presentation/planned_cost_page.dart';
+import '../features/finance_entry/presentation/savings_goal_page.dart';
 import '../features/finance_entry/presentation/finance_entry_page.dart';
 import '../features/home/presentation/widgets/home_status_banner.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -224,11 +225,16 @@ class _AppShellState extends ConsumerState<AppShell>
             description: l10n.stubDescription,
             onBackHome: () => _selectSection(AppSection.home),
           ),
-          StubPage(
-            title: l10n.goalsTab,
-            description: l10n.stubDescription,
-            onBackHome: () => _selectSection(AppSection.home),
-          ),
+          // Goals need the authenticated backend: a goal and its ledger are
+          // server facts, and the fixture build has no account behind them.
+          if (isNetworkBackendConfigured)
+            SavingsGoalPage(onSignInRequested: _openSessionExpired)
+          else
+            StubPage(
+              title: l10n.goalsTab,
+              description: l10n.stubDescription,
+              onBackHome: () => _selectSection(AppSection.home),
+            ),
           StubPage(
             title: l10n.profileTab,
             description: l10n.stubDescription,

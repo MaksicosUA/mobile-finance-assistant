@@ -1820,6 +1820,204 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'«Оплачено» создаст обычную операцию расхода и уберёт план из списка.'**
   String get plannedCostConfirmHint;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Цели'**
+  String get savingsGoalTitle;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Загружаем цели'**
+  String get savingsGoalLoading;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала создайте счёт — цель копится в его валюте.'**
+  String get savingsGoalAccountRequired;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось выполнить действие. Попробуйте ещё раз.'**
+  String get savingsGoalGenericFailure;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверьте название, сумму и дату.'**
+  String get savingsGoalInvalidInput;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторить'**
+  String get savingsGoalRetryAction;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Цель показывает, сколько вы уже отложили. Отложенные деньги остаются на счёте: баланс, доходы и расходы не меняются.'**
+  String get savingsGoalDescription;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока нет ни одной цели.'**
+  String get savingsGoalEmpty;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Новая цель'**
+  String get savingsGoalCreateAction;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get savingsGoalCancelCreateAction;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Название'**
+  String get savingsGoalTitleLabel;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отпуск'**
+  String get savingsGoalTitleHint;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сколько нужно'**
+  String get savingsGoalTargetLabel;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Планирую откладывать в месяц'**
+  String get savingsGoalMonthlyLabel;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Необязательно. Это ориентир, а не обязательство.'**
+  String get savingsGoalMonthlyHelper;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'К какой дате'**
+  String get savingsGoalDateLabel;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Выбрать дату'**
+  String get savingsGoalChooseDateAction;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Создать цель'**
+  String get savingsGoalSubmitAction;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сумма'**
+  String get savingsGoalContributionLabel;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отложить'**
+  String get savingsGoalDepositAction;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Забрать'**
+  String get savingsGoalWithdrawAction;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отказаться от цели'**
+  String get savingsGoalCancelAction;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отказаться от цели и убрать её из списка'**
+  String get savingsGoalCancelSemantics;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отложить указанную сумму на эту цель'**
+  String get savingsGoalDepositSemantics;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Забрать указанную сумму с этой цели'**
+  String get savingsGoalWithdrawSemantics;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Цель достигнута'**
+  String get savingsGoalAchievedLabel;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Счёт недоступен. Обновите экран.'**
+  String get savingsGoalIssueAccountUnavailable;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Валюта цели должна совпадать с валютой счёта.'**
+  String get savingsGoalIssueCurrencyMismatch;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока поддерживается только EUR.'**
+  String get savingsGoalIssueUnsupportedCurrency;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата раньше даты открытия счёта.'**
+  String get savingsGoalIssueBeforeBaseline;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отложить можно только за сегодня или раньше.'**
+  String get savingsGoalIssueFutureContribution;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'Цель уже закрыта. Обновите экран.'**
+  String get savingsGoalIssueNotActive;
+
+  /// Savings goals (ADR 0019).
+  ///
+  /// In ru, this message translates to:
+  /// **'На цели меньше денег, чем вы пытаетесь забрать.'**
+  String get savingsGoalIssueWithdrawalTooLarge;
 }
 
 class _AppLocalizationsDelegate

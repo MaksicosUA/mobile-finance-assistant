@@ -995,4 +995,116 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get plannedCostConfirmHint =>
       '«Оплачено» создаст обычную операцию расхода и уберёт план из списка.';
+
+  @override
+  String get savingsGoalTitle => 'Цели';
+
+  @override
+  String get savingsGoalLoading => 'Загружаем цели';
+
+  @override
+  String get savingsGoalAccountRequired =>
+      'Сначала создайте счёт — цель копится в его валюте.';
+
+  @override
+  String get savingsGoalGenericFailure =>
+      'Не удалось выполнить действие. Попробуйте ещё раз.';
+
+  @override
+  String get savingsGoalInvalidInput => 'Проверьте название, сумму и дату.';
+
+  @override
+  String get savingsGoalRetryAction => 'Повторить';
+
+  @override
+  String get savingsGoalDescription =>
+      'Цель показывает, сколько вы уже отложили. Отложенные деньги остаются на счёте: баланс, доходы и расходы не меняются.';
+
+  @override
+  String get savingsGoalEmpty => 'Пока нет ни одной цели.';
+
+  @override
+  String get savingsGoalCreateAction => 'Новая цель';
+
+  @override
+  String get savingsGoalCancelCreateAction => 'Отмена';
+
+  @override
+  String get savingsGoalTitleLabel => 'Название';
+
+  @override
+  String get savingsGoalTitleHint => 'Отпуск';
+
+  @override
+  String get savingsGoalTargetLabel => 'Сколько нужно';
+
+  @override
+  String get savingsGoalMonthlyLabel => 'Планирую откладывать в месяц';
+
+  @override
+  String get savingsGoalMonthlyHelper =>
+      'Необязательно. Это ориентир, а не обязательство.';
+
+  @override
+  String get savingsGoalDateLabel => 'К какой дате';
+
+  @override
+  String get savingsGoalChooseDateAction => 'Выбрать дату';
+
+  @override
+  String get savingsGoalSubmitAction => 'Создать цель';
+
+  @override
+  String get savingsGoalContributionLabel => 'Сумма';
+
+  @override
+  String get savingsGoalDepositAction => 'Отложить';
+
+  @override
+  String get savingsGoalWithdrawAction => 'Забрать';
+
+  @override
+  String get savingsGoalCancelAction => 'Отказаться от цели';
+
+  @override
+  String get savingsGoalCancelSemantics =>
+      'Отказаться от цели и убрать её из списка';
+
+  @override
+  String get savingsGoalDepositSemantics =>
+      'Отложить указанную сумму на эту цель';
+
+  @override
+  String get savingsGoalWithdrawSemantics =>
+      'Забрать указанную сумму с этой цели';
+
+  @override
+  String get savingsGoalAchievedLabel => 'Цель достигнута';
+
+  @override
+  String get savingsGoalIssueAccountUnavailable =>
+      'Счёт недоступен. Обновите экран.';
+
+  @override
+  String get savingsGoalIssueCurrencyMismatch =>
+      'Валюта цели должна совпадать с валютой счёта.';
+
+  @override
+  String get savingsGoalIssueUnsupportedCurrency =>
+      'Пока поддерживается только EUR.';
+
+  @override
+  String get savingsGoalIssueBeforeBaseline =>
+      'Дата раньше даты открытия счёта.';
+
+  @override
+  String get savingsGoalIssueFutureContribution =>
+      'Отложить можно только за сегодня или раньше.';
+
+  @override
+  String get savingsGoalIssueNotActive => 'Цель уже закрыта. Обновите экран.';
+
+  @override
+  String get savingsGoalIssueWithdrawalTooLarge =>
+      'На цели меньше денег, чем вы пытаетесь забрать.';
 }
