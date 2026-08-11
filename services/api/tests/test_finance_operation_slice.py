@@ -657,6 +657,7 @@ def _committed(
         currency=draft.currency,
         accountId=draft.account_id,
         category=draft.category,
+        categoryId=draft.category_id,
         merchant=draft.merchant,
         capturedAt=draft.captured_at,
         capturedTimezone=draft.captured_timezone,

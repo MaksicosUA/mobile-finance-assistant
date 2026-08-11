@@ -555,7 +555,22 @@ class FinanceOperationRow(Base):
             ],
             name="fk_finance_operations_owned_account_currency",
         ),
+        # The composite key makes borrowing another user's category
+        # unrepresentable rather than merely validated (ADR 0020).
+        ForeignKeyConstraint(
+            ["category_id", "user_id"],
+            ["finance_categories.id", "finance_categories.user_id"],
+            name="fk_finance_operations_owned_category",
+        ),
         Index("ix_finance_operations_user_occurred", "user_id", "occurred_on"),
+        # Serves the per-category totals Analytics will read.
+        Index(
+            "ix_finance_operations_user_category_occurred",
+            "user_id",
+            "category_id",
+            "occurred_on",
+            postgresql_where=text("category_id IS NOT NULL"),
+        ),
         Index(
             "ix_finance_operations_user_account_occurred",
             "user_id",
@@ -577,7 +592,11 @@ class FinanceOperationRow(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     account_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    # Kept exactly as the user wrote it. It is the only evidence of what they
+    # meant, so a wrong link stays visible and correctable (ADR 0020).
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Nullable because "uncategorized" is a real state, not a gap to guess at.
+    category_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     merchant: Mapped[str | None] = mapped_column(String(160), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -1056,6 +1075,95 @@ class PlannedCostOutboxEventRow(Base):
     )
     failure_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class FinanceCategoryRow(Base):
+    """One owned spending or income category (ADR 0020).
+
+    A category is a label, never money. Nothing here may reach a balance, a
+    monthly total, a net flow, or a trend point.
+
+    Seeded rows carry a stable ``system_key`` so the client can render a
+    localized label instead of the Russian name stored here. Renaming clears
+    that key: once a user names it themselves, it is their category and a
+    translated label would contradict their choice.
+    """
+
+    __tablename__ = "finance_categories"
+    __table_args__ = (
+        CheckConstraint(
+            "name = btrim(name) AND name <> '' AND name !~ '[[:cntrl:]]'",
+            name="ck_finance_categories_name_text",
+        ),
+        CheckConstraint(
+            "direction IN ('expense', 'income')",
+            name="ck_finance_categories_direction",
+        ),
+        # A key is either absent or a stable lowercase slug; it never carries
+        # user-authored text.
+        CheckConstraint(
+            "system_key IS NULL OR system_key ~ '^[a-z][a-z0-9_]{0,62}$'",
+            name="ck_finance_categories_system_key",
+        ),
+        CheckConstraint(
+            "archived_at IS NULL OR archived_at >= created_at",
+            name="ck_finance_categories_archived_after_created",
+        ),
+        CheckConstraint(
+            "created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_categories_operational_timestamps",
+        ),
+        # The point of the catalogue: two spellings of one name cannot become
+        # two categories. Archived rows are excluded so a hidden name can be
+        # reused.
+        Index(
+            "uq_finance_categories_active_name",
+            "user_id",
+            "direction",
+            text("lower(name)"),
+            unique=True,
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+        # A seeded key appears at most once per user, so re-running the seed is
+        # idempotent rather than duplicating the starting set.
+        Index(
+            "uq_finance_categories_system_key",
+            "user_id",
+            "system_key",
+            unique=True,
+            postgresql_where=text("system_key IS NOT NULL"),
+        ),
+        UniqueConstraint(
+            "id",
+            "user_id",
+            name="uq_finance_categories_id_user",
+        ),
+        Index(
+            "ix_finance_categories_user_active",
+            "user_id",
+            "direction",
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    system_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

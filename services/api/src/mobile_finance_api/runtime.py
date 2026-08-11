@@ -16,6 +16,7 @@ from .goal_core import GoalCore
 from .main import create_app
 from .passwords import PasswordService
 from .planned_cost_core import PlannedCostCore
+from .postgres_category_repository import PostgresCategoryRepository
 from .postgres_finance_account_repository import PostgresFinanceAccountRepository
 from .postgres_finance_repository import PostgresFinanceOperationRepository
 from .postgres_goal_repository import PostgresGoalRepository
@@ -33,6 +34,7 @@ access_tokens = AccessTokenCodec(
 finance_accounts = PostgresFinanceAccountRepository(
     session_factory=session_factory,
 )
+finance_categories = PostgresCategoryRepository(session_factory=session_factory)
 
 app = create_app(
     home_repository=PostgresHomeRepository(
@@ -53,6 +55,7 @@ app = create_app(
             session_factory=session_factory,
         ),
         account_directory=finance_accounts,
+        category_directory=finance_categories,
     ),
     planned_cost_core=PlannedCostCore(
         repository=PostgresPlannedCostRepository(
@@ -64,5 +67,6 @@ app = create_app(
             session_factory=session_factory,
         ),
     ),
+    category_repository=finance_categories,
     database_engine=engine,
 )

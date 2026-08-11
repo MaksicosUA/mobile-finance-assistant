@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobile-finance-assistant.local/contracts/finance/v1/category.schema.json",
+  "title": "Category catalogue v1 messages",
+  "description": "Strict messages for the owned category catalogue. A category is a label and never an authoritative money value.",
+  "$defs": {
+    "Category": {
+      "additionalProperties": false,
+      "description": "One owned category as the server stores it.",
+      "properties": {
+        "categoryId": {
+          "format": "uuid",
+          "title": "Categoryid",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "expense",
+            "income"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "systemKey": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{0,62}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Systemkey"
+        },
+        "createdAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Createdat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "categoryId",
+        "name",
+        "direction",
+        "createdAt"
+      ],
+      "title": "Category",
+      "type": "object"
+    },
+    "CategoryErrorDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "MALFORMED_CATEGORY_QUERY",
+            "CATEGORY_PERSISTENCE_UNAVAILABLE"
+          ],
+          "title": "Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "CategoryErrorDetail",
+      "type": "object"
+    },
+    "CategoryErrorResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "$ref": "#/$defs/CategoryErrorDetail"
+        }
+      },
+      "required": [
+        "detail"
+      ],
+      "title": "CategoryErrorResponse",
+      "type": "object"
+    },
+    "ListCategoriesResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "categories": {
+          "items": {
+            "$ref": "#/$defs/Category"
+          },
+          "title": "Categories",
+          "type": "array"
+        }
+      },
+      "required": [
+        "categories"
+      ],
+      "title": "ListCategoriesResponse",
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/ListCategoriesResponse"
+    },
+    {
+      "$ref": "#/$defs/CategoryErrorResponse"
+    }
+  ]
+}

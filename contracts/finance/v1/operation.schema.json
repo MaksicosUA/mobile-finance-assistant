@@ -135,6 +135,18 @@
           ],
           "title": "Category"
         },
+        "categoryId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Categoryid"
+        },
         "merchant": {
           "anyOf": [
             {
@@ -241,6 +253,7 @@
         "currency",
         "accountId",
         "category",
+        "categoryId",
         "merchant",
         "capturedAt",
         "capturedTimezone",
@@ -381,6 +394,19 @@
           ],
           "default": null,
           "title": "Category"
+        },
+        "categoryId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Categoryid"
         },
         "merchant": {
           "anyOf": [
@@ -533,7 +559,9 @@
             "OCCURRED_AT_DATE_MISMATCH",
             "CONFIRMATION_BEFORE_CAPTURE",
             "UNSUPPORTED_DATE_EXPRESSION",
-            "UNSUPPORTED_CURRENCY"
+            "UNSUPPORTED_CURRENCY",
+            "CATEGORY_UNAVAILABLE",
+            "CATEGORY_DIRECTION_MISMATCH"
           ],
           "title": "Code",
           "type": "string"
@@ -545,7 +573,8 @@
             "occurredAt",
             "confirmedAt",
             "sourceExpression",
-            "currency"
+            "currency",
+            "categoryId"
           ],
           "title": "Field",
           "type": "string"
