@@ -16,9 +16,13 @@ from .database import AsyncSessionFactory
 from .db_models import (
     FinanceAccountOutboxEventRow,
     FinanceAccountRow,
+    FinanceGoalContributionRow,
+    FinanceGoalOutboxEventRow,
+    FinanceGoalRow,
     FinanceOperationRow,
     FinanceOutboxEventRow,
     HomeProjectionActionRow,
+    HomeProjectionGoalRow,
     HomeProjectionPaymentRow,
     HomeProjectionSnapshotRow,
     HomeProjectionTransactionRow,
@@ -32,6 +36,8 @@ from .home_projection import (
     HomeProjectionInvariantError,
     ProjectedHomeRevision,
     ProjectionAccount,
+    ProjectionGoal,
+    ProjectionGoalContribution,
     ProjectionOperation,
     ProjectionPlannedCost,
     build_current_home_revision,
@@ -44,7 +50,7 @@ from .projector_supervision import (
 )
 from .timezones import validated_iana_timezone_key
 
-type _EventKind = Literal["account", "operation", "planned_cost"]
+type _EventKind = Literal["account", "operation", "planned_cost", "goal"]
 
 _LOGGER = logging.getLogger("mobile_finance_api.home_projector")
 _PROJECTION_SCHEMA_VERSION = 2
@@ -265,6 +271,13 @@ class PostgresHomeProjector:
                         | (PlannedCostOutboxEventRow.next_attempt_at > now)
                     ),
                 ),
+                select(FinanceGoalOutboxEventRow.user_id.label("user_id")).where(
+                    FinanceGoalOutboxEventRow.published_at.is_(None),
+                    (
+                        FinanceGoalOutboxEventRow.dead_lettered_at.is_not(None)
+                        | (FinanceGoalOutboxEventRow.next_attempt_at > now)
+                    ),
+                ),
             ).subquery()
             account_query = (
                 select(
@@ -369,6 +382,40 @@ class PostgresHomeProjector:
             planned_cost_row = (
                 await database.execute(planned_cost_query)
             ).one_or_none()
+            goal_query = (
+                select(
+                    FinanceGoalOutboxEventRow.id,
+                    FinanceGoalOutboxEventRow.user_id,
+                    FinanceGoalOutboxEventRow.created_at,
+                )
+                .join(UserRow, UserRow.id == FinanceGoalOutboxEventRow.user_id)
+                .join(
+                    FinanceAccountRow,
+                    FinanceAccountRow.user_id == FinanceGoalOutboxEventRow.user_id,
+                )
+                .where(
+                    FinanceGoalOutboxEventRow.published_at.is_(None),
+                    FinanceGoalOutboxEventRow.dead_lettered_at.is_(None),
+                    FinanceGoalOutboxEventRow.next_attempt_at.is_not(None),
+                    FinanceGoalOutboxEventRow.next_attempt_at <= now,
+                    UserRow.disabled_at.is_(None),
+                    FinanceAccountRow.status == "active",
+                    FinanceAccountRow.is_default.is_(True),
+                    FinanceGoalOutboxEventRow.user_id.not_in(
+                        select(blocked_users.c.user_id)
+                    ),
+                )
+                .order_by(
+                    FinanceGoalOutboxEventRow.created_at.asc(),
+                    FinanceGoalOutboxEventRow.id.asc(),
+                )
+                .limit(1)
+            )
+            if excluded_user_ids:
+                goal_query = goal_query.where(
+                    FinanceGoalOutboxEventRow.user_id.not_in(excluded_user_ids)
+                )
+            goal_row = (await database.execute(goal_query)).one_or_none()
 
         candidates = tuple(
             candidate
@@ -396,6 +443,14 @@ class PostgresHomeProjector:
                     event_id=planned_cost_row.id,
                     user_id=planned_cost_row.user_id,
                     created_at=_aware_utc(planned_cost_row.created_at),
+                ),
+                None
+                if goal_row is None
+                else _OutboxCandidate(
+                    kind="goal",
+                    event_id=goal_row.id,
+                    user_id=goal_row.user_id,
+                    created_at=_aware_utc(goal_row.created_at),
                 ),
             )
             if candidate is not None
@@ -521,16 +576,57 @@ class PostgresHomeProjector:
                     )
                 ).all()
             )
+            goals = tuple(
+                (
+                    await database.scalars(
+                        select(FinanceGoalRow)
+                        .where(FinanceGoalRow.user_id == user_id)
+                        .order_by(
+                            FinanceGoalRow.created_at.asc(),
+                            FinanceGoalRow.id.asc(),
+                        )
+                    )
+                ).all()
+            )
+            goal_contributions = tuple(
+                (
+                    await database.scalars(
+                        select(FinanceGoalContributionRow)
+                        .where(FinanceGoalContributionRow.user_id == user_id)
+                        .order_by(
+                            FinanceGoalContributionRow.created_at.asc(),
+                            FinanceGoalContributionRow.id.asc(),
+                        )
+                    )
+                ).all()
+            )
+            goal_events = tuple(
+                (
+                    await database.scalars(
+                        select(FinanceGoalOutboxEventRow)
+                        .where(
+                            FinanceGoalOutboxEventRow.user_id == user_id,
+                            FinanceGoalOutboxEventRow.published_at.is_(None),
+                        )
+                        .order_by(
+                            FinanceGoalOutboxEventRow.created_at.asc(),
+                            FinanceGoalOutboxEventRow.id.asc(),
+                        )
+                        .with_for_update()
+                    )
+                ).all()
+            )
             eligibility_at = _aware_utc(self._clock())
             if _stream_is_blocked(
                 account_events=account_events,
                 operation_events=operation_events,
                 planned_cost_events=planned_cost_events,
+                goal_events=goal_events,
                 eligibility_at=eligibility_at,
             ):
                 raise _ProjectionStreamBlocked
             pending_events = bool(
-                account_events or operation_events or planned_cost_events
+                account_events or operation_events or planned_cost_events or goal_events
             )
             if require_pending and not pending_events:
                 return False
@@ -550,6 +646,14 @@ class PostgresHomeProjector:
             _validate_planned_cost_events(
                 planned_cost_events,
                 planned_costs_by_id={plan.id: plan for plan in planned_costs},
+            )
+            _validate_goal_events(
+                goal_events,
+                goals_by_id={goal.id: goal for goal in goals},
+                contributions_by_command={
+                    (entry.user_id, entry.command_id): entry
+                    for entry in goal_contributions
+                },
             )
 
             generated_at = _aware_utc(self._clock())
@@ -584,6 +688,10 @@ class PostgresHomeProjector:
                 operations=tuple(_operation_fact(row) for row in operations),
                 generated_at=generated_at,
                 planned_costs=tuple(_planned_cost_fact(row) for row in planned_costs),
+                goals=tuple(_goal_fact(row) for row in goals),
+                goal_contributions=tuple(
+                    _goal_contribution_fact(row) for row in goal_contributions
+                ),
             )
             latest = await database.scalar(
                 select(HomeProjectionSnapshotRow)
@@ -667,6 +775,13 @@ class PostgresHomeProjector:
                 planned_cost_event.last_failed_at = None
                 planned_cost_event.failure_code = None
                 planned_cost_event.dead_lettered_at = None
+            for goal_event in goal_events:
+                goal_event.published_at = projection.generated_at
+                goal_event.attempt_count = min(goal_event.attempt_count + 1, 32767)
+                goal_event.next_attempt_at = None
+                goal_event.last_failed_at = None
+                goal_event.failure_code = None
+                goal_event.dead_lettered_at = None
         return True
 
     async def _record_failed_attempt(self, error: _OutboxContractError) -> None:
@@ -692,6 +807,27 @@ class PostgresHomeProjector:
                         policy=self._retry_policy,
                     )
                     _apply_retry_decision(account_event, decision=decision)
+                return
+            if error.kind == "goal":
+                goal_event = await database.scalar(
+                    select(FinanceGoalOutboxEventRow)
+                    .where(
+                        FinanceGoalOutboxEventRow.id == error.event_id,
+                        FinanceGoalOutboxEventRow.published_at.is_(None),
+                        FinanceGoalOutboxEventRow.dead_lettered_at.is_(None),
+                    )
+                    .with_for_update()
+                )
+                if goal_event is not None:
+                    decision = event_retry_decision(
+                        previous_validation_failure_count=(
+                            goal_event.validation_failure_count
+                        ),
+                        failed_at=failed_at,
+                        failure_code=error.failure_code,
+                        policy=self._retry_policy,
+                    )
+                    _apply_retry_decision(goal_event, decision=decision)
                 return
             if error.kind == "planned_cost":
                 planned_cost_event = await database.scalar(
@@ -849,11 +985,49 @@ def _validate_planned_cost_events(
             raise _OutboxContractError(kind="planned_cost", event_id=event.id)
 
 
+def _validate_goal_events(
+    events: Sequence[FinanceGoalOutboxEventRow],
+    *,
+    goals_by_id: dict[UUID, FinanceGoalRow],
+    contributions_by_command: dict[tuple[UUID, UUID], FinanceGoalContributionRow],
+) -> None:
+    for event in events:
+        goal = goals_by_id.get(event.aggregate_id)
+        if goal is None or goal.user_id != event.user_id:
+            raise _OutboxContractError(kind="goal", event_id=event.id)
+        if event.aggregate_type != "finance_goal" or event.event_type not in {
+            "finance.goal.created.v1",
+            "finance.goal.cancelled.v1",
+            "finance.goal.contributed.v1",
+        }:
+            raise _OutboxContractError(kind="goal", event_id=event.id)
+        # Identifier-only, and bound to the command that produced the event.
+        if event.payload != {
+            "schemaVersion": "1",
+            "goalId": str(goal.id),
+            "userId": str(goal.user_id),
+            "commandId": str(event.command_id),
+        }:
+            raise _OutboxContractError(kind="goal", event_id=event.id)
+        if (
+            event.event_type == "finance.goal.created.v1"
+            and event.command_id != goal.command_id
+        ):
+            raise _OutboxContractError(kind="goal", event_id=event.id)
+        # A contribution event must have its ledger entry, or the projection
+        # would publish a balance that no row explains.
+        if event.event_type == "finance.goal.contributed.v1":
+            entry = contributions_by_command.get((event.user_id, event.command_id))
+            if entry is None or entry.goal_id != goal.id:
+                raise _OutboxContractError(kind="goal", event_id=event.id)
+
+
 def _stream_is_blocked(
     *,
     account_events: Sequence[FinanceAccountOutboxEventRow],
     operation_events: Sequence[FinanceOutboxEventRow],
     planned_cost_events: Sequence[PlannedCostOutboxEventRow],
+    goal_events: Sequence[FinanceGoalOutboxEventRow],
     eligibility_at: datetime,
 ) -> bool:
     return (
@@ -869,13 +1043,18 @@ def _stream_is_blocked(
             _event_is_blocked(event, eligibility_at=eligibility_at)
             for event in planned_cost_events
         )
+        or any(
+            _event_is_blocked(event, eligibility_at=eligibility_at)
+            for event in goal_events
+        )
     )
 
 
 def _event_is_blocked(
     event: FinanceAccountOutboxEventRow
     | FinanceOutboxEventRow
-    | PlannedCostOutboxEventRow,
+    | PlannedCostOutboxEventRow
+    | FinanceGoalOutboxEventRow,
     *,
     eligibility_at: datetime,
 ) -> bool:
@@ -889,7 +1068,8 @@ def _event_is_blocked(
 def _apply_retry_decision(
     event: FinanceAccountOutboxEventRow
     | FinanceOutboxEventRow
-    | PlannedCostOutboxEventRow,
+    | PlannedCostOutboxEventRow
+    | FinanceGoalOutboxEventRow,
     *,
     decision: EventRetryDecision,
 ) -> None:
@@ -943,6 +1123,34 @@ def _planned_cost_fact(row: PlannedCostRow) -> ProjectionPlannedCost:
         currency=row.currency,
         planned_on=row.planned_on,
         status=row.status,
+        created_at=row.created_at,
+    )
+
+
+def _goal_fact(row: FinanceGoalRow) -> ProjectionGoal:
+    return ProjectionGoal(
+        goal_id=row.id,
+        user_id=row.user_id,
+        account_id=row.account_id,
+        title=row.title,
+        target_amount=row.target_amount,
+        monthly_contribution=row.monthly_contribution,
+        currency=row.currency,
+        target_on=row.target_on,
+        status=row.status,
+        created_at=row.created_at,
+    )
+
+
+def _goal_contribution_fact(
+    row: FinanceGoalContributionRow,
+) -> ProjectionGoalContribution:
+    return ProjectionGoalContribution(
+        contribution_id=row.id,
+        goal_id=row.goal_id,
+        user_id=row.user_id,
+        direction=row.direction,
+        amount=row.amount,
         created_at=row.created_at,
     )
 
@@ -1005,6 +1213,24 @@ def _projection_children(
         )
         for payment in projection.upcoming_payments
     )
+    if projection.primary_goal is not None:
+        goal = projection.primary_goal
+        children.append(
+            HomeProjectionGoalRow(
+                snapshot_id=snapshot_id,
+                goal_id=goal.goal_id,
+                title=goal.title,
+                current_amount=goal.current_amount,
+                target_amount=goal.target_amount,
+                monthly_contribution=goal.monthly_contribution,
+                current_base_amount=goal.current_amount,
+                target_base_amount=goal.target_amount,
+                monthly_contribution_base_amount=goal.monthly_contribution,
+                currency=goal.currency,
+                due_date=goal.due_date,
+                progress_percent=goal.progress_percent,
+            )
+        )
     children.extend(
         HomeProjectionActionRow(
             snapshot_id=snapshot_id,

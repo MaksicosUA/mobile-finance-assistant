@@ -364,9 +364,7 @@ async def _scenario(engine: AsyncEngine, session_factory: AsyncSessionFactory) -
             goal_id=UUID(goal_id),
         )
 
-        # --- a contribution is an earmark, never a money movement ----------
-        # The goal outbox is deliberately not consumed yet, but draining proves
-        # a goal write cannot disturb the projection through any other path.
+        # --- the projector fills the primaryGoal slot ----------------------
         await projector.drain_pending()
         home_after = await client.get(
             "/api/v2/home",
@@ -375,6 +373,18 @@ async def _scenario(engine: AsyncEngine, session_factory: AsyncSessionFactory) -
         )
         assert home_after.status_code == 200, home_after.text
         after = home_after.json()
+        projected = after["primaryGoal"]
+        assert projected is not None, after
+        assert projected["id"] == goal_id, projected
+        assert projected["title"] == "Отпуск", projected
+        assert Decimal(projected["current"]) == settled_balance, projected
+        assert Decimal(projected["target"]) == Decimal("3000.00"), projected
+        assert projected["dueDate"] == TARGET_ON.isoformat(), projected
+        assert Decimal(0) <= Decimal(projected["progressPercent"]) <= Decimal(100), (
+            projected
+        )
+
+        # --- a contribution is an earmark, never a money movement ----------
         # Scale is a storage artifact of NUMERIC(38,18); compare money, not text.
         assert Decimal(after["balance"]["amount"]) == balance_before, after["balance"]
         assert Decimal(after["monthSummary"]["expense"]) == Decimal(0), after[
@@ -467,6 +477,17 @@ async def _scenario(engine: AsyncEngine, session_factory: AsyncSessionFactory) -
         assert [issue["code"] for issue in refused.json()["detail"]["issues"]] == [
             "GOAL_NOT_ACTIVE"
         ], refused.text
+
+        # A cancelled goal stops being primary, and Home says so rather than
+        # keeping a stale card the user already dismissed.
+        await projector.drain_pending()
+        home_cancelled = await client.get(
+            "/api/v2/home",
+            params={"period": "current_month", "timezone": TIMEZONE},
+            headers=identity.headers,
+        )
+        assert home_cancelled.status_code == 200, home_cancelled.text
+        assert home_cancelled.json()["primaryGoal"] is None, home_cancelled.text
 
         ledger = await client.get(
             f"/api/v1/goals/{goal_id}/contributions",

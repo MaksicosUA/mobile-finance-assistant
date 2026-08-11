@@ -15,6 +15,10 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from .decimal_math import wide_decimal_context
+
+# Reused rather than reimplemented: the projection must present exactly the
+# figures the goal API already derives, or the two surfaces would disagree.
+from .goal_contracts import apply_contribution, derive_progress_percent
 from .timezones import validated_iana_timezone_key
 
 _PERCENT_SCALE = Decimal("0.01")
@@ -68,6 +72,46 @@ class ProjectionPlannedCost:
     planned_on: date
     status: str
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionGoal:
+    """Declared savings target. Never contributes to an authoritative total."""
+
+    goal_id: UUID
+    user_id: UUID
+    account_id: UUID
+    title: str
+    target_amount: Decimal
+    monthly_contribution: Decimal
+    currency: str
+    target_on: date
+    status: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectionGoalContribution:
+    """One immutable ledger entry earmarking money for a goal (ADR 0019)."""
+
+    contribution_id: UUID
+    goal_id: UUID
+    user_id: UUID
+    direction: str
+    amount: Decimal
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectedPrimaryGoal:
+    goal_id: str
+    title: str
+    current_amount: Decimal
+    target_amount: Decimal
+    monthly_contribution: Decimal
+    currency: str
+    due_date: date
+    progress_percent: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +171,7 @@ class ProjectedHomeRevision:
     trend_points: tuple[ProjectedTrendPoint, ...]
     recent_transactions: tuple[ProjectedTransaction, ...]
     upcoming_payments: tuple[ProjectedUpcomingPayment, ...]
+    primary_goal: ProjectedPrimaryGoal | None
     available_actions: tuple[str, ...]
     warnings: tuple[ProjectedWarning, ...]
 
@@ -137,6 +182,8 @@ def build_current_home_revision(
     operations: tuple[ProjectionOperation, ...],
     generated_at: datetime,
     planned_costs: tuple[ProjectionPlannedCost, ...] = (),
+    goals: tuple[ProjectionGoal, ...] = (),
+    goal_contributions: tuple[ProjectionGoalContribution, ...] = (),
 ) -> ProjectedHomeRevision:
     """Build one schema-v2 projection from authoritative source facts."""
 
@@ -149,6 +196,8 @@ def build_current_home_revision(
             operations=operations,
             generated_at=generated_at,
             planned_costs=planned_costs,
+            goals=goals,
+            goal_contributions=goal_contributions,
         )
 
 
@@ -158,6 +207,8 @@ def _build_current_home_revision(
     operations: tuple[ProjectionOperation, ...],
     generated_at: datetime,
     planned_costs: tuple[ProjectionPlannedCost, ...],
+    goals: tuple[ProjectionGoal, ...],
+    goal_contributions: tuple[ProjectionGoalContribution, ...],
 ) -> ProjectedHomeRevision:
 
     generated_at = _aware_utc(generated_at)
@@ -341,6 +392,13 @@ def _build_current_home_revision(
         )[:3]
     )
 
+    primary_goal = _derive_primary_goal(
+        goals=goals,
+        contributions=goal_contributions,
+        account=account,
+        data_as_of=data_as_of,
+    )
+
     relevant_legacy = tuple(
         operation
         for operation in checked_operations
@@ -394,9 +452,109 @@ def _build_current_home_revision(
         trend_points=trend_points,
         recent_transactions=recent_transactions,
         upcoming_payments=upcoming_payments,
+        primary_goal=primary_goal,
         available_actions=("voice_entry",),
         warnings=tuple(warnings),
     )
+
+
+def _derive_primary_goal(
+    *,
+    goals: tuple[ProjectionGoal, ...],
+    contributions: tuple[ProjectionGoalContribution, ...],
+    account: ProjectionAccount,
+    data_as_of: datetime,
+) -> ProjectedPrimaryGoal | None:
+    """Pick the goal that needs attention and sum its ledger (ADR 0019).
+
+    The primary goal is derived rather than pinned: the active goal with the
+    nearest deadline, ties broken by creation and then id so the ordering is
+    total. Nothing here reaches an authoritative money total.
+    """
+
+    candidates = sorted(
+        (
+            _validated_goal(goal, account=account)
+            for goal in goals
+            if goal.status == "active"
+            and goal.account_id == account.account_id
+            and _aware_utc(goal.created_at) <= data_as_of
+        ),
+        key=lambda goal: (
+            goal.target_on,
+            _aware_utc(goal.created_at),
+            str(goal.goal_id),
+        ),
+    )
+    if not candidates:
+        return None
+    goal = candidates[0]
+
+    current = Decimal(0)
+    for entry in contributions:
+        if entry.goal_id != goal.goal_id or _aware_utc(entry.created_at) > data_as_of:
+            continue
+        current = apply_contribution(
+            current=current,
+            direction=_validated_contribution(entry, goal=goal).direction,
+            amount=entry.amount,
+        )
+    if current < 0:
+        # The write path enforces this under a row lock, so a negative sum here
+        # means the ledger itself is corrupt. Fail closed rather than publish a
+        # figure the projection bounds would reject anyway.
+        raise HomeProjectionInvariantError("goal ledger sums below zero")
+
+    return ProjectedPrimaryGoal(
+        goal_id=str(goal.goal_id),
+        title=goal.title,
+        current_amount=_finite(current),
+        target_amount=_finite(goal.target_amount),
+        monthly_contribution=_finite(goal.monthly_contribution),
+        currency=goal.currency,
+        due_date=goal.target_on,
+        progress_percent=_finite(
+            derive_progress_percent(current=current, target=goal.target_amount)
+        ),
+    )
+
+
+def _validated_goal(
+    goal: ProjectionGoal,
+    *,
+    account: ProjectionAccount,
+) -> ProjectionGoal:
+    _aware_utc(goal.created_at)
+    if goal.user_id != account.user_id:
+        raise HomeProjectionInvariantError("goal belongs to another user")
+    if goal.currency != account.currency:
+        raise HomeProjectionInvariantError("goal currency does not match account")
+    if goal.target_amount <= 0:
+        raise HomeProjectionInvariantError("goal target must be positive")
+    if goal.monthly_contribution < 0:
+        raise HomeProjectionInvariantError(
+            "declared monthly contribution must not be negative"
+        )
+    _finite(goal.target_amount)
+    _finite(goal.monthly_contribution)
+    if not goal.title.strip():
+        raise HomeProjectionInvariantError("goal title must not be blank")
+    return goal
+
+
+def _validated_contribution(
+    entry: ProjectionGoalContribution,
+    *,
+    goal: ProjectionGoal,
+) -> ProjectionGoalContribution:
+    if entry.user_id != goal.user_id:
+        raise HomeProjectionInvariantError("goal contribution belongs to another user")
+    if entry.direction not in {"deposit", "withdrawal"}:
+        raise HomeProjectionInvariantError("unknown goal contribution direction")
+    if entry.amount <= 0:
+        raise HomeProjectionInvariantError("goal contribution must be positive")
+    _finite(entry.amount)
+    return entry
 
 
 def _validated_account(account: ProjectionAccount) -> str:
