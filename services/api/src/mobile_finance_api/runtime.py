@@ -12,11 +12,13 @@ from .auth_service import PostgresAuthenticationService
 from .config import require_runtime_settings
 from .database import create_database
 from .finance_core import FinanceCore
+from .goal_core import GoalCore
 from .main import create_app
 from .passwords import PasswordService
 from .planned_cost_core import PlannedCostCore
 from .postgres_finance_account_repository import PostgresFinanceAccountRepository
 from .postgres_finance_repository import PostgresFinanceOperationRepository
+from .postgres_goal_repository import PostgresGoalRepository
 from .postgres_home_repository import PostgresHomeRepository
 from .postgres_planned_cost_repository import PostgresPlannedCostRepository
 from .tokens import AccessTokenCodec
@@ -54,6 +56,11 @@ app = create_app(
     ),
     planned_cost_core=PlannedCostCore(
         repository=PostgresPlannedCostRepository(
+            session_factory=session_factory,
+        ),
+    ),
+    goal_core=GoalCore(
+        repository=PostgresGoalRepository(
             session_factory=session_factory,
         ),
     ),

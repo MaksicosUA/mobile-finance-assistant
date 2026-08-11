@@ -1061,6 +1061,405 @@ class PlannedCostOutboxEventRow(Base):
     )
 
 
+class FinanceGoalRow(Base):
+    """Savings target (ADR 0019).
+
+    The goal stores only what the user declared. ``current``, ``progress``, and
+    ``achieved`` are derived from ``finance_goal_contributions`` at read time, so
+    there is no running total here that could drift from its own ledger.
+
+    Nothing in this table or its ledger may be summed into an authoritative
+    balance, monthly total, net flow, or trend point.
+    """
+
+    __tablename__ = "finance_goals"
+    __table_args__ = (
+        CheckConstraint(
+            "schema_version = '1'",
+            name="ck_finance_goals_schema_version",
+        ),
+        CheckConstraint(
+            "target_amount > 0 AND target_amount NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_finance_goals_positive_finite_target",
+        ),
+        # Zero is the honest encoding of "no declared monthly plan".
+        CheckConstraint(
+            "monthly_contribution >= 0 AND monthly_contribution NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_finance_goals_monthly_contribution",
+        ),
+        CheckConstraint(
+            "currency = 'EUR'",
+            name="ck_finance_goals_v1_currency",
+        ),
+        CheckConstraint(
+            "title = btrim(title) AND title <> '' AND title !~ '[[:cntrl:]]'",
+            name="ck_finance_goals_text",
+        ),
+        CheckConstraint(
+            "target_on BETWEEN DATE '1900-01-01' AND DATE '2100-12-31'",
+            name="ck_finance_goals_target_on_range",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'cancelled')",
+            name="ck_finance_goals_status",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_finance_goals_payload_hash_length",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at "
+            "AND created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00' "
+            "AND updated_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_goals_operational_timestamps",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "command_id",
+            name="uq_finance_goals_user_command",
+        ),
+        UniqueConstraint(
+            "id",
+            "user_id",
+            name="uq_finance_goals_id_user",
+        ),
+        # Pinning the currency through the account foreign key makes an
+        # account/goal currency mismatch unrepresentable rather than merely
+        # validated, exactly as planned costs and operations do.
+        ForeignKeyConstraint(
+            ["account_id", "user_id", "currency"],
+            [
+                "finance_accounts.id",
+                "finance_accounts.user_id",
+                "finance_accounts.currency",
+            ],
+            name="fk_finance_goals_owned_account_currency",
+        ),
+        # Serves primary-goal selection: the active goal with the earliest
+        # target date, which is the only ordering Home needs.
+        Index(
+            "ix_finance_goals_user_active_target",
+            "user_id",
+            "target_on",
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    account_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    monthly_contribution: Mapped[Decimal] = mapped_column(
+        Numeric(38, 18),
+        nullable=False,
+    )
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    target_on: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceGoalContributionRow(Base):
+    """Append-only ledger entry earmarking money for one goal (ADR 0019).
+
+    Immutable by design: a mistaken entry is corrected by an opposite entry, so
+    both the mistake and the fix stay visible behind the figure a user is shown.
+    A contribution never moves money — it allocates balance that is already
+    there — so it must never reach an authoritative total.
+    """
+
+    __tablename__ = "finance_goal_contributions"
+    __table_args__ = (
+        CheckConstraint(
+            "schema_version = '1'",
+            name="ck_finance_goal_contributions_schema_version",
+        ),
+        CheckConstraint(
+            "amount > 0 AND amount NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_finance_goal_contributions_positive_finite_amount",
+        ),
+        # Two positive directions rather than one signed amount: a sign error
+        # would silently reverse meaning, and every money column here is
+        # constrained positive.
+        CheckConstraint(
+            "direction IN ('deposit', 'withdrawal')",
+            name="ck_finance_goal_contributions_direction",
+        ),
+        CheckConstraint(
+            "currency = 'EUR'",
+            name="ck_finance_goal_contributions_v1_currency",
+        ),
+        CheckConstraint(
+            "occurred_on BETWEEN DATE '1900-01-01' AND DATE '2100-12-31'",
+            name="ck_finance_goal_contributions_occurred_on_range",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_finance_goal_contributions_payload_hash_length",
+        ),
+        CheckConstraint(
+            "created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_goal_contributions_operational_timestamps",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "command_id",
+            name="uq_finance_goal_contributions_user_command",
+        ),
+        # The composite key is what makes attaching an entry to another user's
+        # goal unrepresentable rather than merely checked.
+        ForeignKeyConstraint(
+            ["goal_id", "user_id"],
+            ["finance_goals.id", "finance_goals.user_id"],
+            ondelete="CASCADE",
+            name="fk_finance_goal_contributions_owned_goal",
+        ),
+        Index(
+            "ix_finance_goal_contributions_goal_occurred",
+            "goal_id",
+            "occurred_on",
+            "id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    goal_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceGoalAuditRow(Base):
+    __tablename__ = "finance_goal_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('goal_created', 'goal_cancelled', "
+            "'goal_contribution_recorded') AND actor_type = 'user'",
+            name="ck_finance_goal_audit_event_type",
+        ),
+        # Creation has no predecessor. A contribution never changes the goal's
+        # status, so both of its status columns stay 'active'.
+        CheckConstraint(
+            "(event_type = 'goal_created' AND previous_status IS NULL "
+            "AND new_status = 'active') OR "
+            "(event_type = 'goal_cancelled' AND previous_status = 'active' "
+            "AND new_status = 'cancelled') OR "
+            "(event_type = 'goal_contribution_recorded' "
+            "AND previous_status = 'active' AND new_status = 'active')",
+            name="ck_finance_goal_audit_transition",
+        ),
+        CheckConstraint(
+            "(event_type = 'goal_contribution_recorded') "
+            "= (contribution_id IS NOT NULL)",
+            name="ck_finance_goal_audit_contribution_link",
+        ),
+        CheckConstraint(
+            "octet_length(payload_hash) = 32",
+            name="ck_finance_goal_audit_hash_length",
+        ),
+        CheckConstraint(
+            "created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_goal_audit_operational_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["goal_id", "user_id"],
+            ["finance_goals.id", "finance_goals.user_id"],
+            ondelete="CASCADE",
+            name="fk_finance_goal_audit_owned_goal",
+        ),
+        UniqueConstraint(
+            "goal_id",
+            "command_id",
+            name="uq_finance_goal_audit_goal_command",
+        ),
+        Index(
+            "uq_finance_goal_audit_single_create",
+            "goal_id",
+            unique=True,
+            postgresql_where=text("event_type = 'goal_created'"),
+        ),
+        # Cancellation is terminal, so a second cancellation row must be
+        # impossible even if a caller retried with a fresh command id.
+        Index(
+            "uq_finance_goal_audit_single_cancel",
+            "goal_id",
+            unique=True,
+            postgresql_where=text("event_type = 'goal_cancelled'"),
+        ),
+        Index("ix_finance_goal_audit_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    goal_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    contribution_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceGoalOutboxEventRow(Base):
+    """Identifier-only Home invalidation for goal changes.
+
+    Separate from the operation and planned-cost outboxes for the reason ADR
+    0018 established: those tables pin one ``aggregate_type`` and a closed set of
+    event types, and the Home projector dead-letters types it does not know
+    (ADR 0012). Rows accumulate here unpublished until the Home ``primaryGoal``
+    slice turns consumption on, so no backfill will be needed then.
+    """
+
+    __tablename__ = "finance_goal_outbox_events"
+    __table_args__ = (
+        CheckConstraint(
+            "aggregate_type = 'finance_goal'",
+            name="ck_finance_goal_outbox_aggregate_type",
+        ),
+        CheckConstraint(
+            "event_type IN ('finance.goal.created.v1', "
+            "'finance.goal.cancelled.v1', 'finance.goal.contributed.v1')",
+            name="ck_finance_goal_outbox_event_type",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0",
+            name="ck_finance_goal_outbox_attempt_count",
+        ),
+        CheckConstraint(
+            "validation_failure_count >= 0 "
+            "AND validation_failure_count <= attempt_count",
+            name="ck_finance_goal_outbox_validation_failure_count",
+        ),
+        CheckConstraint(
+            "(published_at IS NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NOT NULL) OR "
+            "(published_at IS NOT NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NULL "
+            "AND failure_code IS NULL) OR "
+            "(published_at IS NULL AND dead_lettered_at IS NOT NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract')",
+            name="ck_finance_goal_outbox_delivery_state",
+        ),
+        CheckConstraint(
+            "(last_failed_at IS NULL AND failure_code IS NULL) OR "
+            "(last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract' "
+            "AND validation_failure_count > 0)",
+            name="ck_finance_goal_outbox_failure_metadata",
+        ),
+        CheckConstraint(
+            "(next_attempt_at IS NULL OR next_attempt_at >= created_at) "
+            "AND (last_failed_at IS NULL OR last_failed_at >= created_at) "
+            "AND (dead_lettered_at IS NULL OR "
+            "(last_failed_at IS NOT NULL "
+            "AND dead_lettered_at >= last_failed_at)) "
+            "AND (published_at IS NULL OR published_at >= created_at) "
+            "AND (last_failed_at IS NULL OR next_attempt_at IS NULL OR "
+            "next_attempt_at > last_failed_at) "
+            "AND (published_at IS NULL OR last_failed_at IS NULL OR "
+            "published_at >= last_failed_at)",
+            name="ck_finance_goal_outbox_operational_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["aggregate_id", "user_id"],
+            ["finance_goals.id", "finance_goals.user_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "aggregate_id",
+            "command_id",
+            name="uq_finance_goal_outbox_aggregate_command",
+        ),
+        Index(
+            "ix_finance_goal_outbox_pending_ready",
+            "next_attempt_at",
+            "created_at",
+            "id",
+            postgresql_where=text("published_at IS NULL AND dead_lettered_at IS NULL"),
+        ),
+        Index(
+            "ix_finance_goal_outbox_dead_lettered",
+            "dead_lettered_at",
+            "created_at",
+            "id",
+            postgresql_where=text("dead_lettered_at IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    aggregate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    aggregate_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    attempt_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    validation_failure_count: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_failed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    failure_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
 class HomeProjectorRuntimeStateRow(Base):
     """Singleton operational heartbeat for the active Home projector lease."""
 

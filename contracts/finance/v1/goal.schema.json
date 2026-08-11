@@ -1,0 +1,624 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mobile-finance-assistant.local/contracts/finance/v1/goal.schema.json",
+  "title": "Savings goal v1 messages",
+  "description": "Strict messages for savings goals and their append-only contribution ledger. No message here is an authoritative money movement.",
+  "$defs": {
+    "CancelGoalCommand": {
+      "additionalProperties": false,
+      "description": "Untrusted request to stop pursuing one goal without erasing its ledger.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "requestedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Requestedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "requestedAt"
+      ],
+      "title": "CancelGoalCommand",
+      "type": "object"
+    },
+    "CancelGoalResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "goal": {
+          "$ref": "#/$defs/Goal"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "goal"
+      ],
+      "title": "CancelGoalResponse",
+      "type": "object"
+    },
+    "CreateGoalCommand": {
+      "additionalProperties": false,
+      "description": "Untrusted request to record one savings target.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "accountId": {
+          "format": "uuid",
+          "title": "Accountid",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "targetAmount": {
+          "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+          "title": "Targetamount",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "targetOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Targeton",
+          "type": "string"
+        },
+        "monthlyContribution": {
+          "anyOf": [
+            {
+              "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+              "maxLength": 39,
+              "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Monthlycontribution"
+        },
+        "requestedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Requestedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "accountId",
+        "title",
+        "targetAmount",
+        "currency",
+        "targetOn",
+        "requestedAt"
+      ],
+      "title": "CreateGoalCommand",
+      "type": "object"
+    },
+    "CreateGoalResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "goal": {
+          "$ref": "#/$defs/Goal"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "goal"
+      ],
+      "title": "CreateGoalResponse",
+      "type": "object"
+    },
+    "Goal": {
+      "additionalProperties": false,
+      "description": "Authoritative goal plus the figures derived from its ledger.",
+      "properties": {
+        "goalId": {
+          "format": "uuid",
+          "title": "Goalid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "title": "Userid",
+          "type": "string"
+        },
+        "accountId": {
+          "format": "uuid",
+          "title": "Accountid",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "targetAmount": {
+          "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+          "title": "Targetamount",
+          "type": "string"
+        },
+        "currentAmount": {
+          "description": "Non-negative finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0(?:\\.[0-9]{1,18})?)$",
+          "title": "Currentamount",
+          "type": "string"
+        },
+        "monthlyContribution": {
+          "description": "Non-negative finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0(?:\\.[0-9]{1,18})?)$",
+          "title": "Monthlycontribution",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "targetOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Targeton",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "achieved": {
+          "title": "Achieved",
+          "type": "boolean"
+        },
+        "progressPercent": {
+          "description": "Non-negative finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0(?:\\.[0-9]{1,18})?)$",
+          "title": "Progresspercent",
+          "type": "string"
+        },
+        "createdAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "updatedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Updatedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "goalId",
+        "userId",
+        "accountId",
+        "commandId",
+        "title",
+        "targetAmount",
+        "currentAmount",
+        "monthlyContribution",
+        "currency",
+        "targetOn",
+        "status",
+        "achieved",
+        "progressPercent",
+        "createdAt",
+        "updatedAt"
+      ],
+      "title": "Goal",
+      "type": "object"
+    },
+    "GoalContribution": {
+      "additionalProperties": false,
+      "description": "Authoritative, immutable ledger entry. Never an authoritative total.",
+      "properties": {
+        "contributionId": {
+          "format": "uuid",
+          "title": "Contributionid",
+          "type": "string"
+        },
+        "goalId": {
+          "format": "uuid",
+          "title": "Goalid",
+          "type": "string"
+        },
+        "userId": {
+          "format": "uuid",
+          "title": "Userid",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "deposit",
+            "withdrawal"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "amount": {
+          "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "occurredOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Occurredon",
+          "type": "string"
+        },
+        "createdAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Createdat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contributionId",
+        "goalId",
+        "userId",
+        "commandId",
+        "direction",
+        "amount",
+        "currency",
+        "occurredOn",
+        "createdAt"
+      ],
+      "title": "GoalContribution",
+      "type": "object"
+    },
+    "GoalErrorDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "MALFORMED_GOAL_COMMAND",
+            "COMMAND_CONFLICT",
+            "GOAL_REJECTED",
+            "GOAL_NOT_FOUND",
+            "GOAL_PERSISTENCE_UNAVAILABLE"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GoalIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "GoalErrorDetail",
+      "type": "object"
+    },
+    "GoalErrorResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "$ref": "#/$defs/GoalErrorDetail"
+        }
+      },
+      "required": [
+        "detail"
+      ],
+      "title": "GoalErrorResponse",
+      "type": "object"
+    },
+    "GoalIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "ACCOUNT_UNAVAILABLE",
+            "ACCOUNT_CURRENCY_MISMATCH",
+            "UNSUPPORTED_CURRENCY",
+            "TARGET_BEFORE_ACCOUNT_BASELINE",
+            "CONTRIBUTION_BEFORE_ACCOUNT_BASELINE",
+            "FUTURE_CONTRIBUTION_DATE",
+            "GOAL_NOT_ACTIVE",
+            "WITHDRAWAL_EXCEEDS_GOAL_BALANCE"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "accountId",
+            "currency",
+            "targetOn",
+            "occurredOn",
+            "status",
+            "amount"
+          ],
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "field"
+      ],
+      "title": "GoalIssue",
+      "type": "object"
+    },
+    "ListGoalContributionsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "goal": {
+          "$ref": "#/$defs/Goal"
+        },
+        "contributions": {
+          "items": {
+            "$ref": "#/$defs/GoalContribution"
+          },
+          "title": "Contributions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "goal",
+        "contributions"
+      ],
+      "title": "ListGoalContributionsResponse",
+      "type": "object"
+    },
+    "ListGoalsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "evaluatedOn": {
+          "format": "date",
+          "formatMaximum": "2100-12-31",
+          "formatMinimum": "1900-01-01",
+          "title": "Evaluatedon",
+          "type": "string"
+        },
+        "goals": {
+          "items": {
+            "$ref": "#/$defs/Goal"
+          },
+          "title": "Goals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "evaluatedOn",
+        "goals"
+      ],
+      "title": "ListGoalsResponse",
+      "type": "object"
+    },
+    "RecordGoalContributionCommand": {
+      "additionalProperties": false,
+      "description": "Untrusted request to append one immutable ledger entry to a goal.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "deposit",
+            "withdrawal"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "amount": {
+          "description": "Positive finite decimal string; max 20 integer and 18 fraction digits.",
+          "maxLength": 39,
+          "pattern": "^(?:[1-9][0-9]{0,19}(?:\\.[0-9]{1,18})?|0\\.(?!0{1,18}$)[0-9]{1,18})$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "occurredOn": {
+          "anyOf": [
+            {
+              "format": "date",
+              "formatMaximum": "2100-12-31",
+              "formatMinimum": "1900-01-01",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurredon"
+        },
+        "requestedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Requestedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "commandId",
+        "direction",
+        "amount",
+        "requestedAt"
+      ],
+      "title": "RecordGoalContributionCommand",
+      "type": "object"
+    },
+    "RecordGoalContributionResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "contribution": {
+          "$ref": "#/$defs/GoalContribution"
+        },
+        "goal": {
+          "$ref": "#/$defs/Goal"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "contribution",
+        "goal"
+      ],
+      "title": "RecordGoalContributionResponse",
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/CreateGoalCommand"
+    },
+    {
+      "$ref": "#/$defs/CancelGoalCommand"
+    },
+    {
+      "$ref": "#/$defs/RecordGoalContributionCommand"
+    },
+    {
+      "$ref": "#/$defs/CreateGoalResponse"
+    },
+    {
+      "$ref": "#/$defs/CancelGoalResponse"
+    },
+    {
+      "$ref": "#/$defs/RecordGoalContributionResponse"
+    },
+    {
+      "$ref": "#/$defs/ListGoalsResponse"
+    },
+    {
+      "$ref": "#/$defs/ListGoalContributionsResponse"
+    },
+    {
+      "$ref": "#/$defs/GoalErrorResponse"
+    }
+  ]
+}

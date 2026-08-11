@@ -30,6 +30,8 @@ from .auth import (
 from .auth_routes import router as auth_router
 from .auth_service import AuthenticationService, UnavailableAuthenticationService
 from .finance_core import FinanceCore, UnavailableFinanceOperationRepository
+from .goal_core import GoalCore, UnavailableGoalRepository
+from .goal_routes import router as goal_router
 from .models import HomeResponse, HomeV1Response
 from .operation_routes import router as operation_router
 from .planned_cost_core import PlannedCostCore, UnavailablePlannedCostRepository
@@ -253,6 +255,7 @@ def create_app(
     account_core: AccountCore | None = None,
     finance_core: FinanceCore | None = None,
     planned_cost_core: PlannedCostCore | None = None,
+    goal_core: GoalCore | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
@@ -302,6 +305,11 @@ def create_app(
         if planned_cost_core is not None
         else PlannedCostCore(repository=UnavailablePlannedCostRepository())
     )
+    application.state.goal_core = (
+        goal_core
+        if goal_core is not None
+        else GoalCore(repository=UnavailableGoalRepository())
+    )
 
     @application.exception_handler(RequestValidationError)
     async def redacted_request_validation_error(
@@ -317,6 +325,11 @@ def create_app(
             return JSONResponse(
                 status_code=422,
                 content={"detail": {"code": "MALFORMED_PLANNED_COST", "issues": []}},
+            )
+        if request.url.path.startswith("/api/v1/goals"):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": {"code": "MALFORMED_GOAL_COMMAND", "issues": []}},
             )
         if not request.url.path.startswith("/api/v1/auth/"):
             return await request_validation_exception_handler(request, error)
@@ -338,6 +351,7 @@ def create_app(
     application.include_router(account_router)
     application.include_router(operation_router)
     application.include_router(planned_cost_router)
+    application.include_router(goal_router)
     application.include_router(router)
     return application
 
