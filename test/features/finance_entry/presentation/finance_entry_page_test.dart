@@ -516,6 +516,26 @@ final class _FakeOperationDeliveryCoordinator
 }
 
 final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
+    SavingsGoalDraft draft,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalList>> listGoals() =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<GoalContributionRecorded>> recordGoalContribution(
+    String goalId,
+    GoalContributionCommand command,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalCancelled>> cancelGoal(
+    String goalId,
+    FinanceGoalCancelCommand command,
+  ) => throw UnimplementedError();
   _FakeFinanceRepository(this.setup, {this.operationEvaluation});
 
   final FinanceAccountSetup setup;

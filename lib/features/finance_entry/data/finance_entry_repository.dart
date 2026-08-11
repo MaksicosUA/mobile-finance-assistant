@@ -38,6 +38,22 @@ abstract interface class FinanceEntryRepositoryClient {
     PlannedCostTransitionCommand command,
   );
 
+  Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
+    SavingsGoalDraft draft,
+  );
+
+  Future<FinanceEntryResult<SavingsGoalList>> listGoals();
+
+  Future<FinanceEntryResult<GoalContributionRecorded>> recordGoalContribution(
+    String goalId,
+    GoalContributionCommand command,
+  );
+
+  Future<FinanceEntryResult<SavingsGoalCancelled>> cancelGoal(
+    String goalId,
+    FinanceGoalCancelCommand command,
+  );
+
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation(
     FinanceOperationDraft draft,
   );
@@ -146,6 +162,52 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
       (accessToken) => _api.transitionPlannedCost(
         accessToken: accessToken,
         plannedCostId: plannedCostId,
+        command: command,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
+    SavingsGoalDraft draft,
+  ) {
+    // A goal and its ledger are earmarks, so they need no commit preflight:
+    // nothing here can change the authoritative balance (ADR 0019).
+    return _authorized(
+      (accessToken) => _api.createGoal(accessToken: accessToken, draft: draft),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalList>> listGoals() {
+    return _authorized(
+      (accessToken) => _api.listGoals(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<GoalContributionRecorded>> recordGoalContribution(
+    String goalId,
+    GoalContributionCommand command,
+  ) {
+    return _authorized(
+      (accessToken) => _api.recordGoalContribution(
+        accessToken: accessToken,
+        goalId: goalId,
+        command: command,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalCancelled>> cancelGoal(
+    String goalId,
+    FinanceGoalCancelCommand command,
+  ) {
+    return _authorized(
+      (accessToken) => _api.cancelGoal(
+        accessToken: accessToken,
+        goalId: goalId,
         command: command,
       ),
     );

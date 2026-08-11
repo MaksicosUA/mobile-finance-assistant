@@ -1376,6 +1376,26 @@ typedef _CommitHandler =
 
 final class _FakeFinanceEntryRepository
     implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
+    SavingsGoalDraft draft,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalList>> listGoals() =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<GoalContributionRecorded>> recordGoalContribution(
+    String goalId,
+    GoalContributionCommand command,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalCancelled>> cancelGoal(
+    String goalId,
+    FinanceGoalCancelCommand command,
+  ) => throw UnimplementedError();
   _FakeFinanceEntryRepository({required this.events, required this.onCommit});
 
   final List<String> events;

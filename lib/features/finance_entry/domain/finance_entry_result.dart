@@ -33,6 +33,10 @@ enum FinanceEntryErrorCode {
   plannedCostRejected,
   plannedCostNotFound,
   plannedCostPersistenceUnavailable,
+  malformedGoalCommand,
+  goalRejected,
+  goalNotFound,
+  goalPersistenceUnavailable,
   authenticationUnavailable,
   financePersistenceUnavailable,
 }
@@ -46,9 +50,11 @@ final class FinanceEntryFailure {
     List<FinanceIssue> issues = const [],
     List<FinanceBaselineIssue> baselineIssues = const [],
     List<PlannedCostIssue> plannedCostIssues = const [],
+    List<SavingsGoalIssue> goalIssues = const [],
   }) : issues = List.unmodifiable(issues),
        baselineIssues = List.unmodifiable(baselineIssues),
-       plannedCostIssues = List.unmodifiable(plannedCostIssues);
+       plannedCostIssues = List.unmodifiable(plannedCostIssues),
+       goalIssues = List.unmodifiable(goalIssues);
 
   final FinanceEntryFailureKind kind;
   final String requestId;
@@ -56,6 +62,7 @@ final class FinanceEntryFailure {
   final List<FinanceIssue> issues;
   final List<FinanceBaselineIssue> baselineIssues;
   final List<PlannedCostIssue> plannedCostIssues;
+  final List<SavingsGoalIssue> goalIssues;
 }
 
 sealed class FinanceEntryResult<T> {

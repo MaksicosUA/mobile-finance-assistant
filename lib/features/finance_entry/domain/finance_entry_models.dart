@@ -1039,6 +1039,388 @@ PlannedCostIssueCode _plannedCostIssueCode(String value) => switch (value) {
   _ => throw FormatException('Unsupported planned cost issue code: $value'),
 };
 
+/// A goal's derived balance and declared monthly intent are legitimately zero,
+/// so they cannot reuse the strictly positive money validator (ADR 0019).
+String _nonNegativeMoney(Map<String, Object?> json, String key) {
+  final value = _requiredString(json, key);
+  if (!RegExp(
+    r'^(?:[1-9][0-9]{0,19}(?:\.[0-9]{1,18})?|0(?:\.[0-9]{1,18})?)$',
+  ).hasMatch(value)) {
+    throw FormatException('Invalid $key.');
+  }
+  return value;
+}
+
+enum SavingsGoalIssueCode {
+  accountUnavailable,
+  accountCurrencyMismatch,
+  unsupportedCurrency,
+  targetBeforeAccountBaseline,
+  contributionBeforeAccountBaseline,
+  futureContributionDate,
+  goalNotActive,
+  withdrawalExceedsGoalBalance,
+}
+
+@immutable
+final class SavingsGoalIssue {
+  const SavingsGoalIssue({required this.code, required this.field});
+
+  factory SavingsGoalIssue.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'code', 'field'});
+    return SavingsGoalIssue(
+      code: _goalIssueCode(_requiredString(json, 'code')),
+      field: _requiredString(json, 'field'),
+    );
+  }
+
+  final SavingsGoalIssueCode code;
+  final String field;
+}
+
+/// A savings target before the server has accepted it.
+///
+/// Like a plan and unlike an operation, a goal needs no evaluate/confirm
+/// handshake: nothing it can do moves the authoritative balance (ADR 0019).
+@immutable
+final class SavingsGoalDraft {
+  const SavingsGoalDraft({
+    required this.commandId,
+    required this.accountId,
+    required this.title,
+    required this.targetAmount,
+    required this.currency,
+    required this.targetOn,
+    required this.requestedAt,
+    this.monthlyContribution,
+  });
+
+  factory SavingsGoalDraft.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'commandId',
+      'accountId',
+      'title',
+      'targetAmount',
+      'currency',
+      'targetOn',
+      'monthlyContribution',
+      'requestedAt',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return SavingsGoalDraft(
+      commandId: _requiredUuid(json, 'commandId'),
+      accountId: _requiredUuid(json, 'accountId'),
+      title: _boundedText(json, 'title', maximumLength: 100),
+      targetAmount: _positiveMoney(json, 'targetAmount'),
+      currency: _currency(json, 'currency'),
+      targetOn: _date(json, 'targetOn'),
+      // Absence is expressed by omitting the field, never by sending zero, so
+      // a client cannot say "no plan" two different ways.
+      monthlyContribution: json['monthlyContribution'] == null
+          ? null
+          : _positiveMoney(json, 'monthlyContribution'),
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final String accountId;
+  final String title;
+  final String targetAmount;
+  final String currency;
+  final String targetOn;
+  final String? monthlyContribution;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'accountId': accountId,
+    'title': title,
+    'targetAmount': targetAmount,
+    'currency': currency,
+    'targetOn': targetOn,
+    'monthlyContribution': monthlyContribution,
+    'requestedAt': requestedAt,
+  };
+}
+
+/// A goal as the server stores it, with the figures it derived from the ledger.
+@immutable
+final class SavingsGoal {
+  const SavingsGoal({
+    required this.goalId,
+    required this.accountId,
+    required this.title,
+    required this.targetAmount,
+    required this.currentAmount,
+    required this.monthlyContribution,
+    required this.currency,
+    required this.targetOn,
+    required this.status,
+    required this.achieved,
+    required this.progressPercent,
+  });
+
+  factory SavingsGoal.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'goalId',
+      'userId',
+      'accountId',
+      'commandId',
+      'title',
+      'targetAmount',
+      'currentAmount',
+      'monthlyContribution',
+      'currency',
+      'targetOn',
+      'status',
+      'achieved',
+      'progressPercent',
+      'createdAt',
+      'updatedAt',
+    });
+    final achieved = json['achieved'];
+    if (achieved is! bool) throw const FormatException('Invalid achieved.');
+    return SavingsGoal(
+      goalId: _requiredUuid(json, 'goalId'),
+      accountId: _requiredUuid(json, 'accountId'),
+      title: _boundedText(json, 'title', maximumLength: 100),
+      targetAmount: _positiveMoney(json, 'targetAmount'),
+      currentAmount: _nonNegativeMoney(json, 'currentAmount'),
+      monthlyContribution: _nonNegativeMoney(json, 'monthlyContribution'),
+      currency: _currency(json, 'currency'),
+      targetOn: _date(json, 'targetOn'),
+      status: _boundedText(json, 'status', maximumLength: 16),
+      achieved: achieved,
+      progressPercent: _nonNegativeMoney(json, 'progressPercent'),
+    );
+  }
+
+  final String goalId;
+  final String accountId;
+  final String title;
+  final String targetAmount;
+  final String currentAmount;
+  final String monthlyContribution;
+  final String currency;
+  final String targetOn;
+  final String status;
+  final bool achieved;
+  final String progressPercent;
+
+  bool get isActive => status == 'active';
+}
+
+@immutable
+final class SavingsGoalCreated {
+  const SavingsGoalCreated({
+    required this.goal,
+    required this.idempotentReplay,
+  });
+
+  final SavingsGoal goal;
+  final bool idempotentReplay;
+}
+
+@immutable
+final class FinanceGoalCancelCommand {
+  const FinanceGoalCancelCommand({
+    required this.commandId,
+    required this.requestedAt,
+  });
+
+  factory FinanceGoalCancelCommand.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'commandId', 'requestedAt'});
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return FinanceGoalCancelCommand(
+      commandId: _requiredUuid(json, 'commandId'),
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'requestedAt': requestedAt,
+  };
+}
+
+@immutable
+final class SavingsGoalCancelled {
+  const SavingsGoalCancelled({
+    required this.goal,
+    required this.idempotentReplay,
+  });
+
+  final SavingsGoal goal;
+  final bool idempotentReplay;
+}
+
+/// The two directions of a ledger entry (ADR 0019).
+///
+/// Two positive directions rather than one signed amount: a sign error would
+/// silently reverse what the entry means.
+enum GoalContributionDirection { deposit, withdrawal }
+
+@immutable
+final class GoalContributionCommand {
+  const GoalContributionCommand({
+    required this.commandId,
+    required this.direction,
+    required this.amount,
+    required this.requestedAt,
+    this.occurredOn,
+  });
+
+  factory GoalContributionCommand.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'commandId',
+      'direction',
+      'amount',
+      'occurredOn',
+      'requestedAt',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return GoalContributionCommand(
+      commandId: _requiredUuid(json, 'commandId'),
+      direction: _goalContributionDirection(_requiredString(json, 'direction')),
+      amount: _positiveMoney(json, 'amount'),
+      // Omitted means "today in the account timezone", which only the server
+      // can resolve.
+      occurredOn: json['occurredOn'] == null ? null : _date(json, 'occurredOn'),
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final GoalContributionDirection direction;
+  final String amount;
+  final String? occurredOn;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'direction': direction.name,
+    'amount': amount,
+    'occurredOn': occurredOn,
+    'requestedAt': requestedAt,
+  };
+}
+
+@immutable
+final class GoalContribution {
+  const GoalContribution({
+    required this.contributionId,
+    required this.goalId,
+    required this.direction,
+    required this.amount,
+    required this.currency,
+    required this.occurredOn,
+  });
+
+  factory GoalContribution.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'contributionId',
+      'goalId',
+      'userId',
+      'commandId',
+      'direction',
+      'amount',
+      'currency',
+      'occurredOn',
+      'createdAt',
+    });
+    return GoalContribution(
+      contributionId: _requiredUuid(json, 'contributionId'),
+      goalId: _requiredUuid(json, 'goalId'),
+      direction: _goalContributionDirection(_requiredString(json, 'direction')),
+      amount: _positiveMoney(json, 'amount'),
+      currency: _currency(json, 'currency'),
+      occurredOn: _date(json, 'occurredOn'),
+    );
+  }
+
+  final String contributionId;
+  final String goalId;
+  final GoalContributionDirection direction;
+  final String amount;
+  final String currency;
+  final String occurredOn;
+}
+
+@immutable
+final class GoalContributionRecorded {
+  const GoalContributionRecorded({
+    required this.contribution,
+    required this.goal,
+    required this.idempotentReplay,
+  });
+
+  final GoalContribution contribution;
+
+  /// The goal with the entry already applied, so the client never recomputes
+  /// the derived total itself.
+  final SavingsGoal goal;
+  final bool idempotentReplay;
+}
+
+@immutable
+final class SavingsGoalList {
+  SavingsGoalList({required this.evaluatedOn, required List<SavingsGoal> goals})
+    : goals = List<SavingsGoal>.unmodifiable(goals);
+
+  /// The local date the server used, so the client never has to guess which
+  /// day the server considered "today".
+  final String evaluatedOn;
+  final List<SavingsGoal> goals;
+}
+
+/// Validates an identifier before it is interpolated into a request path.
+/// A non-UUID value must never reach the URL.
+String validateGoalId(String value) {
+  if (!_uuidPattern.hasMatch(value)) {
+    throw const FormatException('Invalid goal id.');
+  }
+  return value;
+}
+
+void validateSavingsGoalDraft(SavingsGoalDraft draft) {
+  SavingsGoalDraft.fromJson(draft.toJson());
+}
+
+void validateGoalContributionCommand(GoalContributionCommand command) {
+  GoalContributionCommand.fromJson(command.toJson());
+}
+
+GoalContributionDirection _goalContributionDirection(String value) =>
+    switch (value) {
+      'deposit' => GoalContributionDirection.deposit,
+      'withdrawal' => GoalContributionDirection.withdrawal,
+      _ => throw FormatException('Unsupported contribution direction: $value'),
+    };
+
+SavingsGoalIssueCode _goalIssueCode(String value) => switch (value) {
+  'ACCOUNT_UNAVAILABLE' => SavingsGoalIssueCode.accountUnavailable,
+  'ACCOUNT_CURRENCY_MISMATCH' => SavingsGoalIssueCode.accountCurrencyMismatch,
+  'UNSUPPORTED_CURRENCY' => SavingsGoalIssueCode.unsupportedCurrency,
+  'TARGET_BEFORE_ACCOUNT_BASELINE' =>
+    SavingsGoalIssueCode.targetBeforeAccountBaseline,
+  'CONTRIBUTION_BEFORE_ACCOUNT_BASELINE' =>
+    SavingsGoalIssueCode.contributionBeforeAccountBaseline,
+  'FUTURE_CONTRIBUTION_DATE' => SavingsGoalIssueCode.futureContributionDate,
+  'GOAL_NOT_ACTIVE' => SavingsGoalIssueCode.goalNotActive,
+  'WITHDRAWAL_EXCEEDS_GOAL_BALANCE' =>
+    SavingsGoalIssueCode.withdrawalExceedsGoalBalance,
+  _ => throw FormatException('Unsupported goal issue code: $value'),
+};
+
 String plannedCostWireTimestamp(DateTime value) => _utcWireTimestamp(value);
 
 String plannedCostWireDate(DateTime value) {

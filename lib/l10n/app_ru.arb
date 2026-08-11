@@ -576,5 +576,137 @@
   "plannedCostConfirmHint": "«Оплачено» создаст обычную операцию расхода и уберёт план из списка.",
   "@plannedCostConfirmHint": {
     "description": "Planned cost confirmation (ADR 0018)."
+  },
+  "savingsGoalTitle": "Цели",
+  "@savingsGoalTitle": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalLoading": "Загружаем цели",
+  "@savingsGoalLoading": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalAccountRequired": "Сначала создайте счёт — цель копится в его валюте.",
+  "@savingsGoalAccountRequired": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalGenericFailure": "Не удалось выполнить действие. Попробуйте ещё раз.",
+  "@savingsGoalGenericFailure": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalInvalidInput": "Проверьте название, сумму и дату.",
+  "@savingsGoalInvalidInput": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalRetryAction": "Повторить",
+  "@savingsGoalRetryAction": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalDescription": "Цель показывает, сколько вы уже отложили. Отложенные деньги остаются на счёте: баланс, доходы и расходы не меняются.",
+  "@savingsGoalDescription": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalEmpty": "Пока нет ни одной цели.",
+  "@savingsGoalEmpty": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalCreateAction": "Новая цель",
+  "@savingsGoalCreateAction": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalCancelCreateAction": "Отмена",
+  "@savingsGoalCancelCreateAction": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalTitleLabel": "Название",
+  "@savingsGoalTitleLabel": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalTitleHint": "Отпуск",
+  "@savingsGoalTitleHint": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalTargetLabel": "Сколько нужно",
+  "@savingsGoalTargetLabel": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalMonthlyLabel": "Планирую откладывать в месяц",
+  "@savingsGoalMonthlyLabel": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalMonthlyHelper": "Необязательно. Это ориентир, а не обязательство.",
+  "@savingsGoalMonthlyHelper": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalDateLabel": "К какой дате",
+  "@savingsGoalDateLabel": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalChooseDateAction": "Выбрать дату",
+  "@savingsGoalChooseDateAction": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalSubmitAction": "Создать цель",
+  "@savingsGoalSubmitAction": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalContributionLabel": "Сумма",
+  "@savingsGoalContributionLabel": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalDepositAction": "Отложить",
+  "@savingsGoalDepositAction": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalWithdrawAction": "Забрать",
+  "@savingsGoalWithdrawAction": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalCancelAction": "Отказаться от цели",
+  "@savingsGoalCancelAction": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalCancelSemantics": "Отказаться от цели и убрать её из списка",
+  "@savingsGoalCancelSemantics": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalDepositSemantics": "Отложить указанную сумму на эту цель",
+  "@savingsGoalDepositSemantics": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalWithdrawSemantics": "Забрать указанную сумму с этой цели",
+  "@savingsGoalWithdrawSemantics": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalAchievedLabel": "Цель достигнута",
+  "@savingsGoalAchievedLabel": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalIssueAccountUnavailable": "Счёт недоступен. Обновите экран.",
+  "@savingsGoalIssueAccountUnavailable": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalIssueCurrencyMismatch": "Валюта цели должна совпадать с валютой счёта.",
+  "@savingsGoalIssueCurrencyMismatch": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalIssueUnsupportedCurrency": "Пока поддерживается только EUR.",
+  "@savingsGoalIssueUnsupportedCurrency": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalIssueBeforeBaseline": "Дата раньше даты открытия счёта.",
+  "@savingsGoalIssueBeforeBaseline": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalIssueFutureContribution": "Отложить можно только за сегодня или раньше.",
+  "@savingsGoalIssueFutureContribution": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalIssueNotActive": "Цель уже закрыта. Обновите экран.",
+  "@savingsGoalIssueNotActive": {
+    "description": "Savings goals (ADR 0019)."
+  },
+  "savingsGoalIssueWithdrawalTooLarge": "На цели меньше денег, чем вы пытаетесь забрать.",
+  "@savingsGoalIssueWithdrawalTooLarge": {
+    "description": "Savings goals (ADR 0019)."
   }
 }

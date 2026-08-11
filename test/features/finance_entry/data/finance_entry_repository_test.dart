@@ -619,6 +619,30 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 }
 
 class _ListApi implements FinanceEntryApiClient {
+  @override
+  Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
+    required String accessToken,
+    required SavingsGoalDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalList>> listGoals({
+    required String accessToken,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<GoalContributionRecorded>> recordGoalContribution({
+    required String accessToken,
+    required String goalId,
+    required GoalContributionCommand command,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<SavingsGoalCancelled>> cancelGoal({
+    required String accessToken,
+    required String goalId,
+    required FinanceGoalCancelCommand command,
+  }) => throw UnimplementedError();
   _ListApi(List<FinanceEntryResult<FinanceAccountSetup>> results)
     : _results = List.of(results);
 
