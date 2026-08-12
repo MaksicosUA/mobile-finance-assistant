@@ -37,6 +37,7 @@ enum FinanceEntryErrorCode {
   goalRejected,
   goalNotFound,
   goalPersistenceUnavailable,
+  categoryPersistenceUnavailable,
   authenticationUnavailable,
   financePersistenceUnavailable,
 }

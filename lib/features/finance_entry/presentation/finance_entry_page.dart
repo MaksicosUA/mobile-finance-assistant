@@ -8,9 +8,11 @@ import '../../../app/theme/app_tokens.dart';
 import '../../../core/network/api_config.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/application/auth_controller.dart';
+import '../application/category_catalogue_controller.dart';
 import '../application/finance_entry_controller.dart';
 import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
+import 'widgets/category_picker.dart';
 
 class FinanceEntryPage extends ConsumerStatefulWidget {
   const FinanceEntryPage({
@@ -369,7 +371,7 @@ class _AccountFormState extends State<_AccountForm> {
   }
 }
 
-class _OperationForm extends StatefulWidget {
+class _OperationForm extends ConsumerStatefulWidget {
   const _OperationForm({
     super.key,
     required this.state,
@@ -382,16 +384,17 @@ class _OperationForm extends StatefulWidget {
   final ValueChanged<OperationEntryInput> onSubmit;
 
   @override
-  State<_OperationForm> createState() => _OperationFormState();
+  ConsumerState<_OperationForm> createState() => _OperationFormState();
 }
 
-class _OperationFormState extends State<_OperationForm> {
+class _OperationFormState extends ConsumerState<_OperationForm> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
   late final TextEditingController _categoryController;
   late final TextEditingController _merchantController;
   late FinanceOperationType _type;
   late DateTime _occurredOn;
+  CategoryChoice _categoryChoice = const CategoryUnset();
   bool _validateContinuously = false;
 
   @override
@@ -403,6 +406,13 @@ class _OperationFormState extends State<_OperationForm> {
     _merchantController = TextEditingController(text: input.merchant);
     _type = input.type;
     _occurredOn = input.occurredOn;
+    if ((input.category ?? '').isNotEmpty && input.categoryId == null) {
+      _categoryChoice = const CategoryFreeText();
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(categoryCatalogueProvider.notifier).load();
+    });
   }
 
   @override
@@ -467,7 +477,16 @@ class _OperationFormState extends State<_OperationForm> {
             selected: {_type},
             onSelectionChanged: widget.state.isSubmitting
                 ? null
-                : (values) => setState(() => _type = values.single),
+                : (values) => setState(() {
+                    _type = values.single;
+                    // Categories are typed by direction, so a selection made
+                    // for an expense cannot survive a switch to income — it
+                    // would be submitted against the wrong catalogue and
+                    // rejected.
+                    if (_categoryChoice is CategoryFromCatalogue) {
+                      _categoryChoice = const CategoryUnset();
+                    }
+                  }),
           ),
           const SizedBox(height: AppSpacing.md),
           TextFormField(
@@ -508,17 +527,22 @@ class _OperationFormState extends State<_OperationForm> {
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
-          TextFormField(
-            key: const Key('operation-category'),
-            controller: _categoryController,
+          CategoryPicker(
+            categories: ref
+                .watch(categoryCatalogueProvider.notifier)
+                .forDirection(_type),
+            choice: _categoryChoice,
+            freeTextController: _categoryController,
             enabled: !widget.state.isSubmitting,
-            maxLength: 100,
-            textCapitalization: TextCapitalization.sentences,
-            textInputAction: TextInputAction.done,
-            decoration: InputDecoration(
-              labelText: l10n.categoryField,
-              counterText: '',
-            ),
+            catalogueUnavailable:
+                ref.watch(categoryCatalogueProvider)
+                    is CategoryCatalogueUnavailable,
+            onChanged: (choice) => setState(() {
+              _categoryChoice = choice;
+              // Leaving free text behind would send a name the chosen category
+              // does not have.
+              if (choice is! CategoryFreeText) _categoryController.clear();
+            }),
           ),
           const SizedBox(height: AppSpacing.md),
           _DateField(
@@ -546,12 +570,23 @@ class _OperationFormState extends State<_OperationForm> {
   void _submit() {
     setState(() => _validateContinuously = true);
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final choice = _categoryChoice;
     widget.onSubmit(
       OperationEntryInput(
         type: _type,
         amount: _amountController.text,
         occurredOn: _occurredOn,
-        category: _categoryController.text,
+        // A chosen category sends its own name, so the stored text always says
+        // what the user picked (ADR 0020).
+        category: switch (choice) {
+          CategoryFromCatalogue(:final category) => category.name,
+          CategoryFreeText() => _categoryController.text,
+          CategoryUnset() => '',
+        },
+        categoryId: switch (choice) {
+          CategoryFromCatalogue(:final category) => category.categoryId,
+          _ => null,
+        },
         merchant: _merchantController.text,
       ),
     );

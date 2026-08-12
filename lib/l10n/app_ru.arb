@@ -708,5 +708,89 @@
   "savingsGoalIssueWithdrawalTooLarge": "На цели меньше денег, чем вы пытаетесь забрать.",
   "@savingsGoalIssueWithdrawalTooLarge": {
     "description": "Savings goals (ADR 0019)."
+  },
+  "categoryPickerNone": "Без категории",
+  "@categoryPickerNone": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categoryPickerOther": "Другое (ввести текстом)",
+  "@categoryPickerOther": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categoryPickerOtherLabel": "Своя категория",
+  "@categoryPickerOtherLabel": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categoryPickerLoading": "Загружаем категории",
+  "@categoryPickerLoading": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categoryPickerUnavailable": "Список категорий недоступен — впишите название вручную.",
+  "@categoryPickerUnavailable": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedGroceries": "Продукты",
+  "@categorySeedGroceries": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedEatingOut": "Кафе и рестораны",
+  "@categorySeedEatingOut": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedTransport": "Транспорт",
+  "@categorySeedTransport": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedHousing": "Жильё",
+  "@categorySeedHousing": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedUtilities": "Связь и интернет",
+  "@categorySeedUtilities": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedHealth": "Здоровье",
+  "@categorySeedHealth": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedClothing": "Одежда",
+  "@categorySeedClothing": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedEntertainment": "Развлечения",
+  "@categorySeedEntertainment": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedEducation": "Образование",
+  "@categorySeedEducation": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedGiftsOut": "Подарки",
+  "@categorySeedGiftsOut": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedOtherExpense": "Прочее",
+  "@categorySeedOtherExpense": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedSalary": "Зарплата",
+  "@categorySeedSalary": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedFreelance": "Подработка",
+  "@categorySeedFreelance": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedGiftsIn": "Подарки",
+  "@categorySeedGiftsIn": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedInterest": "Проценты",
+  "@categorySeedInterest": {
+    "description": "Category catalogue (ADR 0020)."
+  },
+  "categorySeedOtherIncome": "Прочее",
+  "@categorySeedOtherIncome": {
+    "description": "Category catalogue (ADR 0020)."
   }
 }

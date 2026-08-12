@@ -38,6 +38,8 @@ abstract interface class FinanceEntryRepositoryClient {
     PlannedCostTransitionCommand command,
   );
 
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories();
+
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
     SavingsGoalDraft draft,
   );
@@ -164,6 +166,13 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         plannedCostId: plannedCostId,
         command: command,
       ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories() {
+    return _authorized(
+      (accessToken) => _api.listCategories(accessToken: accessToken),
     );
   }
 

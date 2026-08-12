@@ -1070,6 +1070,71 @@ String _nonNegativeMoney(Map<String, Object?> json, String key) {
   return value;
 }
 
+/// One category from the user's own catalogue (ADR 0020).
+///
+/// Seeded rows carry a stable [systemKey] the app localizes; a renamed one
+/// carries none, because the user's own name is then the right label.
+@immutable
+final class FinanceCategory {
+  const FinanceCategory({
+    required this.categoryId,
+    required this.name,
+    required this.direction,
+    required this.systemKey,
+  });
+
+  factory FinanceCategory.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'categoryId',
+      'name',
+      'direction',
+      'systemKey',
+      'createdAt',
+    });
+    return FinanceCategory(
+      categoryId: _requiredUuid(json, 'categoryId'),
+      name: _boundedText(json, 'name', maximumLength: 100),
+      direction: _categoryDirection(_requiredString(json, 'direction')),
+      systemKey: json['systemKey'] == null
+          ? null
+          : _categorySystemKey(_requiredString(json, 'systemKey')),
+    );
+  }
+
+  final String categoryId;
+  final String name;
+  final FinanceOperationType direction;
+  final String? systemKey;
+}
+
+@immutable
+final class FinanceCategoryList {
+  FinanceCategoryList({required List<FinanceCategory> categories})
+    : categories = List<FinanceCategory>.unmodifiable(categories);
+
+  final List<FinanceCategory> categories;
+
+  /// Categories offered for one direction. A purchase must never be offered a
+  /// salary category, so the picker filters rather than showing everything.
+  List<FinanceCategory> forDirection(FinanceOperationType direction) => [
+    for (final category in categories)
+      if (category.direction == direction) category,
+  ];
+}
+
+FinanceOperationType _categoryDirection(String value) => switch (value) {
+  'expense' => FinanceOperationType.expense,
+  'income' => FinanceOperationType.income,
+  _ => throw FormatException('Unsupported category direction: $value'),
+};
+
+String _categorySystemKey(String value) {
+  if (!RegExp(r'^[a-z][a-z0-9_]{0,62}$').hasMatch(value)) {
+    throw const FormatException('Invalid category system key.');
+  }
+  return value;
+}
+
 enum SavingsGoalIssueCode {
   accountUnavailable,
   accountCurrencyMismatch,

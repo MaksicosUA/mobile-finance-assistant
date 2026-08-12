@@ -621,6 +621,10 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories({
+    required String accessToken,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
     required String accessToken,
     required SavingsGoalDraft draft,

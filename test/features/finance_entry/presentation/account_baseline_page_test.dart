@@ -198,6 +198,9 @@ Future<void> _pumpPage(
 
 final class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories() =>
+      throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
     SavingsGoalDraft draft,
   ) => throw UnimplementedError();

@@ -302,6 +302,9 @@ GoalContribution _contribution(GoalContributionCommand command) =>
     );
 
 final class _FakeRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories() =>
+      throw UnimplementedError();
   _FakeRepository({
     this.hasAccount = true,
     this.listFailure,

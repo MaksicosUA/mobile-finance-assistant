@@ -532,6 +532,9 @@ class _FailingListRepository extends _FakeRepository {
 }
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<FinanceCategoryList>> listCategories() =>
+      throw UnimplementedError();
   _FakeRepository({
     List<FinanceEntryResult<FinanceAccountSetup>> listResults = const [],
     this.onCreate,
