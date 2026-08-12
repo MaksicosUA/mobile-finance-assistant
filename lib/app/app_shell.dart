@@ -14,9 +14,9 @@ import '../features/finance_entry/presentation/planned_cost_page.dart';
 import '../features/finance_entry/presentation/savings_goal_page.dart';
 import '../features/finance_entry/presentation/finance_entry_page.dart';
 import '../features/home/presentation/widgets/home_status_banner.dart';
+import '../features/profile/presentation/profile_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
-import 'settings/settings_page.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_tokens.dart';
 
@@ -97,28 +97,6 @@ class _AppShellState extends ConsumerState<AppShell>
       _section = AppSection.chat;
       _voiceEntryRequested = false;
     });
-  }
-
-  void _openSettings() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => SettingsPage(
-          onCorrectOpeningDate: isNetworkBackendConfigured
-              ? _openAccountBaseline
-              : null,
-          onPlanCost: isNetworkBackendConfigured ? _openPlannedCost : null,
-          onManageCategories: isNetworkBackendConfigured
-              ? _openCategories
-              : null,
-          onOperationHistory: isNetworkBackendConfigured
-              ? _openOperationHistory
-              : null,
-          onSignOut: isNetworkBackendConfigured
-              ? ref.read(authControllerProvider.notifier).signOut
-              : null,
-        ),
-      ),
-    );
   }
 
   void _openPlannedCost() {
@@ -208,7 +186,6 @@ class _AppShellState extends ConsumerState<AppShell>
         index: _section.index,
         children: [
           HomePage(
-            onOpenSettings: _openSettings,
             onNotificationsPressed: _openNotifications,
             onVoicePressed: _openVoiceEntry,
             onManualEntryPressed: isNetworkBackendConfigured
@@ -270,11 +247,23 @@ class _AppShellState extends ConsumerState<AppShell>
               description: l10n.stubDescription,
               onBackHome: () => _selectSection(AppSection.home),
             ),
-          StubPage(
-            title: l10n.profileTab,
-            description: l10n.stubDescription,
-            onBackHome: () => _selectSection(AppSection.home),
-          ),
+          // Profile needs the authenticated backend: the identity and the
+          // account facts are server truth, and the fixture build has neither.
+          if (isNetworkBackendConfigured)
+            ProfilePage(
+              onSignInRequested: _openSessionExpired,
+              onCorrectOpeningDate: _openAccountBaseline,
+              onPlanCost: _openPlannedCost,
+              onManageCategories: _openCategories,
+              onOperationHistory: _openOperationHistory,
+              onSignOut: ref.read(authControllerProvider.notifier).signOut,
+            )
+          else
+            StubPage(
+              title: l10n.profileTab,
+              description: l10n.stubDescription,
+              onBackHome: () => _selectSection(AppSection.home),
+            ),
         ],
       ),
       bottomNavigationBar: AppBottomNavigation(

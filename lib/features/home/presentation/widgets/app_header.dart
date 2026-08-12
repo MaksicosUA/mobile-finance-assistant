@@ -3,25 +3,23 @@ import 'package:flutter/material.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_tokens.dart';
 
+/// The greeting, the date, and notifications.
+///
+/// There is no profile/settings button here any more: Profile is a tab in the
+/// navigation bar, and one door beats two (ADR 0021).
 class AppHeader extends StatelessWidget {
   const AppHeader({
     super.key,
     required this.greeting,
     required this.dateLabel,
     required this.notificationsLabel,
-    required this.settingsLabel,
-    required this.avatarInitial,
     required this.onNotificationsPressed,
-    required this.onOpenSettings,
   });
 
   final String greeting;
   final String dateLabel;
   final String notificationsLabel;
-  final String settingsLabel;
-  final String? avatarInitial;
   final VoidCallback onNotificationsPressed;
-  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -76,40 +74,6 @@ class AppHeader extends StatelessWidget {
                       ),
                     ),
                   ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.xs),
-        Semantics(
-          button: true,
-          label: settingsLabel,
-          child: SizedBox.square(
-            dimension: AppSizes.minTouchTarget,
-            child: Material(
-              color: colors.accentSecondary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.card),
-              ),
-              child: InkWell(
-                key: const Key('open-settings'),
-                onTap: onOpenSettings,
-                borderRadius: BorderRadius.circular(AppRadius.card),
-                child: Center(
-                  child: avatarInitial == null
-                      ? const Icon(
-                          Icons.person_outline_rounded,
-                          color: Colors.white,
-                        )
-                      : Text(
-                          avatarInitial!,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                 ),
               ),
             ),

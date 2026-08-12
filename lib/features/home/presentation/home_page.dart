@@ -23,7 +23,6 @@ import 'widgets/voice_cta.dart';
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({
     super.key,
-    required this.onOpenSettings,
     required this.onNotificationsPressed,
     required this.onVoicePressed,
     required this.onAnalyticsPressed,
@@ -34,7 +33,6 @@ class HomePage extends ConsumerStatefulWidget {
     this.localClock,
   });
 
-  final VoidCallback onOpenSettings;
   final VoidCallback onNotificationsPressed;
   final VoidCallback onVoicePressed;
   final VoidCallback onAnalyticsPressed;
@@ -141,10 +139,7 @@ class _HomePageState extends ConsumerState<HomePage>
                   ),
                   dateLabel: dateLabel,
                   notificationsLabel: l10n.notificationsLabel,
-                  settingsLabel: l10n.openSettingsLabel,
-                  avatarInitial: userName?.characters.first.toUpperCase(),
                   onNotificationsPressed: widget.onNotificationsPressed,
-                  onOpenSettings: widget.onOpenSettings,
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 if (widget.operationDeliveryStatus case final status?) ...[

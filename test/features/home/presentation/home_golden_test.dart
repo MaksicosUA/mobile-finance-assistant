@@ -277,7 +277,6 @@ class _GoldenFinanceApp extends ConsumerWidget {
       home: Scaffold(
         body: HomePage(
           localClock: () => _localNow,
-          onOpenSettings: _ignore,
           onNotificationsPressed: _ignore,
           onVoicePressed: _ignore,
           onAnalyticsPressed: _ignore,
