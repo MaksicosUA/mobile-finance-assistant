@@ -64,6 +64,10 @@
         "code": {
           "enum": [
             "MALFORMED_CATEGORY_QUERY",
+            "MALFORMED_CATEGORY_COMMAND",
+            "CATEGORY_NOT_FOUND",
+            "CATEGORY_NAME_TAKEN",
+            "CATEGORY_ARCHIVED",
             "CATEGORY_PERSISTENCE_UNAVAILABLE"
           ],
           "title": "Code",
@@ -89,6 +93,57 @@
       "title": "CategoryErrorResponse",
       "type": "object"
     },
+    "CategoryResponse": {
+      "additionalProperties": false,
+      "description": "The category as it stands after an accepted write.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/ManagedCategory"
+        }
+      },
+      "required": [
+        "category"
+      ],
+      "title": "CategoryResponse",
+      "type": "object"
+    },
+    "CreateCategoryCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "expense",
+            "income"
+          ],
+          "title": "Direction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "direction"
+      ],
+      "title": "CreateCategoryCommand",
+      "type": "object"
+    },
     "ListCategoriesResponse": {
       "additionalProperties": false,
       "properties": {
@@ -111,11 +166,140 @@
       ],
       "title": "ListCategoriesResponse",
       "type": "object"
+    },
+    "ManagedCategory": {
+      "additionalProperties": false,
+      "description": "One category as the management screen sees it.\n\nDeliberately a separate model from [Category] rather than a field added to\nit. The picker's `GET /api/v1/categories` is parsed by installed clients\nwith a closed key set, item and envelope alike, so an additive field there\nwould not degrade — it would stop the picker from loading at all. Managing\nthe catalogue is a newer capability, so it gets its own representation and\nleaves the older one untouched.",
+      "properties": {
+        "categoryId": {
+          "format": "uuid",
+          "title": "Categoryid",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "expense",
+            "income"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "systemKey": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{0,62}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Systemkey"
+        },
+        "createdAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "archivedAt": {
+          "anyOf": [
+            {
+              "description": "Timezone-aware instant normalized to UTC.",
+              "format": "date-time",
+              "formatMaximum": "2100-12-31T23:59:59.999999Z",
+              "formatMinimum": "1900-01-01T00:00:00Z",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archivedat"
+        }
+      },
+      "required": [
+        "categoryId",
+        "name",
+        "direction",
+        "createdAt"
+      ],
+      "title": "ManagedCategory",
+      "type": "object"
+    },
+    "ManagedCategoryListResponse": {
+      "additionalProperties": false,
+      "description": "Every category the user owns, hidden ones included.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "categories": {
+          "items": {
+            "$ref": "#/$defs/ManagedCategory"
+          },
+          "title": "Categories",
+          "type": "array"
+        }
+      },
+      "required": [
+        "categories"
+      ],
+      "title": "ManagedCategoryListResponse",
+      "type": "object"
+    },
+    "RenameCategoryCommand": {
+      "additionalProperties": false,
+      "description": "Rename one category.\n\nCarries no client command id. Every catalogue write is idempotent by target\nstate: renaming to the name a category already has, hiding a hidden one, or\nrestoring an active one all succeed without writing anything. A duplicate\nrequest therefore converges on one state rather than needing a replay key\nthe way a financial command does (ADR 0009).",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "RenameCategoryCommand",
+      "type": "object"
     }
   },
   "anyOf": [
     {
       "$ref": "#/$defs/ListCategoriesResponse"
+    },
+    {
+      "$ref": "#/$defs/ManagedCategoryListResponse"
+    },
+    {
+      "$ref": "#/$defs/CategoryResponse"
+    },
+    {
+      "$ref": "#/$defs/CreateCategoryCommand"
+    },
+    {
+      "$ref": "#/$defs/RenameCategoryCommand"
     },
     {
       "$ref": "#/$defs/CategoryErrorResponse"

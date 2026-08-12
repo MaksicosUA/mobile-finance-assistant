@@ -1169,6 +1169,215 @@ class FinanceCategoryRow(Base):
     )
 
 
+class FinanceCategoryAuditRow(Base):
+    """Immutable record of every catalogue change (ADR 0020).
+
+    A rename replaces the only stored copy of a name, so without this row the
+    previous name would be unrecoverable. That matters because published Home
+    projections and the operation's own free text both hold names, and telling
+    a stale label from a wrong one later needs to know what the name was.
+
+    There is no ``payload_hash`` because a category write carries no client
+    command: the endpoints are idempotent by target state, and the command id
+    here is minted by the server to tie one accepted write to its outbox event.
+    """
+
+    __tablename__ = "finance_category_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('category_created', 'category_renamed', "
+            "'category_archived', 'category_restored') AND actor_type = 'user'",
+            name="ck_finance_category_audit_event_type",
+        ),
+        # Only a rename carries names, and it must actually change one: a
+        # request that renames a category to what it is already called is a
+        # no-op the repository answers without writing anything here.
+        CheckConstraint(
+            "(event_type = 'category_created' AND previous_name IS NULL "
+            "AND new_name IS NOT NULL) OR "
+            "(event_type = 'category_renamed' AND previous_name IS NOT NULL "
+            "AND new_name IS NOT NULL AND previous_name <> new_name) OR "
+            "(event_type IN ('category_archived', 'category_restored') "
+            "AND previous_name IS NULL AND new_name IS NULL)",
+            name="ck_finance_category_audit_names",
+        ),
+        CheckConstraint(
+            "(event_type = 'category_created' AND previous_status IS NULL "
+            "AND new_status = 'active') OR "
+            "(event_type = 'category_renamed' AND previous_status = 'active' "
+            "AND new_status = 'active') OR "
+            "(event_type = 'category_archived' AND previous_status = 'active' "
+            "AND new_status = 'archived') OR "
+            "(event_type = 'category_restored' AND previous_status = 'archived' "
+            "AND new_status = 'active')",
+            name="ck_finance_category_audit_transition",
+        ),
+        CheckConstraint(
+            "created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_category_audit_operational_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "user_id"],
+            ["finance_categories.id", "finance_categories.user_id"],
+            ondelete="CASCADE",
+            name="fk_finance_category_audit_owned_category",
+        ),
+        UniqueConstraint(
+            "category_id",
+            "command_id",
+            name="uq_finance_category_audit_category_command",
+        ),
+        Index(
+            "uq_finance_category_audit_single_create",
+            "category_id",
+            unique=True,
+            postgresql_where=text("event_type = 'category_created'"),
+        ),
+        Index("ix_finance_category_audit_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    category_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    previous_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    new_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    previous_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceCategoryOutboxEventRow(Base):
+    """Identifier-only Home invalidation for a renamed category (ADR 0020).
+
+    Only a rename is published. A published Home projection stores the label it
+    resolved through the operation's category link, so renaming a category makes
+    every projection holding that label stale. Creating, archiving, and
+    restoring change nothing already published: an archived category stays
+    linked to its historical operations and keeps its name.
+
+    Separate from the four existing outboxes for the reason ADR 0018
+    established: each pins one ``aggregate_type`` and a closed set of event
+    types, and the projector dead-letters types it does not know (ADR 0012).
+    """
+
+    __tablename__ = "finance_category_outbox_events"
+    __table_args__ = (
+        CheckConstraint(
+            "aggregate_type = 'finance_category'",
+            name="ck_finance_category_outbox_aggregate_type",
+        ),
+        CheckConstraint(
+            "event_type = 'finance.category.renamed.v1'",
+            name="ck_finance_category_outbox_event_type",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0",
+            name="ck_finance_category_outbox_attempt_count",
+        ),
+        CheckConstraint(
+            "validation_failure_count >= 0 "
+            "AND validation_failure_count <= attempt_count",
+            name="ck_finance_category_outbox_validation_failure_count",
+        ),
+        CheckConstraint(
+            "(published_at IS NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NOT NULL) OR "
+            "(published_at IS NOT NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NULL "
+            "AND failure_code IS NULL) OR "
+            "(published_at IS NULL AND dead_lettered_at IS NOT NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract')",
+            name="ck_finance_category_outbox_delivery_state",
+        ),
+        CheckConstraint(
+            "(last_failed_at IS NULL AND failure_code IS NULL) OR "
+            "(last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract' "
+            "AND validation_failure_count > 0)",
+            name="ck_finance_category_outbox_failure_metadata",
+        ),
+        CheckConstraint(
+            "(next_attempt_at IS NULL OR next_attempt_at >= created_at) "
+            "AND (last_failed_at IS NULL OR last_failed_at >= created_at) "
+            "AND (dead_lettered_at IS NULL OR "
+            "(last_failed_at IS NOT NULL "
+            "AND dead_lettered_at >= last_failed_at)) "
+            "AND (published_at IS NULL OR published_at >= created_at) "
+            "AND (last_failed_at IS NULL OR next_attempt_at IS NULL OR "
+            "next_attempt_at > last_failed_at) "
+            "AND (published_at IS NULL OR last_failed_at IS NULL OR "
+            "published_at >= last_failed_at)",
+            name="ck_finance_category_outbox_operational_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["aggregate_id", "user_id"],
+            ["finance_categories.id", "finance_categories.user_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "aggregate_id",
+            "command_id",
+            name="uq_finance_category_outbox_aggregate_command",
+        ),
+        Index(
+            "ix_finance_category_outbox_pending_ready",
+            "next_attempt_at",
+            "created_at",
+            "id",
+            postgresql_where=text("published_at IS NULL AND dead_lettered_at IS NULL"),
+        ),
+        Index(
+            "ix_finance_category_outbox_dead_lettered",
+            "dead_lettered_at",
+            "created_at",
+            "id",
+            postgresql_where=text("dead_lettered_at IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    aggregate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    aggregate_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    attempt_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    validation_failure_count: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_failed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    failure_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
 class FinanceGoalRow(Base):
     """Savings target (ADR 0019).
 

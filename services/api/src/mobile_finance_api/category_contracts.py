@@ -45,6 +45,10 @@ CategoryDirection = Literal["expense", "income"]
 
 CategoryErrorCode = Literal[
     "MALFORMED_CATEGORY_QUERY",
+    "MALFORMED_CATEGORY_COMMAND",
+    "CATEGORY_NOT_FOUND",
+    "CATEGORY_NAME_TAKEN",
+    "CATEGORY_ARCHIVED",
     "CATEGORY_PERSISTENCE_UNAVAILABLE",
 ]
 
@@ -80,6 +84,72 @@ class ListCategoriesResponse(CategoryApiModel):
         return self
 
 
+class ManagedCategory(Category):
+    """One category as the management screen sees it.
+
+    Deliberately a separate model from [Category] rather than a field added to
+    it. The picker's `GET /api/v1/categories` is parsed by installed clients
+    with a closed key set, item and envelope alike, so an additive field there
+    would not degrade — it would stop the picker from loading at all. Managing
+    the catalogue is a newer capability, so it gets its own representation and
+    leaves the older one untouched.
+    """
+
+    # Null while the category is offered for new operations. Set once it is
+    # hidden; the row itself is never deleted, so historical operations keep
+    # their grouping (ADR 0020).
+    archived_at: UtcTimestamp | None = Field(default=None, alias="archivedAt")
+
+
+class ManagedCategoryListResponse(CategoryApiModel):
+    """Every category the user owns, hidden ones included."""
+
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    categories: tuple[ManagedCategory, ...]
+
+    @model_validator(mode="after")
+    def active_names_are_unique_per_direction(self) -> Self:
+        # Only active rows are constrained. Two hidden categories may share a
+        # name, and a hidden one may share a name with an active one, because
+        # the uniqueness the database enforces excludes archived rows.
+        seen: set[tuple[str, str]] = set()
+        for category in self.categories:
+            if category.archived_at is not None:
+                continue
+            key = (category.direction, category.name.casefold())
+            if key in seen:
+                raise ValueError("duplicate active category name in one direction")
+            seen.add(key)
+        return self
+
+
+class CategoryResponse(CategoryApiModel):
+    """The category as it stands after an accepted write."""
+
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    category: ManagedCategory
+
+
+class CreateCategoryCommand(CategoryApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    name: CategoryName
+    direction: CategoryDirection
+
+
+class RenameCategoryCommand(CategoryApiModel):
+    """Rename one category.
+
+    Carries no client command id. Every catalogue write is idempotent by target
+    state: renaming to the name a category already has, hiding a hidden one, or
+    restoring an active one all succeed without writing anything. A duplicate
+    request therefore converges on one state rather than needing a replay key
+    the way a financial command does (ADR 0009).
+    """
+
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    name: CategoryName
+
+
 class CategoryErrorDetail(CategoryApiModel):
     code: CategoryErrorCode
 
@@ -88,7 +158,14 @@ class CategoryErrorResponse(CategoryApiModel):
     detail: CategoryErrorDetail
 
 
-type CategoryMessage = ListCategoriesResponse | CategoryErrorResponse
+type CategoryMessage = (
+    ListCategoriesResponse
+    | ManagedCategoryListResponse
+    | CategoryResponse
+    | CreateCategoryCommand
+    | RenameCategoryCommand
+    | CategoryErrorResponse
+)
 
 _category_message_adapter: TypeAdapter[CategoryMessage] = TypeAdapter(CategoryMessage)
 
