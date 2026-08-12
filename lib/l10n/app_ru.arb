@@ -792,5 +792,98 @@
   "categorySeedOtherIncome": "Прочее",
   "@categorySeedOtherIncome": {
     "description": "Category catalogue (ADR 0020)."
+  },
+  "categoriesSettingsAction": "Категории",
+  "@categoriesSettingsAction": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoriesSettingsDescription": "Свои названия для трат и доходов",
+  "@categoriesSettingsDescription": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoriesTitle": "Категории",
+  "@categoriesTitle": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoriesExpenseTab": "Расходы",
+  "@categoriesExpenseTab": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoriesIncomeTab": "Доходы",
+  "@categoriesIncomeTab": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryAddAction": "Добавить категорию",
+  "@categoryAddAction": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryNameLabel": "Название",
+  "@categoryNameLabel": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryCreateAction": "Создать",
+  "@categoryCreateAction": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categorySaveAction": "Сохранить",
+  "@categorySaveAction": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryRenameAction": "Переименовать",
+  "@categoryRenameAction": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryHideAction": "Скрыть",
+  "@categoryHideAction": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryRestoreAction": "Вернуть",
+  "@categoryRestoreAction": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryHiddenSection": "Скрытые: {count}",
+  "@categoryHiddenSection": {
+    "description": "Category management (ADR 0020, step 2b).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "categoryHiddenNote": "Скрытая категория не предлагается при новой записи, но остаётся на прошлых операциях.",
+  "@categoryHiddenNote": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryListEmpty": "Пока ни одной категории",
+  "@categoryListEmpty": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryHideDialogTitle": "Скрыть категорию?",
+  "@categoryHideDialogTitle": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryHideDialogDescription": "Она исчезнет из списка при новой записи. Прошлые операции останутся в ней, и её можно вернуть.",
+  "@categoryHideDialogDescription": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryNameTakenError": "Такое название уже есть",
+  "@categoryNameTakenError": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryArchivedError": "Категория скрыта — сначала верните её",
+  "@categoryArchivedError": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryNotFoundError": "Категория не найдена",
+  "@categoryNotFoundError": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryNameInvalidError": "Введите название до 100 символов",
+  "@categoryNameInvalidError": {
+    "description": "Category management (ADR 0020, step 2b)."
+  },
+  "categoryLoadError": "Не удалось загрузить категории",
+  "@categoryLoadError": {
+    "description": "Category management (ADR 0020, step 2b)."
   }
 }

@@ -2144,6 +2144,138 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Прочее'**
   String get categorySeedOtherIncome;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Категории'**
+  String get categoriesSettingsAction;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Свои названия для трат и доходов'**
+  String get categoriesSettingsDescription;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Категории'**
+  String get categoriesTitle;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Расходы'**
+  String get categoriesExpenseTab;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Доходы'**
+  String get categoriesIncomeTab;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить категорию'**
+  String get categoryAddAction;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Название'**
+  String get categoryNameLabel;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Создать'**
+  String get categoryCreateAction;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get categorySaveAction;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Переименовать'**
+  String get categoryRenameAction;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скрыть'**
+  String get categoryHideAction;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Вернуть'**
+  String get categoryRestoreAction;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скрытые: {count}'**
+  String categoryHiddenSection(int count);
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скрытая категория не предлагается при новой записи, но остаётся на прошлых операциях.'**
+  String get categoryHiddenNote;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока ни одной категории'**
+  String get categoryListEmpty;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скрыть категорию?'**
+  String get categoryHideDialogTitle;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Она исчезнет из списка при новой записи. Прошлые операции останутся в ней, и её можно вернуть.'**
+  String get categoryHideDialogDescription;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Такое название уже есть'**
+  String get categoryNameTakenError;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Категория скрыта — сначала верните её'**
+  String get categoryArchivedError;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Категория не найдена'**
+  String get categoryNotFoundError;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите название до 100 символов'**
+  String get categoryNameInvalidError;
+
+  /// Category management (ADR 0020, step 2b).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить категории'**
+  String get categoryLoadError;
 }
 
 class _AppLocalizationsDelegate

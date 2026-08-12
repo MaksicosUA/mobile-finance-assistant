@@ -7,6 +7,7 @@ import '../features/auth/application/auth_controller.dart';
 import '../features/finance_entry/application/operation_sync_controller.dart';
 import '../features/finance_entry/domain/operation_outbox.dart';
 import '../features/finance_entry/presentation/account_baseline_page.dart';
+import '../features/finance_entry/presentation/category_management_page.dart';
 import '../features/finance_entry/presentation/planned_cost_page.dart';
 import '../features/finance_entry/presentation/savings_goal_page.dart';
 import '../features/finance_entry/presentation/finance_entry_page.dart';
@@ -104,6 +105,9 @@ class _AppShellState extends ConsumerState<AppShell>
               ? _openAccountBaseline
               : null,
           onPlanCost: isNetworkBackendConfigured ? _openPlannedCost : null,
+          onManageCategories: isNetworkBackendConfigured
+              ? _openCategories
+              : null,
           onSignOut: isNetworkBackendConfigured
               ? ref.read(authControllerProvider.notifier).signOut
               : null,
@@ -116,6 +120,15 @@ class _AppShellState extends ConsumerState<AppShell>
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => PlannedCostPage(onSignInRequested: _openSessionExpired),
+      ),
+    );
+  }
+
+  void _openCategories() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            CategoryManagementPage(onSignInRequested: _openSessionExpired),
       ),
     );
   }

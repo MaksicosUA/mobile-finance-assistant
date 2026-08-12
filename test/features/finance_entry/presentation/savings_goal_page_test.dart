@@ -305,6 +305,26 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories() =>
       throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories() =>
+      throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
+    CreateCategoryCommand command,
+  ) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> renameCategory(
+    String categoryId,
+    RenameCategoryCommand command,
+  ) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> archiveCategory(
+    String categoryId,
+  ) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> restoreCategory(
+    String categoryId,
+  ) => throw UnimplementedError();
   _FakeRepository({
     this.hasAccount = true,
     this.listFailure,

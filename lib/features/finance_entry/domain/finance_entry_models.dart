@@ -1122,6 +1122,112 @@ final class FinanceCategoryList {
   ];
 }
 
+/// One category as the management screen sees it, hidden ones included.
+///
+/// Deliberately a separate type from [FinanceCategory]. The picker's listing is
+/// parsed with a closed key set on both the envelope and each item, so an
+/// additive field there would not degrade the picker — it would stop it
+/// loading. Managing the catalogue is newer, so it reads its own
+/// representation and leaves the older one untouched (ADR 0020).
+@immutable
+final class ManagedFinanceCategory {
+  const ManagedFinanceCategory({
+    required this.categoryId,
+    required this.name,
+    required this.direction,
+    required this.systemKey,
+    required this.archivedAt,
+  });
+
+  factory ManagedFinanceCategory.fromJson(Map<String, Object?> json) {
+    _expectKeys(
+      json,
+      const {'categoryId', 'name', 'direction', 'systemKey', 'createdAt'},
+      optional: const {'archivedAt'},
+    );
+    return ManagedFinanceCategory(
+      categoryId: _requiredUuid(json, 'categoryId'),
+      name: _boundedText(json, 'name', maximumLength: 100),
+      direction: _categoryDirection(_requiredString(json, 'direction')),
+      systemKey: json['systemKey'] == null
+          ? null
+          : _categorySystemKey(_requiredString(json, 'systemKey')),
+      archivedAt: _optionalTimestamp(json, 'archivedAt'),
+    );
+  }
+
+  final String categoryId;
+  final String name;
+  final FinanceOperationType direction;
+  final String? systemKey;
+
+  /// Null while the category is offered for new operations.
+  ///
+  /// Hiding is the only removal there is: the row survives, so every operation
+  /// recorded against it keeps its grouping.
+  final String? archivedAt;
+
+  bool get isArchived => archivedAt != null;
+}
+
+@immutable
+final class ManagedCategoryList {
+  ManagedCategoryList({required List<ManagedFinanceCategory> categories})
+    : categories = List<ManagedFinanceCategory>.unmodifiable(categories);
+
+  final List<ManagedFinanceCategory> categories;
+
+  List<ManagedFinanceCategory> offered(FinanceOperationType direction) => [
+    for (final category in categories)
+      if (category.direction == direction && !category.isArchived) category,
+  ];
+
+  List<ManagedFinanceCategory> hidden(FinanceOperationType direction) => [
+    for (final category in categories)
+      if (category.direction == direction && category.isArchived) category,
+  ];
+}
+
+/// A new category the user asked for.
+@immutable
+final class CreateCategoryCommand {
+  const CreateCategoryCommand({required this.name, required this.direction});
+
+  final String name;
+  final FinanceOperationType direction;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'name': name,
+    'direction': direction.wireName,
+  };
+}
+
+/// A new name for one existing category.
+@immutable
+final class RenameCategoryCommand {
+  const RenameCategoryCommand({required this.name});
+
+  final String name;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'name': name,
+  };
+}
+
+/// Rejects a name the server would reject anyway, before spending a request.
+///
+/// Mirrors the server bound exactly: trimmed, non-empty, at most 100
+/// characters, and free of control characters.
+String validatedCategoryName(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty || trimmed.length > 100 || _containsControl(trimmed)) {
+    throw const FormatException('Invalid category name.');
+  }
+  return trimmed;
+}
+
 FinanceOperationType _categoryDirection(String value) => switch (value) {
   'expense' => FinanceOperationType.expense,
   'income' => FinanceOperationType.income,
@@ -1471,6 +1577,13 @@ final class SavingsGoalList {
 String validateGoalId(String value) {
   if (!_uuidPattern.hasMatch(value)) {
     throw const FormatException('Invalid goal id.');
+  }
+  return value;
+}
+
+String validateCategoryId(String value) {
+  if (!_uuidPattern.hasMatch(value)) {
+    throw const FormatException('Invalid category id.');
   }
   return value;
 }

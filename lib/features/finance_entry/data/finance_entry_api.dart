@@ -57,6 +57,31 @@ abstract interface class FinanceEntryApiClient {
     required String accessToken,
   });
 
+  Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories({
+    required String accessToken,
+  });
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory({
+    required String accessToken,
+    required CreateCategoryCommand command,
+  });
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> renameCategory({
+    required String accessToken,
+    required String categoryId,
+    required RenameCategoryCommand command,
+  });
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> archiveCategory({
+    required String accessToken,
+    required String categoryId,
+  });
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> restoreCategory({
+    required String accessToken,
+    required String categoryId,
+  });
+
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
     required String accessToken,
     required SavingsGoalDraft draft,
@@ -329,6 +354,119 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       acceptedStatuses: const {200},
       contract: _ContractKind.category,
       parse: (json, statusCode) => _parseCategoryList(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories({
+    required String accessToken,
+  }) {
+    return _request(
+      method: 'GET',
+      path: '/api/v1/categories/managed',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.category,
+      parse: (json, statusCode) => _parseManagedCategoryList(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory({
+    required String accessToken,
+    required CreateCategoryCommand command,
+  }) {
+    try {
+      validatedCategoryName(command.name);
+    } on Object {
+      return Future<FinanceEntryResult<ManagedFinanceCategory>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/categories',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {201},
+      contract: _ContractKind.category,
+      parse: (json, statusCode) => _parseCategory(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> renameCategory({
+    required String accessToken,
+    required String categoryId,
+    required RenameCategoryCommand command,
+  }) {
+    try {
+      validatedCategoryName(command.name);
+      validateCategoryId(categoryId);
+    } on Object {
+      return Future<FinanceEntryResult<ManagedFinanceCategory>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'PATCH',
+      path: '/api/v1/categories/$categoryId',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200},
+      contract: _ContractKind.category,
+      parse: (json, statusCode) => _parseCategory(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> archiveCategory({
+    required String accessToken,
+    required String categoryId,
+  }) => _categoryTransition(
+    accessToken: accessToken,
+    categoryId: categoryId,
+    action: 'archive',
+  );
+
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> restoreCategory({
+    required String accessToken,
+    required String categoryId,
+  }) => _categoryTransition(
+    accessToken: accessToken,
+    categoryId: categoryId,
+    action: 'restore',
+  );
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> _categoryTransition({
+    required String accessToken,
+    required String categoryId,
+    required String action,
+  }) {
+    try {
+      validateCategoryId(categoryId);
+    } on Object {
+      return Future<FinanceEntryResult<ManagedFinanceCategory>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/categories/$categoryId/$action',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.category,
+      parse: (json, statusCode) => _parseCategory(json, statusCode),
     );
   }
 
@@ -612,6 +750,44 @@ FinanceCategoryList _parseCategoryList(Map<String, Object?> json, int status) {
     }
   }
   return FinanceCategoryList(categories: categories);
+}
+
+ManagedCategoryList _parseManagedCategoryList(
+  Map<String, Object?> json,
+  int status,
+) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {'schemaVersion', 'categories'});
+  _requireSchema(json);
+  final raw = json['categories'];
+  if (raw is! List<Object?> || raw.length > 500) {
+    throw const FormatException('Invalid category list.');
+  }
+  final categories = raw
+      .map((item) => ManagedFinanceCategory.fromJson(_object(item)))
+      .toList(growable: false);
+  // Only offered names must be unique. A hidden category may share a name with
+  // an offered one, because the uniqueness the server enforces excludes hidden
+  // rows — which is what makes a name reusable after hiding it.
+  final seen = <String>{};
+  for (final category in categories) {
+    if (category.isArchived) continue;
+    if (!seen.add(
+      '${category.direction.wireName}:${category.name.toLowerCase()}',
+    )) {
+      throw const FormatException('Duplicate category name in one direction.');
+    }
+  }
+  return ManagedCategoryList(categories: categories);
+}
+
+ManagedFinanceCategory _parseCategory(Map<String, Object?> json, int status) {
+  if (status != 200 && status != 201) {
+    throw const FormatException('Invalid status.');
+  }
+  _expectKeys(json, const {'schemaVersion', 'category'});
+  _requireSchema(json);
+  return ManagedFinanceCategory.fromJson(_object(json['category']));
 }
 
 SavingsGoalCreated _parseGoalCreated(
@@ -1252,6 +1428,10 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.goalPersistenceUnavailable,
     }.contains(code),
     _ContractKind.category => const {
+      FinanceEntryErrorCode.malformedCategoryCommand,
+      FinanceEntryErrorCode.categoryNotFound,
+      FinanceEntryErrorCode.categoryNameTaken,
+      FinanceEntryErrorCode.categoryArchived,
       FinanceEntryErrorCode.categoryPersistenceUnavailable,
     }.contains(code),
   };
@@ -1291,6 +1471,11 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'GOAL_NOT_FOUND' => FinanceEntryErrorCode.goalNotFound,
   'GOAL_PERSISTENCE_UNAVAILABLE' =>
     FinanceEntryErrorCode.goalPersistenceUnavailable,
+  'MALFORMED_CATEGORY_COMMAND' =>
+    FinanceEntryErrorCode.malformedCategoryCommand,
+  'CATEGORY_NOT_FOUND' => FinanceEntryErrorCode.categoryNotFound,
+  'CATEGORY_NAME_TAKEN' => FinanceEntryErrorCode.categoryNameTaken,
+  'CATEGORY_ARCHIVED' => FinanceEntryErrorCode.categoryArchived,
   'CATEGORY_PERSISTENCE_UNAVAILABLE' =>
     FinanceEntryErrorCode.categoryPersistenceUnavailable,
   'MALFORMED_PLANNED_COST' => FinanceEntryErrorCode.malformedPlannedCost,

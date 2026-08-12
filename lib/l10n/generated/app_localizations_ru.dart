@@ -1171,4 +1171,75 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get categorySeedOtherIncome => 'Прочее';
+
+  @override
+  String get categoriesSettingsAction => 'Категории';
+
+  @override
+  String get categoriesSettingsDescription =>
+      'Свои названия для трат и доходов';
+
+  @override
+  String get categoriesTitle => 'Категории';
+
+  @override
+  String get categoriesExpenseTab => 'Расходы';
+
+  @override
+  String get categoriesIncomeTab => 'Доходы';
+
+  @override
+  String get categoryAddAction => 'Добавить категорию';
+
+  @override
+  String get categoryNameLabel => 'Название';
+
+  @override
+  String get categoryCreateAction => 'Создать';
+
+  @override
+  String get categorySaveAction => 'Сохранить';
+
+  @override
+  String get categoryRenameAction => 'Переименовать';
+
+  @override
+  String get categoryHideAction => 'Скрыть';
+
+  @override
+  String get categoryRestoreAction => 'Вернуть';
+
+  @override
+  String categoryHiddenSection(int count) {
+    return 'Скрытые: $count';
+  }
+
+  @override
+  String get categoryHiddenNote =>
+      'Скрытая категория не предлагается при новой записи, но остаётся на прошлых операциях.';
+
+  @override
+  String get categoryListEmpty => 'Пока ни одной категории';
+
+  @override
+  String get categoryHideDialogTitle => 'Скрыть категорию?';
+
+  @override
+  String get categoryHideDialogDescription =>
+      'Она исчезнет из списка при новой записи. Прошлые операции останутся в ней, и её можно вернуть.';
+
+  @override
+  String get categoryNameTakenError => 'Такое название уже есть';
+
+  @override
+  String get categoryArchivedError => 'Категория скрыта — сначала верните её';
+
+  @override
+  String get categoryNotFoundError => 'Категория не найдена';
+
+  @override
+  String get categoryNameInvalidError => 'Введите название до 100 символов';
+
+  @override
+  String get categoryLoadError => 'Не удалось загрузить категории';
 }

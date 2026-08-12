@@ -625,6 +625,31 @@ class _ListApi implements FinanceEntryApiClient {
     required String accessToken,
   }) => throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories({
+    required String accessToken,
+  }) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory({
+    required String accessToken,
+    required CreateCategoryCommand command,
+  }) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> renameCategory({
+    required String accessToken,
+    required String categoryId,
+    required RenameCategoryCommand command,
+  }) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> archiveCategory({
+    required String accessToken,
+    required String categoryId,
+  }) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> restoreCategory({
+    required String accessToken,
+    required String categoryId,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
     required String accessToken,
     required SavingsGoalDraft draft,
