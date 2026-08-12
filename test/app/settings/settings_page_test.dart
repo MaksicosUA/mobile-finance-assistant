@@ -75,6 +75,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the operation history is reachable from settings', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var requests = 0;
+    await _pumpSettings(tester, onOperationHistory: () => requests += 1);
+
+    expect(find.byKey(const Key('settings-operation-history')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('settings-operation-history')));
+
+    expect(requests, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('fixture settings do not expose server account actions', (
     tester,
   ) async {
@@ -82,6 +97,7 @@ void main() {
 
     expect(find.byKey(const Key('settings-opening-date')), findsNothing);
     expect(find.byKey(const Key('settings-categories')), findsNothing);
+    expect(find.byKey(const Key('settings-operation-history')), findsNothing);
   });
 }
 
@@ -89,6 +105,7 @@ Future<void> _pumpSettings(
   WidgetTester tester, {
   VoidCallback? onCorrectOpeningDate,
   VoidCallback? onManageCategories,
+  VoidCallback? onOperationHistory,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -108,6 +125,7 @@ Future<void> _pumpSettings(
         home: SettingsPage(
           onCorrectOpeningDate: onCorrectOpeningDate,
           onManageCategories: onManageCategories,
+          onOperationHistory: onOperationHistory,
         ),
       ),
     ),

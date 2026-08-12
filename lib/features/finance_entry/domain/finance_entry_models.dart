@@ -1122,6 +1122,126 @@ final class FinanceCategoryList {
   ];
 }
 
+/// One confirmed operation as the history screen reads it.
+@immutable
+final class OperationHistoryItem {
+  const OperationHistoryItem({
+    required this.operationId,
+    required this.type,
+    required this.amount,
+    required this.currency,
+    required this.accountId,
+    required this.category,
+    required this.categoryId,
+    required this.categoryText,
+    required this.merchant,
+    required this.occurredOn,
+    required this.occurredAt,
+    required this.source,
+    required this.createdAt,
+  });
+
+  factory OperationHistoryItem.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'operationId',
+      'type',
+      'amount',
+      'currency',
+      'accountId',
+      'category',
+      'categoryId',
+      'categoryText',
+      'merchant',
+      'occurredOn',
+      'occurredAt',
+      'source',
+      'status',
+      'createdAt',
+    });
+    if (_requiredString(json, 'status') != 'confirmed') {
+      throw const FormatException('Only confirmed operations are readable.');
+    }
+    return OperationHistoryItem(
+      operationId: _requiredUuid(json, 'operationId'),
+      type: _operationType(_requiredString(json, 'type')),
+      amount: _positiveMoney(json, 'amount'),
+      currency: _currency(json, 'currency'),
+      accountId: json['accountId'] == null
+          ? null
+          : _requiredUuid(json, 'accountId'),
+      category: json['category'] == null
+          ? null
+          : _boundedText(json, 'category', maximumLength: 100),
+      categoryId: json['categoryId'] == null
+          ? null
+          : _requiredUuid(json, 'categoryId'),
+      categoryText: json['categoryText'] == null
+          ? null
+          : _boundedText(json, 'categoryText', maximumLength: 100),
+      merchant: json['merchant'] == null
+          ? null
+          : _boundedText(json, 'merchant', maximumLength: 160),
+      occurredOn: _date(json, 'occurredOn'),
+      occurredAt: _optionalTimestamp(json, 'occurredAt'),
+      source: _operationSource(_requiredString(json, 'source')),
+      createdAt: _timestamp(json, 'createdAt'),
+    );
+  }
+
+  final String operationId;
+  final FinanceOperationType type;
+  final String amount;
+  final String currency;
+  final String? accountId;
+
+  /// The linked category's current name, so a rename shows up here too.
+  ///
+  /// Null only when the operation was recorded with neither a link nor text.
+  final String? category;
+  final String? categoryId;
+
+  /// What the user actually wrote. After a rename it differs from [category],
+  /// and showing both is what makes a wrong link visible (ADR 0020).
+  final String? categoryText;
+
+  final String? merchant;
+  final String occurredOn;
+  final String? occurredAt;
+  final FinanceOperationSource source;
+  final String createdAt;
+
+  /// Whether the stored text still says what the category is called.
+  ///
+  /// False after a rename, and the detail card shows both only then: repeating
+  /// an identical value twice would be noise.
+  bool get textDiffersFromCategory =>
+      categoryText != null && categoryText != category;
+}
+
+@immutable
+final class OperationHistoryList {
+  OperationHistoryList({
+    required List<OperationHistoryItem> operations,
+    required this.nextCursor,
+  }) : operations = List<OperationHistoryItem>.unmodifiable(operations);
+
+  final List<OperationHistoryItem> operations;
+
+  /// Absent on the last page. Opaque: only the server knows what it encodes.
+  final String? nextCursor;
+
+  bool get hasMore => nextCursor != null;
+}
+
+String validatedOperationCursor(String value) {
+  if (value.isEmpty ||
+      value.length > 256 ||
+      !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value)) {
+    throw const FormatException('Invalid operation cursor.');
+  }
+  return value;
+}
+
 /// One category as the management screen sees it, hidden ones included.
 ///
 /// Deliberately a separate type from [FinanceCategory]. The picker's listing is

@@ -57,6 +57,12 @@ abstract interface class FinanceEntryApiClient {
     required String accessToken,
   });
 
+  Future<FinanceEntryResult<OperationHistoryList>> listOperations({
+    required String accessToken,
+    required int limit,
+    String? cursor,
+  });
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories({
     required String accessToken,
   });
@@ -354,6 +360,36 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       acceptedStatuses: const {200},
       contract: _ContractKind.category,
       parse: (json, statusCode) => _parseCategoryList(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<OperationHistoryList>> listOperations({
+    required String accessToken,
+    required int limit,
+    String? cursor,
+  }) {
+    try {
+      if (limit < 1 || limit > 100) throw const FormatException('limit');
+      if (cursor != null) validatedOperationCursor(cursor);
+    } on Object {
+      return Future<FinanceEntryResult<OperationHistoryList>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    final query = cursor == null
+        ? 'limit=$limit'
+        : 'limit=$limit&cursor=${Uri.encodeQueryComponent(cursor)}';
+    return _request(
+      method: 'GET',
+      path: '/api/v1/operations?$query',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.operation,
+      parse: (json, statusCode) => _parseOperationHistory(json, statusCode),
     );
   }
 
@@ -750,6 +786,32 @@ FinanceCategoryList _parseCategoryList(Map<String, Object?> json, int status) {
     }
   }
   return FinanceCategoryList(categories: categories);
+}
+
+OperationHistoryList _parseOperationHistory(
+  Map<String, Object?> json,
+  int status,
+) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  _expectKeys(
+    json,
+    const {'schemaVersion', 'operations'},
+    optional: const {'nextCursor'},
+  );
+  _requireSchema(json);
+  final raw = json['operations'];
+  if (raw is! List<Object?> || raw.length > 100) {
+    throw const FormatException('Invalid operation page.');
+  }
+  final cursor = json['nextCursor'];
+  return OperationHistoryList(
+    operations: raw
+        .map((item) => OperationHistoryItem.fromJson(_object(item)))
+        .toList(growable: false),
+    nextCursor: cursor == null
+        ? null
+        : validatedOperationCursor(_requiredString(json, 'nextCursor')),
+  );
 }
 
 ManagedCategoryList _parseManagedCategoryList(
@@ -1545,9 +1607,19 @@ Map<String, Object?> _object(Object? value) {
   }
 }
 
-void _expectKeys(Map<String, Object?> json, Set<String> expected) {
-  if (json.length != expected.length ||
-      !json.keys.toSet().containsAll(expected)) {
+/// Rejects unknown fields, and requires every field except [optional].
+///
+/// [optional] exists for fields the server may legitimately omit — a paging
+/// cursor is absent on the last page — so their absence is not a malformed
+/// response. Unknown keys are still refused.
+void _expectKeys(
+  Map<String, Object?> json,
+  Set<String> expected, {
+  Set<String> optional = const <String>{},
+}) {
+  final keys = json.keys.toSet();
+  if (!keys.containsAll(expected) ||
+      !expected.union(optional).containsAll(keys)) {
     throw const FormatException('Unexpected Finance response fields.');
   }
 }

@@ -8,6 +8,7 @@ import '../features/finance_entry/application/operation_sync_controller.dart';
 import '../features/finance_entry/domain/operation_outbox.dart';
 import '../features/finance_entry/presentation/account_baseline_page.dart';
 import '../features/finance_entry/presentation/category_management_page.dart';
+import '../features/finance_entry/presentation/operation_history_page.dart';
 import '../features/finance_entry/presentation/planned_cost_page.dart';
 import '../features/finance_entry/presentation/savings_goal_page.dart';
 import '../features/finance_entry/presentation/finance_entry_page.dart';
@@ -108,6 +109,9 @@ class _AppShellState extends ConsumerState<AppShell>
           onManageCategories: isNetworkBackendConfigured
               ? _openCategories
               : null,
+          onOperationHistory: isNetworkBackendConfigured
+              ? _openOperationHistory
+              : null,
           onSignOut: isNetworkBackendConfigured
               ? ref.read(authControllerProvider.notifier).signOut
               : null,
@@ -129,6 +133,15 @@ class _AppShellState extends ConsumerState<AppShell>
       MaterialPageRoute<void>(
         builder: (_) =>
             CategoryManagementPage(onSignInRequested: _openSessionExpired),
+      ),
+    );
+  }
+
+  void _openOperationHistory() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            OperationHistoryPage(onSignInRequested: _openSessionExpired),
       ),
     );
   }
