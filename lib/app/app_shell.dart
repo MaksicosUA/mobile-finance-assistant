@@ -7,6 +7,7 @@ import '../features/auth/application/auth_controller.dart';
 import '../features/finance_entry/application/operation_sync_controller.dart';
 import '../features/finance_entry/domain/operation_outbox.dart';
 import '../features/finance_entry/presentation/account_baseline_page.dart';
+import '../features/finance_entry/presentation/analytics_page.dart';
 import '../features/finance_entry/presentation/category_management_page.dart';
 import '../features/finance_entry/presentation/operation_history_page.dart';
 import '../features/finance_entry/presentation/planned_cost_page.dart';
@@ -246,11 +247,19 @@ class _AppShellState extends ConsumerState<AppShell>
                   : l10n.stubDescription,
               onBackHome: () => _selectSection(AppSection.home),
             ),
-          StubPage(
-            title: l10n.analyticsTab,
-            description: l10n.stubDescription,
-            onBackHome: () => _selectSection(AppSection.home),
-          ),
+          // Analytics needs the authenticated backend: it groups committed
+          // operations, and the fixture build has none behind it.
+          if (isNetworkBackendConfigured)
+            AnalyticsPage(
+              onSignInRequested: _openSessionExpired,
+              onOpenAllOperations: _openOperationHistory,
+            )
+          else
+            StubPage(
+              title: l10n.analyticsTab,
+              description: l10n.stubDescription,
+              onBackHome: () => _selectSection(AppSection.home),
+            ),
           // Goals need the authenticated backend: a goal and its ledger are
           // server facts, and the fixture build has no account behind them.
           if (isNetworkBackendConfigured)

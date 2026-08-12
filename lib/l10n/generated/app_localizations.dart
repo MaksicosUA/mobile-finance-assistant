@@ -2354,6 +2354,42 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Категорию позже переименовали'**
   String get operationDetailOriginalTextHint;
+
+  /// Analytics (ADR 0020, step 5).
+  ///
+  /// In ru, this message translates to:
+  /// **'Расходы по категориям'**
+  String get analyticsExpenseByCategory;
+
+  /// Analytics (ADR 0020, step 5).
+  ///
+  /// In ru, this message translates to:
+  /// **'Доходы по категориям'**
+  String get analyticsIncomeByCategory;
+
+  /// Analytics (ADR 0020, step 5).
+  ///
+  /// In ru, this message translates to:
+  /// **'За этот месяц записей нет'**
+  String get analyticsBreakdownEmpty;
+
+  /// Analytics (ADR 0020, step 5).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось посчитать аналитику'**
+  String get analyticsLoadError;
+
+  /// Analytics (ADR 0020, step 5).
+  ///
+  /// In ru, this message translates to:
+  /// **'{percent}%'**
+  String analyticsShare(String percent);
+
+  /// Analytics (ADR 0020, step 5).
+  ///
+  /// In ru, this message translates to:
+  /// **'{month}'**
+  String analyticsMonth(DateTime month);
 }
 
 class _AppLocalizationsDelegate

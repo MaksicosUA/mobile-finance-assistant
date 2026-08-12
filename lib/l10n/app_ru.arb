@@ -945,4 +945,40 @@
   "@operationDetailOriginalTextHint": {
     "description": "Operation history (ADR 0020, step 4)."
   }
+  ,
+  "analyticsExpenseByCategory": "Расходы по категориям",
+  "@analyticsExpenseByCategory": {
+    "description": "Analytics (ADR 0020, step 5)."
+  },
+  "analyticsIncomeByCategory": "Доходы по категориям",
+  "@analyticsIncomeByCategory": {
+    "description": "Analytics (ADR 0020, step 5)."
+  },
+  "analyticsBreakdownEmpty": "За этот месяц записей нет",
+  "@analyticsBreakdownEmpty": {
+    "description": "Analytics (ADR 0020, step 5)."
+  },
+  "analyticsLoadError": "Не удалось посчитать аналитику",
+  "@analyticsLoadError": {
+    "description": "Analytics (ADR 0020, step 5)."
+  },
+  "analyticsShare": "{percent}%",
+  "@analyticsShare": {
+    "description": "Analytics (ADR 0020, step 5).",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsMonth": "{month}",
+  "@analyticsMonth": {
+    "description": "Analytics (ADR 0020, step 5).",
+    "placeholders": {
+      "month": {
+        "type": "DateTime",
+        "format": "LLLL"
+      }
+    }
+  }
 }

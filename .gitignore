@@ -60,3 +60,7 @@ app.*.map.json
 # repository: they are ~1 GB, and an untracked tree also makes
 # tool/resolve_android_build_version.sh reject the checkout as unclean.
 /.toolchains/
+
+# Golden-test diff artifacts. Written only when a golden fails, and
+# regenerated every run; committing them once put 30 stale PNGs in the tree.
+**/test/**/failures/

@@ -23,6 +23,7 @@ from .postgres_finance_repository import PostgresFinanceOperationRepository
 from .postgres_goal_repository import PostgresGoalRepository
 from .postgres_home_repository import PostgresHomeRepository
 from .postgres_planned_cost_repository import PostgresPlannedCostRepository
+from .postgres_profile_repository import PostgresProfileRepository
 from .tokens import AccessTokenCodec
 
 settings = require_runtime_settings()
@@ -72,5 +73,6 @@ app = create_app(
     analytics_repository=PostgresAnalyticsRepository(
         session_factory=session_factory,
     ),
+    profile_repository=PostgresProfileRepository(session_factory=session_factory),
     database_engine=engine,
 )

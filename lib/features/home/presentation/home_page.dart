@@ -13,14 +13,10 @@ import 'home_header_time.dart';
 import 'money_formatter.dart';
 import 'widgets/app_header.dart';
 import 'widgets/balance_card.dart';
-import 'widgets/goal_card.dart';
 import 'widgets/home_empty_view.dart';
 import 'widgets/home_failure_view.dart';
 import 'widgets/home_loading_view.dart';
 import 'widgets/home_status_banner.dart';
-import 'widgets/monthly_summary.dart';
-import 'widgets/recent_transactions_list.dart';
-import 'widgets/spending_chart.dart';
 import 'widgets/upcoming_payments_list.dart';
 import 'widgets/voice_cta.dart';
 
@@ -352,38 +348,14 @@ class _PopulatedHome extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final locale = Localizations.localeOf(context).toLanguageTag();
     final balance = snapshot.balance;
-    final month = snapshot.monthSummary;
-    final trend = snapshot.trend;
     final materialL10n = MaterialLocalizations.of(context);
     final analyticsAvailable = snapshot.availableActions.contains(
       HomeAction.analytics,
     );
-    final goalsAvailable = snapshot.availableActions.contains(HomeAction.goals);
     final voiceAvailable = snapshot.availableActions.contains(
       HomeAction.voiceEntry,
     );
     bool blockFailed(HomeBlock block) => failedBlocks.contains(block);
-
-    final trendTitle = switch (trend.metric) {
-      TrendMetric.expense => l10n.trendExpensesTitle,
-      TrendMetric.balance => l10n.trendBalanceTitle,
-      TrendMetric.unknown => l10n.trendUnknownTitle,
-    };
-    final trendPeriodDescription = switch (trend.period) {
-      TrendPeriod.days7 => l10n.trendLast7Days,
-      TrendPeriod.days30 => l10n.trendLast30Days,
-      TrendPeriod.unknown => l10n.trendPeriodUnknown,
-    };
-    final trendPeriodLabel = switch (trend.period) {
-      TrendPeriod.days7 => l10n.trend7DaysChip,
-      TrendPeriod.days30 => l10n.trend30DaysChip,
-      TrendPeriod.unknown => l10n.trendPeriodUnknown,
-    };
-    final trendTotal = MoneyFormatter.format(
-      trend.total,
-      locale: locale,
-      privacy: privacyEnabled,
-    );
 
     final paymentItems = snapshot.upcomingPayments
         .map((payment) {
@@ -412,44 +384,6 @@ class _PopulatedHome extends StatelessWidget {
               amount,
             ),
             isOverdue: payment.status == PaymentStatus.overdue,
-          );
-        })
-        .toList(growable: false);
-
-    final transactionItems = snapshot.recentTransactions
-        .map((transaction) {
-          final kind = switch (transaction.direction) {
-            TransactionDirection.income => l10n.transactionIncome,
-            TransactionDirection.expense => l10n.transactionExpense,
-            TransactionDirection.transfer => l10n.transactionTransfer,
-            TransactionDirection.unknown => l10n.transactionUnknown,
-          };
-          final title = transaction.title ?? kind;
-          final category =
-              transaction.category ?? l10n.transactionCategoryUnavailable;
-          final date = materialL10n.formatMediumDate(transaction.occurredOn);
-          final metadata = l10n.transactionMetadata(category, date);
-          final amount = MoneyFormatter.format(
-            transaction.amount,
-            locale: locale,
-            privacy: privacyEnabled,
-            showPositiveSign:
-                transaction.direction == TransactionDirection.income,
-          );
-          return TransactionListItem(
-            keyValue: transaction.id,
-            title: title,
-            metadata: metadata,
-            amount: amount,
-            kindLabel: kind,
-            semanticsLabel: l10n.transactionSemantics(
-              title,
-              category,
-              date,
-              amount,
-              kind,
-            ),
-            direction: transaction.direction,
           );
         })
         .toList(growable: false);
@@ -503,116 +437,6 @@ class _PopulatedHome extends StatelessWidget {
           onPressed: voiceAvailable ? onVoicePressed : null,
         ),
         const SizedBox(height: AppSpacing.lg),
-        if (blockFailed(HomeBlock.monthSummary))
-          HomeBlockUnavailableCard(
-            key: const Key('month-summary-unavailable'),
-            label: l10n.monthSummaryUnavailable,
-          )
-        else
-          MonthlySummary(
-            title: l10n.monthSummaryTitle(
-              materialL10n.formatMonthYear(month.from),
-            ),
-            incomeLabel: l10n.income,
-            incomeValue: MoneyFormatter.format(
-              month.income,
-              locale: locale,
-              privacy: privacyEnabled,
-            ),
-            incomeCaption: l10n.incomeCaption,
-            expenseLabel: l10n.expenses,
-            expenseValue: MoneyFormatter.format(
-              month.expense,
-              locale: locale,
-              privacy: privacyEnabled,
-            ),
-            expenseCaption: l10n.expensesCaption,
-            netLabel: l10n.netFlow,
-            netValue: MoneyFormatter.format(
-              month.netFlow,
-              locale: locale,
-              privacy: privacyEnabled,
-              showPositiveSign: true,
-            ),
-            netCaption: l10n.netPositiveCaption,
-          ),
-        const SizedBox(height: AppSpacing.lg),
-        if (blockFailed(HomeBlock.trend))
-          HomeBlockUnavailableCard(
-            key: const Key('trend-unavailable'),
-            label: l10n.trendUnavailable,
-          )
-        else
-          SpendingChart(
-            trend: trend,
-            title: trendTitle,
-            periodDescription: trendPeriodDescription,
-            periodLabel: trendPeriodLabel,
-            detailsLabel: l10n.detailsAction,
-            emptyLabel: l10n.trendEmpty,
-            semanticsLabel: l10n.trendSemantics(
-              trendTitle,
-              privacyEnabled ? l10n.amountsHidden : trendTotal,
-            ),
-            amountsHiddenLabel: l10n.amountsHidden,
-            privacyEnabled: privacyEnabled,
-            onOpenDetails: analyticsAvailable ? onAnalyticsPressed : null,
-          ),
-        const SizedBox(height: AppSpacing.lg),
-        if (blockFailed(HomeBlock.primaryGoal))
-          GoalUnavailableCard(label: l10n.goalUnavailable)
-        else if (snapshot.primaryGoal case final goal?)
-          GoalCard(
-            title: goal.title,
-            dueLabel: l10n.goalDueDate(
-              materialL10n.formatMediumDate(goal.dueDate),
-            ),
-            currentValue: MoneyFormatter.format(
-              goal.current,
-              locale: locale,
-              privacy: privacyEnabled,
-            ),
-            targetAndProgressLabel: l10n.goalProgressSummary(
-              MoneyFormatter.format(
-                goal.target,
-                locale: locale,
-                privacy: privacyEnabled,
-              ),
-              MoneyFormatter.formatDecimal(
-                goal.progressPercent,
-                locale: locale,
-              ),
-            ),
-            monthlyContributionLabel: l10n.goalMonthlyContribution(
-              MoneyFormatter.format(
-                goal.monthlyContribution,
-                locale: locale,
-                privacy: privacyEnabled,
-              ),
-            ),
-            progressPercent: goal.progressPercent,
-            semanticsLabel: l10n.goalSemantics(
-              goal.title,
-              MoneyFormatter.format(
-                goal.current,
-                locale: locale,
-                privacy: privacyEnabled,
-              ),
-              MoneyFormatter.format(
-                goal.target,
-                locale: locale,
-                privacy: privacyEnabled,
-              ),
-              MoneyFormatter.formatDecimal(
-                goal.progressPercent,
-                locale: locale,
-              ),
-            ),
-            onPressed: goalsAvailable ? onGoalPressed : null,
-          )
-        else
-          GoalUnavailableCard(label: l10n.goalNotSelected),
-        const SizedBox(height: AppSpacing.lg),
         if (blockFailed(HomeBlock.upcomingPayments))
           HomeBlockUnavailableCard(
             key: const Key('upcoming-payments-unavailable'),
@@ -625,18 +449,6 @@ class _PopulatedHome extends StatelessWidget {
             emptyLabel: l10n.noUpcomingPayments,
             items: paymentItems,
             onOpenAll: analyticsAvailable ? onAnalyticsPressed : null,
-          ),
-        const SizedBox(height: AppSpacing.lg),
-        if (blockFailed(HomeBlock.recentTransactions))
-          HomeBlockUnavailableCard(
-            key: const Key('recent-transactions-unavailable'),
-            label: l10n.transactionsUnavailable,
-          )
-        else
-          RecentTransactionsList(
-            title: l10n.recentTransactionsTitle,
-            emptyLabel: l10n.noRecentTransactions,
-            items: transactionItems,
           ),
       ],
     );
