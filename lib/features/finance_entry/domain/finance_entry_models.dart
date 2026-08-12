@@ -1374,6 +1374,106 @@ final class AnalyticsTrendPoint {
   final String amount;
 }
 
+/// The longest sentence the parse endpoint accepts.
+///
+/// The server enforces this; the client checks it only to avoid spending a
+/// round trip on something that cannot be accepted.
+const int maximumEntryTextLength = 280;
+
+/// Why the parser could not fill a field.
+///
+/// Advisory, never an error: the user is looking at an editable form.
+enum OperationParseGap {
+  amountNotFound,
+  ambiguousAmount,
+  dateNotUnderstood,
+  categoryNotMatched,
+}
+
+/// What one written sentence appears to mean.
+///
+/// Not a draft and not confirmable: it carries no command id and no hash. The
+/// client builds the ordinary draft from it and Finance Core still decides
+/// (ADR 0022).
+@immutable
+final class OperationProposal {
+  const OperationProposal({
+    required this.type,
+    required this.amount,
+    required this.currency,
+    required this.occurredOn,
+    required this.sourceExpression,
+    required this.categoryId,
+    required this.category,
+    this.gaps = const [],
+  });
+
+  factory OperationProposal.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'proposal'});
+    _requireSchemaVersion(json);
+    final proposal = _nestedObject(json, 'proposal');
+    _expectKeys(proposal, const {
+      'type',
+      'amount',
+      'currency',
+      'occurredOn',
+      'sourceExpression',
+      'categoryId',
+      'category',
+      'gaps',
+    });
+    return OperationProposal(
+      type: _operationType(_requiredString(proposal, 'type')),
+      // Null is a real answer: the amount is the one field the parser refuses
+      // to guess.
+      amount: proposal['amount'] == null
+          ? null
+          : _positiveMoney(proposal, 'amount'),
+      currency: _currency(proposal, 'currency'),
+      occurredOn: _date(proposal, 'occurredOn'),
+      sourceExpression: _optionalBoundedText(
+        proposal,
+        'sourceExpression',
+        maximumLength: 128,
+      ),
+      categoryId: _optionalUuid(proposal, 'categoryId'),
+      category: _optionalBoundedText(proposal, 'category', maximumLength: 100),
+      gaps: _parseGaps(proposal['gaps']),
+    );
+  }
+
+  final FinanceOperationType type;
+  final String? amount;
+  final String currency;
+  final String occurredOn;
+  final String? sourceExpression;
+  final String? categoryId;
+  final String? category;
+  final List<OperationParseGap> gaps;
+}
+
+List<OperationParseGap> _parseGaps(Object? raw) {
+  if (raw is! List<Object?> || raw.length > 8) {
+    throw const FormatException('Invalid parse gaps.');
+  }
+  final gaps = <OperationParseGap>[];
+  for (final item in raw) {
+    if (item is! String) throw const FormatException('Invalid parse gap.');
+    // A gap is advisory. An unknown code from a newer server is dropped
+    // rather than failing the response: refusing to fill a form because of a
+    // hint the client does not recognise would be worse than the hint.
+    final gap = switch (item) {
+      'AMOUNT_NOT_FOUND' => OperationParseGap.amountNotFound,
+      'AMBIGUOUS_AMOUNT' => OperationParseGap.ambiguousAmount,
+      'DATE_NOT_UNDERSTOOD' => OperationParseGap.dateNotUnderstood,
+      'CATEGORY_NOT_MATCHED' => OperationParseGap.categoryNotMatched,
+      _ => null,
+    };
+    if (gap != null) gaps.add(gap);
+  }
+  return List<OperationParseGap>.unmodifiable(gaps);
+}
+
 /// Who is signed in, and the durable facts of their account.
 ///
 /// Deliberately carries no money. A balance belongs on Home, and a second

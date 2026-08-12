@@ -1019,5 +1019,45 @@
         "type": "String"
       }
     }
+  },
+  "entrySentenceField": "Опишите операцию одной фразой",
+  "@entrySentenceField": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceHint": "Потратил 12,50 на продукты вчера",
+  "@entrySentenceHint": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceParseAction": "Разобрать",
+  "@entrySentenceParseAction": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceFilled": "Заполнил поля ниже — проверьте и подтвердите.",
+  "@entrySentenceFilled": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceParseError": "Не удалось разобрать фразу.",
+  "@entrySentenceParseError": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceEmpty": "Напишите фразу покороче или начните с суммы.",
+  "@entrySentenceEmpty": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceGapAmount": "Сумму не нашёл — впишите её.",
+  "@entrySentenceGapAmount": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceGapAmbiguous": "В фразе несколько чисел — уточните сумму.",
+  "@entrySentenceGapAmbiguous": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceGapDate": "Дату не понял — проверьте её.",
+  "@entrySentenceGapDate": {
+    "description": "Natural-language entry (ADR 0022)."
+  },
+  "entrySentenceGapCategory": "Категорию не подобрал — выберите её.",
+  "@entrySentenceGapCategory": {
+    "description": "Natural-language entry (ADR 0022)."
   }
 }

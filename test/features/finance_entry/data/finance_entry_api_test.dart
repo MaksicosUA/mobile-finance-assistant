@@ -619,6 +619,123 @@ void main() {
       expect(_failure(result).kind, FinanceEntryFailureKind.malformedResponse);
     });
 
+    test('reads one sentence into a proposal', () async {
+      final adapter = _QueueAdapter([_JsonResponse(200, _proposal())]);
+      final api = _api(adapter);
+
+      final result = await api.parseOperationText(
+        accessToken: 'access-token',
+        text: 'Потратил 12,50 на продукты вчера',
+        capturedAt: '2026-08-13T09:00:00Z',
+        capturedTimezone: 'Europe/Berlin',
+      );
+
+      final proposal = (result as FinanceEntrySuccess<OperationProposal>).value;
+      expect(proposal.type, FinanceOperationType.expense);
+      expect(proposal.amount, '12.50');
+      expect(proposal.occurredOn, '2026-08-12');
+      expect(proposal.sourceExpression, 'вчера');
+      expect(adapter.requests.single.uri.path, '/api/v1/operations/parse');
+    });
+
+    test('a proposal without an amount is valid, not malformed', () async {
+      final withoutAmount = _proposal();
+      (withoutAmount['proposal']! as Map<String, Object?>)['amount'] = null;
+      (withoutAmount['proposal']! as Map<String, Object?>)['gaps'] = [
+        'AMOUNT_NOT_FOUND',
+      ];
+      final adapter = _QueueAdapter([_JsonResponse(200, withoutAmount)]);
+      final api = _api(adapter);
+
+      final result = await api.parseOperationText(
+        accessToken: 'access-token',
+        text: 'Купил продукты',
+        capturedAt: '2026-08-13T09:00:00Z',
+        capturedTimezone: 'Europe/Berlin',
+      );
+
+      // Refusing to guess is the designed answer, so it must parse cleanly.
+      final proposal = (result as FinanceEntrySuccess<OperationProposal>).value;
+      expect(proposal.amount, isNull);
+      expect(proposal.gaps, [OperationParseGap.amountNotFound]);
+    });
+
+    test('a proposal that tries to be confirmable is refused', () async {
+      final confirmable = _proposal();
+      (confirmable['proposal']! as Map<String, Object?>)['commandId'] =
+          '77777777-7777-4777-8777-777777777777';
+      final adapter = _QueueAdapter([_JsonResponse(200, confirmable)]);
+      final api = _api(adapter);
+
+      final result = await api.parseOperationText(
+        accessToken: 'access-token',
+        text: 'Потратил 12',
+        capturedAt: '2026-08-13T09:00:00Z',
+        capturedTimezone: 'Europe/Berlin',
+      );
+
+      // A proposal is powerless by contract. If it ever grows the fields that
+      // would make it committable, the client must fail rather than obey.
+      expect(_failure(result).kind, FinanceEntryFailureKind.malformedResponse);
+    });
+
+    test('an unknown gap from a newer server is dropped, not fatal', () async {
+      final unknownGap = _proposal();
+      (unknownGap['proposal']! as Map<String, Object?>)['gaps'] = [
+        'AMOUNT_NOT_FOUND',
+        'MERCHANT_NOT_MATCHED',
+      ];
+      final adapter = _QueueAdapter([_JsonResponse(200, unknownGap)]);
+      final api = _api(adapter);
+
+      final result = await api.parseOperationText(
+        accessToken: 'access-token',
+        text: 'Потратил 12',
+        capturedAt: '2026-08-13T09:00:00Z',
+        capturedTimezone: 'Europe/Berlin',
+      );
+
+      // A gap is a hint. Refusing to fill the form because of a hint the
+      // client does not recognise would be worse than the hint.
+      final proposal = (result as FinanceEntrySuccess<OperationProposal>).value;
+      expect(proposal.gaps, [OperationParseGap.amountNotFound]);
+    });
+
+    test('an empty sentence never reaches the network', () async {
+      final adapter = _QueueAdapter([]);
+      final api = _api(adapter);
+
+      final result = await api.parseOperationText(
+        accessToken: 'access-token',
+        text: '   ',
+        capturedAt: '2026-08-13T09:00:00Z',
+        capturedTimezone: 'Europe/Berlin',
+      );
+
+      expect(_failure(result).kind, FinanceEntryFailureKind.invalidInput);
+      expect(adapter.requests, isEmpty);
+    });
+
+    test('maps an unreadable sentence to a typed failure', () async {
+      final adapter = _QueueAdapter([
+        const _JsonResponse(503, {
+          'detail': {'code': 'TEXT_ENTRY_UNAVAILABLE'},
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.parseOperationText(
+        accessToken: 'access-token',
+        text: 'Потратил 12',
+        capturedAt: '2026-08-13T09:00:00Z',
+        capturedTimezone: 'Europe/Berlin',
+      );
+
+      final failure = _failure(result);
+      expect(failure.kind, FinanceEntryFailureKind.serviceUnavailable);
+      expect(failure.code, FinanceEntryErrorCode.textEntryUnavailable);
+    });
+
     test('maps an unavailable profile to a typed failure', () async {
       final adapter = _QueueAdapter([
         const _JsonResponse(503, {
@@ -634,6 +751,22 @@ void main() {
       expect(failure.code, FinanceEntryErrorCode.profileUnavailable);
     });
   });
+}
+
+Map<String, Object?> _proposal() {
+  return <String, Object?>{
+    'schemaVersion': '1',
+    'proposal': <String, Object?>{
+      'type': 'expense',
+      'amount': '12.50',
+      'currency': 'EUR',
+      'occurredOn': '2026-08-12',
+      'sourceExpression': 'вчера',
+      'categoryId': '66666666-6666-4666-8666-666666666666',
+      'category': 'продукты',
+      'gaps': <Object?>[],
+    },
+  };
 }
 
 Map<String, Object?> _profile({bool account = true}) {

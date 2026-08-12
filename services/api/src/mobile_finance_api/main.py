@@ -48,6 +48,7 @@ from .repository import (
     HomeRepository,
     UnavailableHomeRepository,
 )
+from .text_entry_routes import router as text_entry_router
 from .timezones import validated_iana_timezone
 
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
@@ -392,6 +393,10 @@ def create_app(
     application.include_router(category_router)
     application.include_router(analytics_router)
     application.include_router(profile_router)
+    # Shares the /api/v1/operations prefix with the write routes on purpose:
+    # proposing and committing are the same resource, but only one of them
+    # writes (ADR 0022).
+    application.include_router(text_entry_router)
     application.include_router(router)
     return application
 

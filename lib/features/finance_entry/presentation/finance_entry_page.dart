@@ -10,6 +10,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/application/auth_controller.dart';
 import '../application/category_catalogue_controller.dart';
 import '../application/finance_entry_controller.dart';
+import '../application/text_entry_controller.dart';
 import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
 import 'widgets/category_picker.dart';
@@ -392,6 +393,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   late final TextEditingController _amountController;
   late final TextEditingController _categoryController;
   late final TextEditingController _merchantController;
+  late final TextEditingController _sentenceController;
   late FinanceOperationType _type;
   late DateTime _occurredOn;
   CategoryChoice _categoryChoice = const CategoryUnset();
@@ -404,6 +406,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     _amountController = TextEditingController(text: input.amount);
     _categoryController = TextEditingController(text: input.category);
     _merchantController = TextEditingController(text: input.merchant);
+    _sentenceController = TextEditingController();
     _type = input.type;
     _occurredOn = input.occurredOn;
     if ((input.category ?? '').isNotEmpty && input.categoryId == null) {
@@ -420,13 +423,41 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     _amountController.dispose();
     _categoryController.dispose();
     _merchantController.dispose();
+    _sentenceController.dispose();
     super.dispose();
+  }
+
+  /// Fills the form from a proposal. It fills fields and nothing else: the
+  /// operation is still written by the ordinary confirm path below (ADR 0022).
+  void _applyProposal(OperationProposal proposal) {
+    final catalogue = ref.read(categoryCatalogueProvider.notifier);
+    setState(() {
+      _type = proposal.type;
+      // A missing amount leaves whatever is already typed alone: the parser
+      // reporting a gap must not erase the user's own correction.
+      final amount = proposal.amount;
+      if (amount != null) _amountController.text = amount;
+      final occurredOn = DateTime.tryParse('${proposal.occurredOn}T00:00:00Z');
+      if (occurredOn != null) _occurredOn = occurredOn;
+      final categoryId = proposal.categoryId;
+      if (categoryId == null) return;
+      for (final category in catalogue.forDirection(proposal.type)) {
+        if (category.categoryId != categoryId) continue;
+        _categoryChoice = CategoryFromCatalogue(category);
+        _categoryController.clear();
+        return;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final account = widget.state.account;
+    final textEntry = ref.watch(textEntryControllerProvider);
+    ref.listen<TextEntryState>(textEntryControllerProvider, (previous, next) {
+      if (next is TextEntryParsed) _applyProposal(next.proposal);
+    });
     return Form(
       key: _formKey,
       autovalidateMode: _validateContinuously
@@ -439,6 +470,15 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
             icon: Icons.edit_note_rounded,
             title: l10n.manualOperationTitle,
             description: l10n.manualOperationDescription,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _SentenceField(
+            controller: _sentenceController,
+            state: textEntry,
+            enabled: !widget.state.isSubmitting,
+            onParse: () => ref
+                .read(textEntryControllerProvider.notifier)
+                .parse(_sentenceController.text),
           ),
           if (widget.state.accountCreated) ...[
             const SizedBox(height: AppSpacing.md),
@@ -1152,6 +1192,95 @@ class _Intro extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// One sentence in, a filled form out.
+///
+/// The sentence is read on the server and comes back as a proposal; nothing
+/// here records anything. What it fills in stays editable, and the ordinary
+/// confirmation below is still what writes the operation (ADR 0022).
+class _SentenceField extends StatelessWidget {
+  const _SentenceField({
+    required this.controller,
+    required this.state,
+    required this.enabled,
+    required this.onParse,
+  });
+
+  final TextEditingController controller;
+  final TextEntryState state;
+  final bool enabled;
+  final VoidCallback onParse;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final parsing = state is TextEntryParsing;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          key: const Key('operation-sentence'),
+          controller: controller,
+          enabled: enabled && !parsing,
+          maxLength: maximumEntryTextLength,
+          maxLines: 2,
+          minLines: 1,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => onParse(),
+          decoration: InputDecoration(
+            labelText: l10n.entrySentenceField,
+            hintText: l10n.entrySentenceHint,
+            counterText: '',
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        OutlinedButton.icon(
+          key: const Key('operation-sentence-parse'),
+          onPressed: enabled && !parsing ? onParse : null,
+          icon: parsing
+              ? const _ButtonProgress()
+              : const Icon(Icons.auto_awesome_outlined),
+          label: Text(l10n.entrySentenceParseAction),
+        ),
+        if (state case final TextEntryFailed failed) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _StatusMessage(
+            key: const Key('operation-sentence-error'),
+            icon: Icons.error_outline_rounded,
+            message: failed.failure.kind == FinanceEntryFailureKind.invalidInput
+                ? l10n.entrySentenceEmpty
+                : l10n.entrySentenceParseError,
+          ),
+        ],
+        if (state case final TextEntryParsed parsed) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _StatusMessage(
+            key: const Key('operation-sentence-result'),
+            icon: parsed.proposal.gaps.isEmpty
+                ? Icons.check_circle_outline_rounded
+                : Icons.info_outline_rounded,
+            // A gap is not a failure: it names the one field the parser
+            // refused to guess, so the user knows what to look at.
+            message: [
+              l10n.entrySentenceFilled,
+              for (final gap in parsed.proposal.gaps) _gapMessage(l10n, gap),
+            ].join(' '),
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _gapMessage(AppLocalizations l10n, OperationParseGap gap) {
+    return switch (gap) {
+      OperationParseGap.amountNotFound => l10n.entrySentenceGapAmount,
+      OperationParseGap.ambiguousAmount => l10n.entrySentenceGapAmbiguous,
+      OperationParseGap.dateNotUnderstood => l10n.entrySentenceGapDate,
+      OperationParseGap.categoryNotMatched => l10n.entrySentenceGapCategory,
+    };
   }
 }
 

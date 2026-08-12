@@ -45,6 +45,7 @@ enum FinanceEntryErrorCode {
   analyticsUnavailable,
   malformedAnalyticsQuery,
   profileUnavailable,
+  textEntryUnavailable,
   authenticationUnavailable,
   financePersistenceUnavailable,
 }

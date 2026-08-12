@@ -2432,6 +2432,66 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Версия {version}'**
   String profileVersion(String version);
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Опишите операцию одной фразой'**
+  String get entrySentenceField;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Потратил 12,50 на продукты вчера'**
+  String get entrySentenceHint;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Разобрать'**
+  String get entrySentenceParseAction;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Заполнил поля ниже — проверьте и подтвердите.'**
+  String get entrySentenceFilled;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось разобрать фразу.'**
+  String get entrySentenceParseError;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Напишите фразу покороче или начните с суммы.'**
+  String get entrySentenceEmpty;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сумму не нашёл — впишите её.'**
+  String get entrySentenceGapAmount;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'В фразе несколько чисел — уточните сумму.'**
+  String get entrySentenceGapAmbiguous;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Дату не понял — проверьте её.'**
+  String get entrySentenceGapDate;
+
+  /// Natural-language entry (ADR 0022).
+  ///
+  /// In ru, this message translates to:
+  /// **'Категорию не подобрал — выберите её.'**
+  String get entrySentenceGapCategory;
 }
 
 class _AppLocalizationsDelegate

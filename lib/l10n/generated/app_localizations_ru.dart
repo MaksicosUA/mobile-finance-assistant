@@ -1341,4 +1341,37 @@ class AppLocalizationsRu extends AppLocalizations {
   String profileVersion(String version) {
     return 'Версия $version';
   }
+
+  @override
+  String get entrySentenceField => 'Опишите операцию одной фразой';
+
+  @override
+  String get entrySentenceHint => 'Потратил 12,50 на продукты вчера';
+
+  @override
+  String get entrySentenceParseAction => 'Разобрать';
+
+  @override
+  String get entrySentenceFilled =>
+      'Заполнил поля ниже — проверьте и подтвердите.';
+
+  @override
+  String get entrySentenceParseError => 'Не удалось разобрать фразу.';
+
+  @override
+  String get entrySentenceEmpty =>
+      'Напишите фразу покороче или начните с суммы.';
+
+  @override
+  String get entrySentenceGapAmount => 'Сумму не нашёл — впишите её.';
+
+  @override
+  String get entrySentenceGapAmbiguous =>
+      'В фразе несколько чисел — уточните сумму.';
+
+  @override
+  String get entrySentenceGapDate => 'Дату не понял — проверьте её.';
+
+  @override
+  String get entrySentenceGapCategory => 'Категорию не подобрал — выберите её.';
 }
