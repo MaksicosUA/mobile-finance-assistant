@@ -2276,6 +2276,84 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не удалось загрузить категории'**
   String get categoryLoadError;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Все операции'**
+  String get operationHistoryTitle;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Все операции'**
+  String get operationHistorySettingsAction;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'История записей и что было вписано'**
+  String get operationHistorySettingsDescription;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока ни одной записи'**
+  String get operationHistoryEmpty;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Показать ещё'**
+  String get operationHistoryMore;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить операции'**
+  String get operationHistoryLoadError;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить продолжение'**
+  String get operationHistoryLoadMoreError;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'{date}'**
+  String operationHistoryDate(DateTime date);
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата'**
+  String get operationDetailDate;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Категория'**
+  String get operationDetailCategory;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Где'**
+  String get operationDetailMerchant;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Было вписано'**
+  String get operationDetailOriginalText;
+
+  /// Operation history (ADR 0020, step 4).
+  ///
+  /// In ru, this message translates to:
+  /// **'Категорию позже переименовали'**
+  String get operationDetailOriginalTextHint;
 }
 
 class _AppLocalizationsDelegate

@@ -1242,4 +1242,50 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get categoryLoadError => 'Не удалось загрузить категории';
+
+  @override
+  String get operationHistoryTitle => 'Все операции';
+
+  @override
+  String get operationHistorySettingsAction => 'Все операции';
+
+  @override
+  String get operationHistorySettingsDescription =>
+      'История записей и что было вписано';
+
+  @override
+  String get operationHistoryEmpty => 'Пока ни одной записи';
+
+  @override
+  String get operationHistoryMore => 'Показать ещё';
+
+  @override
+  String get operationHistoryLoadError => 'Не удалось загрузить операции';
+
+  @override
+  String get operationHistoryLoadMoreError =>
+      'Не удалось загрузить продолжение';
+
+  @override
+  String operationHistoryDate(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return '$dateString';
+  }
+
+  @override
+  String get operationDetailDate => 'Дата';
+
+  @override
+  String get operationDetailCategory => 'Категория';
+
+  @override
+  String get operationDetailMerchant => 'Где';
+
+  @override
+  String get operationDetailOriginalText => 'Было вписано';
+
+  @override
+  String get operationDetailOriginalTextHint => 'Категорию позже переименовали';
 }

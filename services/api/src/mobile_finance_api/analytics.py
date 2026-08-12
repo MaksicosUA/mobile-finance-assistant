@@ -1,0 +1,223 @@
+"""Deterministic spending and income analysis for one local month.
+
+Read-only. Nothing here decides or changes financial state; it groups facts
+Finance Core already committed.
+
+The period rules are imported from the Home projection rather than repeated,
+because two definitions of "this month" is how two screens start disagreeing
+about the same money.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+from decimal import ROUND_DOWN, Decimal
+from uuid import UUID
+
+from .decimal_math import wide_decimal_context
+from .home_projection import (
+    HomeProjectionInvariantError,
+    ProjectionAccount,
+    effective_operations,
+    period_operations,
+    reporting_period,
+)
+
+_PERCENT_QUANTUM = Decimal("0.01")
+_HUNDRED = Decimal(100)
+_TREND_DAYS = 7
+
+
+@dataclass(frozen=True, slots=True)
+class AnalyticsOperation:
+    """One committed operation, with the link analysis groups by."""
+
+    operation_id: UUID
+    account_id: UUID | None
+    operation_type: str
+    amount: Decimal
+    occurred_on: date
+    created_at: datetime
+    category_id: UUID | None
+    # The category's current name, resolved through the link (ADR 0020). None
+    # for an operation recorded before the catalogue and never linked.
+    category_name: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class CategoryTotal:
+    """What one category accounts for in the period."""
+
+    # Null for operations that carry no link. Uncategorized is reported as its
+    # own line rather than hidden or guessed at (ADR 0020).
+    category_id: UUID | None
+    name: str | None
+    amount: Decimal
+    share_percent: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class TrendPoint:
+    point_date: date
+    amount: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class AnalyticsView:
+    timezone_name: str
+    period_start: date
+    period_end: date
+    generated_at: datetime
+    base_currency: str
+    income: Decimal
+    expense: Decimal
+    net_flow: Decimal
+    expense_by_category: tuple[CategoryTotal, ...]
+    income_by_category: tuple[CategoryTotal, ...]
+    trend_total: Decimal
+    trend_points: tuple[TrendPoint, ...]
+
+
+def build_analytics(
+    *,
+    account: ProjectionAccount,
+    operations: tuple[AnalyticsOperation, ...],
+    generated_at: datetime,
+) -> AnalyticsView:
+    """Group one account's committed operations for the current local month."""
+
+    generated_at = _aware_utc(generated_at)
+    period = reporting_period(
+        timezone_name=account.opening_timezone,
+        generated_at=generated_at,
+    )
+    if account.opening_balance_on > period.cutoff_local_date:
+        raise HomeProjectionInvariantError(
+            "opening baseline is later than the analysed date"
+        )
+
+    allocated = tuple(
+        operation
+        for operation in operations
+        if operation.account_id == account.account_id
+        and _aware_utc(operation.created_at) <= generated_at
+    )
+    effective = effective_operations(
+        allocated,
+        opening_balance_on=account.opening_balance_on,
+        cutoff_local_date=period.cutoff_local_date,
+    )
+    month = period_operations(
+        effective,
+        period_start=period.period_start,
+        opening_balance_on=account.opening_balance_on,
+        cutoff_local_date=period.cutoff_local_date,
+    )
+
+    income = _total(month, "income")
+    expense = _total(month, "expense")
+
+    trend_start = period.cutoff_local_date - timedelta(days=_TREND_DAYS - 1)
+    trend_points = tuple(
+        TrendPoint(
+            point_date=point_date,
+            amount=sum(
+                (
+                    operation.amount
+                    for operation in effective
+                    if operation.operation_type == "expense"
+                    and operation.occurred_on == point_date
+                ),
+                start=Decimal(0),
+            ),
+        )
+        for point_date in (
+            trend_start + timedelta(days=offset) for offset in range(_TREND_DAYS)
+        )
+    )
+
+    return AnalyticsView(
+        timezone_name=period.timezone_name,
+        period_start=period.period_start,
+        period_end=period.period_end,
+        generated_at=generated_at,
+        base_currency=account.currency,
+        income=income,
+        expense=expense,
+        net_flow=income - expense,
+        expense_by_category=_by_category(month, "expense", total=expense),
+        income_by_category=_by_category(month, "income", total=income),
+        trend_total=sum((point.amount for point in trend_points), start=Decimal(0)),
+        trend_points=trend_points,
+    )
+
+
+def _total(operations: tuple[AnalyticsOperation, ...], direction: str) -> Decimal:
+    return sum(
+        (
+            operation.amount
+            for operation in operations
+            if operation.operation_type == direction
+        ),
+        start=Decimal(0),
+    )
+
+
+def _by_category(
+    operations: tuple[AnalyticsOperation, ...],
+    direction: str,
+    *,
+    total: Decimal,
+) -> tuple[CategoryTotal, ...]:
+    """Sum one direction per category, largest first.
+
+    Only categories with something in the period appear. A catalogue can hold
+    dozens of unused categories, and a list of zeroes buries the few lines that
+    say anything.
+    """
+
+    sums: dict[UUID | None, Decimal] = {}
+    names: dict[UUID | None, str | None] = {}
+    for operation in operations:
+        if operation.operation_type != direction:
+            continue
+        key = operation.category_id
+        sums[key] = sums.get(key, Decimal(0)) + operation.amount
+        # An unlinked operation has no name to show; the screen labels it.
+        names.setdefault(key, operation.category_name if key is not None else None)
+
+    return tuple(
+        sorted(
+            (
+                CategoryTotal(
+                    category_id=key,
+                    name=names[key],
+                    amount=amount,
+                    share_percent=_share(amount, total=total),
+                )
+                for key, amount in sums.items()
+                if amount > 0
+            ),
+            # Largest first, then by name so equal amounts keep a stable order
+            # instead of shuffling between reads.
+            key=lambda item: (-item.amount, (item.name or ""), str(item.category_id)),
+        )
+    )
+
+
+def _share(amount: Decimal, *, total: Decimal) -> Decimal:
+    if total <= 0:
+        return Decimal("0.00")
+    with wide_decimal_context():
+        ratio = (amount / total) * _HUNDRED
+    # Truncated rather than rounded, for the same reason goal progress is: a
+    # share must never read as more than it is, and the exact ratio rarely
+    # fits a fixed scale.
+    return ratio.quantize(_PERCENT_QUANTUM, rounding=ROUND_DOWN)
+
+
+def _aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise HomeProjectionInvariantError("analysis requires aware timestamps")
+    return value.astimezone(UTC)

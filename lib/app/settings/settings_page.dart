@@ -14,12 +14,14 @@ class SettingsPage extends ConsumerWidget {
     this.onCorrectOpeningDate,
     this.onPlanCost,
     this.onManageCategories,
+    this.onOperationHistory,
     this.onSignOut,
   });
 
   final VoidCallback? onCorrectOpeningDate;
   final VoidCallback? onPlanCost;
   final VoidCallback? onManageCategories;
+  final VoidCallback? onOperationHistory;
   final Future<void> Function()? onSignOut;
 
   @override
@@ -126,6 +128,7 @@ class SettingsPage extends ConsumerWidget {
                 if (onCorrectOpeningDate != null ||
                     onPlanCost != null ||
                     onManageCategories != null ||
+                    onOperationHistory != null ||
                     onSignOut != null) ...[
                   const SizedBox(height: AppSpacing.lg),
                   _SectionLabel(l10n.accountSection),
@@ -167,6 +170,20 @@ class SettingsPage extends ConsumerWidget {
                         label: l10n.categoriesSettingsAction,
                         description: l10n.categoriesSettingsDescription,
                         onPressed: onManageCategories!,
+                      ),
+                    ),
+                    if (onOperationHistory != null || onSignOut != null)
+                      const SizedBox(height: AppSpacing.sm),
+                  ],
+                  if (onOperationHistory != null) ...[
+                    Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: _SettingsActionRow(
+                        key: const Key('settings-operation-history'),
+                        icon: Icons.receipt_long_outlined,
+                        label: l10n.operationHistorySettingsAction,
+                        description: l10n.operationHistorySettingsDescription,
+                        onPressed: onOperationHistory!,
                       ),
                     ),
                     if (onSignOut != null)

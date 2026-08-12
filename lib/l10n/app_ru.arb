@@ -886,4 +886,63 @@
   "@categoryLoadError": {
     "description": "Category management (ADR 0020, step 2b)."
   }
+  ,
+  "operationHistoryTitle": "Все операции",
+  "@operationHistoryTitle": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationHistorySettingsAction": "Все операции",
+  "@operationHistorySettingsAction": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationHistorySettingsDescription": "История записей и что было вписано",
+  "@operationHistorySettingsDescription": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationHistoryEmpty": "Пока ни одной записи",
+  "@operationHistoryEmpty": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationHistoryMore": "Показать ещё",
+  "@operationHistoryMore": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationHistoryLoadError": "Не удалось загрузить операции",
+  "@operationHistoryLoadError": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationHistoryLoadMoreError": "Не удалось загрузить продолжение",
+  "@operationHistoryLoadMoreError": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationHistoryDate": "{date}",
+  "@operationHistoryDate": {
+    "description": "Operation history (ADR 0020, step 4).",
+    "placeholders": {
+      "date": {
+        "type": "DateTime",
+        "format": "yMMMMd"
+      }
+    }
+  },
+  "operationDetailDate": "Дата",
+  "@operationDetailDate": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationDetailCategory": "Категория",
+  "@operationDetailCategory": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationDetailMerchant": "Где",
+  "@operationDetailMerchant": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationDetailOriginalText": "Было вписано",
+  "@operationDetailOriginalText": {
+    "description": "Operation history (ADR 0020, step 4)."
+  },
+  "operationDetailOriginalTextHint": "Категорию позже переименовали",
+  "@operationDetailOriginalTextHint": {
+    "description": "Operation history (ADR 0020, step 4)."
+  }
 }

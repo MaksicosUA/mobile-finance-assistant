@@ -15,6 +15,7 @@ from .operation_contracts import (
     CommitOperationRequest,
     CommittedOperation,
     EvaluateOperationResponse,
+    ListOperationsResponse,
     OperationDraft,
     OperationIssue,
 )
@@ -126,6 +127,16 @@ class UnavailableFinanceOperationRepository:
         del user_id, draft, payload_hash, confirmed_at
         raise FinancePersistenceUnavailable
 
+    async def list_operations(
+        self,
+        *,
+        user_id: UUID,
+        limit: int,
+        cursor: str | None,
+    ) -> ListOperationsResponse:
+        del user_id, limit, cursor
+        raise FinancePersistenceUnavailable
+
 
 class FinanceCore:
     """Validate drafts and delegate the sole authoritative write transaction."""
@@ -144,6 +155,17 @@ class FinanceCore:
             if category_directory is not None
             else UnavailableFinanceCategoryDirectory()
         )
+
+    @property
+    def operation_store(self) -> FinanceOperationRepository:
+        """The adapter this core writes through, for read-only routes.
+
+        Exposed so wiring the core also wires reading operations back. Keeping
+        them separate meant a deployment could accept writes and answer 503 to
+        every read, which is exactly what happened once.
+        """
+
+        return self._repository
 
     async def evaluate(
         self,

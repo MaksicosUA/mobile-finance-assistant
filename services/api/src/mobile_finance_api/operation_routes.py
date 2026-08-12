@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Annotated, cast
+from typing import Annotated, Protocol, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 
 from .auth import AuthenticatedUser, current_user
 from .finance_core import (
@@ -20,11 +28,30 @@ from .operation_contracts import (
     CommitOperationResponse,
     EvaluateOperationRequest,
     EvaluateOperationResponse,
+    ListOperationsResponse,
     OperationErrorCode,
     OperationErrorDetail,
     OperationErrorResponse,
     OperationIssue,
 )
+from .postgres_finance_repository import (
+    MAXIMUM_HISTORY_PAGE,
+    InvalidOperationCursor,
+)
+
+
+class FinanceOperationReader(Protocol):
+    """Structural type of the read adapter the history route needs."""
+
+    async def list_operations(
+        self,
+        *,
+        user_id: UUID,
+        limit: int,
+        cursor: str | None,
+    ) -> ListOperationsResponse:
+        """Return one page of the user's confirmed operations."""
+
 
 router = APIRouter(prefix="/api/v1/operations", tags=["finance-operations"])
 
@@ -143,6 +170,59 @@ async def commit_operation(
         )
     # Raise outside the active handler so financial input and DB details are not
     # retained as public exception context.
+    raise public_error
+
+
+@router.get(
+    "",
+    response_model=ListOperationsResponse,
+    response_model_by_alias=True,
+    responses={
+        400: {
+            "model": OperationErrorResponse,
+            "description": "The paging cursor is malformed",
+        },
+        401: {"description": "Authentication is required"},
+        503: {
+            "model": OperationErrorResponse,
+            "description": "Finance Core persistence is unavailable",
+        },
+    },
+)
+async def list_operations(
+    request: Request,
+    user: CurrentUserDependency,
+    limit: Annotated[int, Query(ge=1, le=MAXIMUM_HISTORY_PAGE)] = 30,
+    cursor: Annotated[str | None, Query(max_length=256)] = None,
+) -> ListOperationsResponse:
+    """Read the caller's own confirmed operations, newest first.
+
+    Deliberately not routed through Finance Core: this changes nothing, and
+    the core is the authority for decisions, not for reads.
+    """
+
+    try:
+        user_id = UUID(user.subject)
+    except ValueError:
+        raise _unavailable() from None
+
+    repository = cast(
+        FinanceOperationReader,
+        request.app.state.finance_operation_repository,
+    )
+    try:
+        return await repository.list_operations(
+            user_id=user_id,
+            limit=limit,
+            cursor=cursor,
+        )
+    except InvalidOperationCursor:
+        public_error = _operation_error(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="MALFORMED_OPERATION",
+        )
+    except Exception:
+        public_error = _unavailable()
     raise public_error
 
 

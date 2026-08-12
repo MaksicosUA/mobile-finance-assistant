@@ -21,6 +21,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .account_core import AccountCore, UnavailableFinanceAccountRepository
 from .account_routes import router as account_router
+from .analytics_routes import router as analytics_router
 from .auth import (
     AuthenticatedUser,
     CurrentUserAuthenticator,
@@ -37,6 +38,7 @@ from .models import HomeResponse, HomeV1Response
 from .operation_routes import router as operation_router
 from .planned_cost_core import PlannedCostCore, UnavailablePlannedCostRepository
 from .planned_cost_routes import router as planned_cost_router
+from .postgres_analytics_repository import UnavailableAnalyticsRepository
 from .postgres_category_repository import UnavailableCategoryRepository
 from .repository import (
     HomeCanonicalTimezoneMismatch,
@@ -259,6 +261,8 @@ def create_app(
     planned_cost_core: PlannedCostCore | None = None,
     goal_core: GoalCore | None = None,
     category_repository: object | None = None,
+    finance_operation_repository: object | None = None,
+    analytics_repository: object | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
@@ -318,13 +322,30 @@ def create_app(
         if category_repository is not None
         else UnavailableCategoryRepository()
     )
+    # Reading history is not a Finance Core decision, so the route reaches the
+    # adapter directly rather than widening the core with a read method. It
+    # defaults to the core's own adapter rather than to the unavailable stub:
+    # a caller that wired writes has wired reads, and forgetting the second
+    # parameter used to answer 503 to every read while writes worked.
+    application.state.finance_operation_repository = (
+        finance_operation_repository
+        if finance_operation_repository is not None
+        else application.state.finance_core.operation_store
+    )
+    application.state.analytics_repository = (
+        analytics_repository
+        if analytics_repository is not None
+        else UnavailableAnalyticsRepository()
+    )
 
     @application.exception_handler(RequestValidationError)
     async def redacted_request_validation_error(
         request: Request,
         error: RequestValidationError,
     ) -> Response:
-        if request.url.path.startswith("/api/v1/operations/"):
+        # No trailing slash: the collection path itself takes query parameters
+        # now, and its validation errors must be redacted the same way.
+        if request.url.path.startswith("/api/v1/operations"):
             return JSONResponse(
                 status_code=422,
                 content={"detail": {"code": "MALFORMED_OPERATION", "issues": []}},
@@ -361,6 +382,7 @@ def create_app(
     application.include_router(planned_cost_router)
     application.include_router(goal_router)
     application.include_router(category_router)
+    application.include_router(analytics_router)
     application.include_router(router)
     return application
 

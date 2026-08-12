@@ -40,6 +40,11 @@ abstract interface class FinanceEntryRepositoryClient {
 
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories();
 
+  Future<FinanceEntryResult<OperationHistoryList>> listOperations({
+    required int limit,
+    String? cursor,
+  });
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories();
 
   Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
@@ -192,6 +197,20 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories() {
     return _authorized(
       (accessToken) => _api.listCategories(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<OperationHistoryList>> listOperations({
+    required int limit,
+    String? cursor,
+  }) {
+    return _authorized(
+      (accessToken) => _api.listOperations(
+        accessToken: accessToken,
+        limit: limit,
+        cursor: cursor,
+      ),
     );
   }
 

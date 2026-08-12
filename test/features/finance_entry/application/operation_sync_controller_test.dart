@@ -1383,6 +1383,11 @@ final class _FakeFinanceEntryRepository
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories() =>
       throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<OperationHistoryList>> listOperations({
+    required int limit,
+    String? cursor,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
     CreateCategoryCommand command,
   ) => throw UnimplementedError();
