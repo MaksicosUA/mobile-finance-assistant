@@ -642,6 +642,9 @@ final class _FakeFinanceEntryRepository
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories() =>
       throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() =>
+      throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<OperationHistoryList>> listOperations({
     required int limit,
     String? cursor,

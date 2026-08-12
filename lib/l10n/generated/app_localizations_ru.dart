@@ -1288,4 +1288,29 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get operationDetailOriginalTextHint => 'Категорию позже переименовали';
+
+  @override
+  String get analyticsExpenseByCategory => 'Расходы по категориям';
+
+  @override
+  String get analyticsIncomeByCategory => 'Доходы по категориям';
+
+  @override
+  String get analyticsBreakdownEmpty => 'За этот месяц записей нет';
+
+  @override
+  String get analyticsLoadError => 'Не удалось посчитать аналитику';
+
+  @override
+  String analyticsShare(String percent) {
+    return '$percent%';
+  }
+
+  @override
+  String analyticsMonth(DateTime month) {
+    final intl.DateFormat monthDateFormat = intl.DateFormat.LLLL(localeName);
+    final String monthString = monthDateFormat.format(month);
+
+    return '$monthString';
+  }
 }

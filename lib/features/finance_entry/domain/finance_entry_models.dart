@@ -1242,6 +1242,166 @@ String validatedOperationCursor(String value) {
   return value;
 }
 
+/// What one category accounts for in the analysed month.
+@immutable
+final class AnalyticsCategoryTotal {
+  const AnalyticsCategoryTotal({
+    required this.categoryId,
+    required this.name,
+    required this.amount,
+    required this.sharePercent,
+  });
+
+  factory AnalyticsCategoryTotal.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'categoryId', 'name', 'amount', 'sharePercent'});
+    final categoryId = json['categoryId'] == null
+        ? null
+        : _requiredUuid(json, 'categoryId');
+    final name = json['name'] == null
+        ? null
+        : _boundedText(json, 'name', maximumLength: 100);
+    if ((categoryId == null) != (name == null)) {
+      throw const FormatException('A category total needs both or neither.');
+    }
+    return AnalyticsCategoryTotal(
+      categoryId: categoryId,
+      name: name,
+      amount: _positiveMoney(json, 'amount'),
+      sharePercent: _signedMoney(json, 'sharePercent'),
+    );
+  }
+
+  /// Null for operations that carry no category link. The screen labels that
+  /// line rather than hiding it, or the parts would stop summing to the whole.
+  final String? categoryId;
+  final String? name;
+  final String amount;
+  final String sharePercent;
+
+  bool get isUncategorized => categoryId == null;
+}
+
+/// One analysed month: totals, both breakdowns, and the expense series.
+@immutable
+final class AnalyticsSummary {
+  factory AnalyticsSummary.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'generatedAt',
+      'baseCurrency',
+      'period',
+      'totals',
+      'expenseByCategory',
+      'incomeByCategory',
+      'trend',
+    });
+    _requireSchemaVersion(json);
+    final period = _nestedObject(json, 'period');
+    _expectKeys(period, const {'from', 'to'});
+    final totals = _nestedObject(json, 'totals');
+    _expectKeys(totals, const {'income', 'expense', 'netFlow'});
+    final trend = _nestedObject(json, 'trend');
+    _expectKeys(trend, const {'metric', 'period', 'total', 'points'});
+    if (trend['metric'] != 'expense' || trend['period'] != '7d') {
+      throw const FormatException('Unsupported analytics trend.');
+    }
+    return AnalyticsSummary(
+      periodStart: _date(period, 'from'),
+      periodEnd: _date(period, 'to'),
+      baseCurrency: _currency(json, 'baseCurrency'),
+      income: _signedMoney(totals, 'income'),
+      expense: _signedMoney(totals, 'expense'),
+      netFlow: _signedMoney(totals, 'netFlow'),
+      trendTotal: _signedMoney(trend, 'total'),
+      expenseByCategory: _categoryTotals(json['expenseByCategory']),
+      incomeByCategory: _categoryTotals(json['incomeByCategory']),
+      trendPoints: _trendPoints(trend['points']),
+    );
+  }
+
+  AnalyticsSummary({
+    required this.periodStart,
+    required this.periodEnd,
+    required this.baseCurrency,
+    required this.income,
+    required this.expense,
+    required this.netFlow,
+    required this.trendTotal,
+    required List<AnalyticsCategoryTotal> expenseByCategory,
+    required List<AnalyticsCategoryTotal> incomeByCategory,
+    required List<AnalyticsTrendPoint> trendPoints,
+  }) : expenseByCategory = List<AnalyticsCategoryTotal>.unmodifiable(
+         expenseByCategory,
+       ),
+       incomeByCategory = List<AnalyticsCategoryTotal>.unmodifiable(
+         incomeByCategory,
+       ),
+       trendPoints = List<AnalyticsTrendPoint>.unmodifiable(trendPoints);
+
+  final String periodStart;
+  final String periodEnd;
+  final String baseCurrency;
+  final String income;
+  final String expense;
+  final String netFlow;
+  final String trendTotal;
+
+  /// Largest first. Only categories with something in the period are present.
+  final List<AnalyticsCategoryTotal> expenseByCategory;
+  final List<AnalyticsCategoryTotal> incomeByCategory;
+  final List<AnalyticsTrendPoint> trendPoints;
+
+  bool get isEmpty =>
+      expenseByCategory.isEmpty &&
+      incomeByCategory.isEmpty &&
+      income == '0' &&
+      expense == '0';
+}
+
+@immutable
+final class AnalyticsTrendPoint {
+  const AnalyticsTrendPoint({required this.date, required this.amount});
+
+  factory AnalyticsTrendPoint.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'date', 'amount'});
+    return AnalyticsTrendPoint(
+      date: _date(json, 'date'),
+      amount: _signedMoney(json, 'amount'),
+    );
+  }
+
+  final String date;
+  final String amount;
+}
+
+List<AnalyticsCategoryTotal> _categoryTotals(Object? raw) {
+  if (raw is! List<Object?> || raw.length > 200) {
+    throw const FormatException('Invalid analytics breakdown.');
+  }
+  return raw
+      .map((item) => AnalyticsCategoryTotal.fromJson(_asObject(item)))
+      .toList(growable: false);
+}
+
+List<AnalyticsTrendPoint> _trendPoints(Object? raw) {
+  if (raw is! List<Object?> || raw.length != 7) {
+    throw const FormatException('A 7d trend carries exactly seven points.');
+  }
+  return raw
+      .map((item) => AnalyticsTrendPoint.fromJson(_asObject(item)))
+      .toList(growable: false);
+}
+
+Map<String, Object?> _nestedObject(Map<String, Object?> json, String key) =>
+    _asObject(json[key]);
+
+Map<String, Object?> _asObject(Object? value) {
+  if (value is! Map<String, Object?>) {
+    throw const FormatException('Expected a JSON object.');
+  }
+  return value;
+}
+
 /// One category as the management screen sees it, hidden ones included.
 ///
 /// Deliberately a separate type from [FinanceCategory]. The picker's listing is

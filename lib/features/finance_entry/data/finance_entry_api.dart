@@ -63,6 +63,10 @@ abstract interface class FinanceEntryApiClient {
     String? cursor,
   });
 
+  Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics({
+    required String accessToken,
+  });
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories({
     required String accessToken,
   });
@@ -390,6 +394,20 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       acceptedStatuses: const {200},
       contract: _ContractKind.operation,
       parse: (json, statusCode) => _parseOperationHistory(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics({
+    required String accessToken,
+  }) {
+    return _request(
+      method: 'GET',
+      path: '/api/v1/analytics',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.analytics,
+      parse: (json, statusCode) => _parseAnalytics(json, statusCode),
     );
   }
 
@@ -786,6 +804,11 @@ FinanceCategoryList _parseCategoryList(Map<String, Object?> json, int status) {
     }
   }
   return FinanceCategoryList(categories: categories);
+}
+
+AnalyticsSummary _parseAnalytics(Map<String, Object?> json, int status) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  return AnalyticsSummary.fromJson(json);
 }
 
 OperationHistoryList _parseOperationHistory(
@@ -1422,6 +1445,8 @@ List<FinanceIssue> _issues(Object? raw, {required _ContractKind contract}) {
 
 bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
   return switch (contract) {
+    // Analytics reports no per-field issues: there is no draft to reject.
+    _ContractKind.analytics => false,
     _ContractKind.account => const {
       FinanceIssueCode.accountAlreadyInitialized,
       FinanceIssueCode.openingBalanceDateInFuture,
@@ -1489,6 +1514,9 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.goalNotFound,
       FinanceEntryErrorCode.goalPersistenceUnavailable,
     }.contains(code),
+    _ContractKind.analytics => const {
+      FinanceEntryErrorCode.analyticsUnavailable,
+    }.contains(code),
     _ContractKind.category => const {
       FinanceEntryErrorCode.malformedCategoryCommand,
       FinanceEntryErrorCode.categoryNotFound,
@@ -1540,6 +1568,8 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'CATEGORY_ARCHIVED' => FinanceEntryErrorCode.categoryArchived,
   'CATEGORY_PERSISTENCE_UNAVAILABLE' =>
     FinanceEntryErrorCode.categoryPersistenceUnavailable,
+  'ANALYTICS_UNAVAILABLE' => FinanceEntryErrorCode.analyticsUnavailable,
+  'MALFORMED_ANALYTICS_QUERY' => FinanceEntryErrorCode.malformedAnalyticsQuery,
   'MALFORMED_PLANNED_COST' => FinanceEntryErrorCode.malformedPlannedCost,
   'PLANNED_COST_REJECTED' => FinanceEntryErrorCode.plannedCostRejected,
   'PLANNED_COST_NOT_FOUND' => FinanceEntryErrorCode.plannedCostNotFound,
@@ -1733,7 +1763,15 @@ String? _optionalAccountDate(Map<String, Object?> json, String key) {
   return _accountDate(json, key);
 }
 
-enum _ContractKind { account, baseline, operation, plannedCost, goal, category }
+enum _ContractKind {
+  account,
+  baseline,
+  operation,
+  plannedCost,
+  goal,
+  category,
+  analytics,
+}
 
 final class _ErrorDetail {
   const _ErrorDetail({

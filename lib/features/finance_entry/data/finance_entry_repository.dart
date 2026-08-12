@@ -45,6 +45,8 @@ abstract interface class FinanceEntryRepositoryClient {
     String? cursor,
   });
 
+  Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics();
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories();
 
   Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
@@ -211,6 +213,13 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         limit: limit,
         cursor: cursor,
       ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() {
+    return _authorized(
+      (accessToken) => _api.readAnalytics(accessToken: accessToken),
     );
   }
 
