@@ -13,11 +13,13 @@ class SettingsPage extends ConsumerWidget {
     super.key,
     this.onCorrectOpeningDate,
     this.onPlanCost,
+    this.onManageCategories,
     this.onSignOut,
   });
 
   final VoidCallback? onCorrectOpeningDate;
   final VoidCallback? onPlanCost;
+  final VoidCallback? onManageCategories;
   final Future<void> Function()? onSignOut;
 
   @override
@@ -123,6 +125,7 @@ class SettingsPage extends ConsumerWidget {
                 ),
                 if (onCorrectOpeningDate != null ||
                     onPlanCost != null ||
+                    onManageCategories != null ||
                     onSignOut != null) ...[
                   const SizedBox(height: AppSpacing.lg),
                   _SectionLabel(l10n.accountSection),
@@ -150,6 +153,20 @@ class SettingsPage extends ConsumerWidget {
                         label: l10n.plannedCostSettingsAction,
                         description: l10n.plannedCostSettingsDescription,
                         onPressed: onPlanCost!,
+                      ),
+                    ),
+                    if (onManageCategories != null || onSignOut != null)
+                      const SizedBox(height: AppSpacing.sm),
+                  ],
+                  if (onManageCategories != null) ...[
+                    Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: _SettingsActionRow(
+                        key: const Key('settings-categories'),
+                        icon: Icons.sell_outlined,
+                        label: l10n.categoriesSettingsAction,
+                        description: l10n.categoriesSettingsDescription,
+                        onPressed: onManageCategories!,
                       ),
                     ),
                     if (onSignOut != null)

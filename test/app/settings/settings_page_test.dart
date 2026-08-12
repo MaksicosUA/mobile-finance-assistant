@@ -62,18 +62,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('managing categories is reachable from settings', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var requests = 0;
+    await _pumpSettings(tester, onManageCategories: () => requests += 1);
+
+    expect(find.byKey(const Key('settings-categories')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('settings-categories')));
+
+    expect(requests, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('fixture settings do not expose server account actions', (
     tester,
   ) async {
     await _pumpSettings(tester);
 
     expect(find.byKey(const Key('settings-opening-date')), findsNothing);
+    expect(find.byKey(const Key('settings-categories')), findsNothing);
   });
 }
 
 Future<void> _pumpSettings(
   WidgetTester tester, {
   VoidCallback? onCorrectOpeningDate,
+  VoidCallback? onManageCategories,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -90,7 +105,10 @@ Future<void> _pumpSettings(
           GlobalCupertinoLocalizations.delegate,
         ],
         theme: AppTheme.light(AppAccent.teal),
-        home: SettingsPage(onCorrectOpeningDate: onCorrectOpeningDate),
+        home: SettingsPage(
+          onCorrectOpeningDate: onCorrectOpeningDate,
+          onManageCategories: onManageCategories,
+        ),
       ),
     ),
   );

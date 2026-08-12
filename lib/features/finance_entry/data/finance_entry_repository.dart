@@ -40,6 +40,25 @@ abstract interface class FinanceEntryRepositoryClient {
 
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories();
 
+  Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories();
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
+    CreateCategoryCommand command,
+  );
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> renameCategory(
+    String categoryId,
+    RenameCategoryCommand command,
+  );
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> archiveCategory(
+    String categoryId,
+  );
+
+  Future<FinanceEntryResult<ManagedFinanceCategory>> restoreCategory(
+    String categoryId,
+  );
+
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
     SavingsGoalDraft draft,
   );
@@ -173,6 +192,63 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories() {
     return _authorized(
       (accessToken) => _api.listCategories(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories() {
+    return _authorized(
+      (accessToken) => _api.listManagedCategories(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
+    CreateCategoryCommand command,
+  ) {
+    // A category is a label, so none of these writes need the commit preflight
+    // a financial command does: nothing here can change a balance (ADR 0020).
+    return _authorized(
+      (accessToken) =>
+          _api.createCategory(accessToken: accessToken, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> renameCategory(
+    String categoryId,
+    RenameCategoryCommand command,
+  ) {
+    return _authorized(
+      (accessToken) => _api.renameCategory(
+        accessToken: accessToken,
+        categoryId: categoryId,
+        command: command,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> archiveCategory(
+    String categoryId,
+  ) {
+    return _authorized(
+      (accessToken) => _api.archiveCategory(
+        accessToken: accessToken,
+        categoryId: categoryId,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<ManagedFinanceCategory>> restoreCategory(
+    String categoryId,
+  ) {
+    return _authorized(
+      (accessToken) => _api.restoreCategory(
+        accessToken: accessToken,
+        categoryId: categoryId,
+      ),
     );
   }
 
