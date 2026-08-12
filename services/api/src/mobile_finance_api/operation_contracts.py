@@ -164,6 +164,13 @@ DraftHash = Annotated[
     str,
     StringConstraints(pattern=r"^[a-f0-9]{64}$", min_length=64, max_length=64),
 ]
+# Opaque to the client: it encodes the exact ordering key of the last row on a
+# page, so the alphabet is restricted to what survives a URL unchanged.
+OperationCursor = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=256, pattern=r"^[A-Za-z0-9_-]+$"),
+]
+
 OperationErrorCode = Literal[
     "MALFORMED_OPERATION",
     "CONFIRMATION_MISMATCH",
@@ -293,6 +300,50 @@ class CommitOperationResponse(OperationApiModel):
     decision: Literal["ACCEPT"] = "ACCEPT"
     idempotent_replay: bool = Field(alias="idempotentReplay")
     operation: CommittedOperation
+
+
+class OperationHistoryItem(OperationApiModel):
+    """One confirmed operation as the history screen reads it.
+
+    Deliberately separate from [CommittedOperation]: that is the receipt for a
+    write and reports the draft exactly as it was confirmed, while this is a
+    read model and resolves the category through the link (ADR 0020).
+    """
+
+    operation_id: UUID = Field(alias="operationId")
+    operation_type: Literal["expense", "income"] = Field(alias="type")
+    amount: MoneyInput
+    currency: CurrencyCode
+    account_id: UUID | None = Field(alias="accountId")
+
+    # The linked category's current name. A report reads the link, never the
+    # text, so renaming a category renames it here too.
+    category: OptionalShortText | None
+    category_id: UUID | None = Field(alias="categoryId")
+
+    # What the user actually wrote, kept as evidence. After a rename it differs
+    # from `category`, and that difference is exactly what makes a wrong link
+    # visible instead of permanent.
+    category_text: OptionalShortText | None = Field(alias="categoryText")
+
+    merchant: OptionalMerchant | None
+    occurred_on: OperationDate = Field(alias="occurredOn")
+    occurred_at: UtcTimestamp | None = Field(alias="occurredAt")
+    source: Literal["manual_text", "voice"]
+    status: Literal["confirmed"]
+    created_at: UtcTimestamp = Field(alias="createdAt")
+
+
+class ListOperationsResponse(OperationApiModel):
+    """One page of confirmed operations, newest first."""
+
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    operations: tuple[OperationHistoryItem, ...]
+
+    # Opaque and absent on the last page. Keyset rather than an offset: a page
+    # boundary must not shift when an older operation is recorded between two
+    # requests.
+    next_cursor: OperationCursor | None = Field(default=None, alias="nextCursor")
 
 
 class OperationErrorDetail(OperationApiModel):

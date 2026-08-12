@@ -15,6 +15,7 @@ from .operation_contracts import (
     CommitOperationRequest,
     CommittedOperation,
     EvaluateOperationResponse,
+    ListOperationsResponse,
     OperationDraft,
     OperationIssue,
 )
@@ -124,6 +125,16 @@ class UnavailableFinanceOperationRepository:
         confirmed_at: datetime,
     ) -> OperationWriteResult:
         del user_id, draft, payload_hash, confirmed_at
+        raise FinancePersistenceUnavailable
+
+    async def list_operations(
+        self,
+        *,
+        user_id: UUID,
+        limit: int,
+        cursor: str | None,
+    ) -> ListOperationsResponse:
+        del user_id, limit, cursor
         raise FinancePersistenceUnavailable
 
 

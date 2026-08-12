@@ -259,6 +259,7 @@ def create_app(
     planned_cost_core: PlannedCostCore | None = None,
     goal_core: GoalCore | None = None,
     category_repository: object | None = None,
+    finance_operation_repository: object | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
@@ -318,13 +319,22 @@ def create_app(
         if category_repository is not None
         else UnavailableCategoryRepository()
     )
+    # Reading history is not a Finance Core decision, so the route reaches the
+    # adapter directly rather than widening the core with a read method.
+    application.state.finance_operation_repository = (
+        finance_operation_repository
+        if finance_operation_repository is not None
+        else UnavailableFinanceOperationRepository()
+    )
 
     @application.exception_handler(RequestValidationError)
     async def redacted_request_validation_error(
         request: Request,
         error: RequestValidationError,
     ) -> Response:
-        if request.url.path.startswith("/api/v1/operations/"):
+        # No trailing slash: the collection path itself takes query parameters
+        # now, and its validation errors must be redacted the same way.
+        if request.url.path.startswith("/api/v1/operations"):
             return JSONResponse(
                 status_code=422,
                 content={"detail": {"code": "MALFORMED_OPERATION", "issues": []}},
