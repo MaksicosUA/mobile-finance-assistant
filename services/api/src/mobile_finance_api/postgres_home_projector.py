@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -16,6 +16,8 @@ from .database import AsyncSessionFactory
 from .db_models import (
     FinanceAccountOutboxEventRow,
     FinanceAccountRow,
+    FinanceCategoryOutboxEventRow,
+    FinanceCategoryRow,
     FinanceGoalContributionRow,
     FinanceGoalOutboxEventRow,
     FinanceGoalRow,
@@ -50,7 +52,7 @@ from .projector_supervision import (
 )
 from .timezones import validated_iana_timezone_key
 
-type _EventKind = Literal["account", "operation", "planned_cost", "goal"]
+type _EventKind = Literal["account", "operation", "planned_cost", "goal", "category"]
 
 _LOGGER = logging.getLogger("mobile_finance_api.home_projector")
 _PROJECTION_SCHEMA_VERSION = 2
@@ -278,6 +280,13 @@ class PostgresHomeProjector:
                         | (FinanceGoalOutboxEventRow.next_attempt_at > now)
                     ),
                 ),
+                select(FinanceCategoryOutboxEventRow.user_id.label("user_id")).where(
+                    FinanceCategoryOutboxEventRow.published_at.is_(None),
+                    (
+                        FinanceCategoryOutboxEventRow.dead_lettered_at.is_not(None)
+                        | (FinanceCategoryOutboxEventRow.next_attempt_at > now)
+                    ),
+                ),
             ).subquery()
             account_query = (
                 select(
@@ -416,6 +425,40 @@ class PostgresHomeProjector:
                     FinanceGoalOutboxEventRow.user_id.not_in(excluded_user_ids)
                 )
             goal_row = (await database.execute(goal_query)).one_or_none()
+            category_query = (
+                select(
+                    FinanceCategoryOutboxEventRow.id,
+                    FinanceCategoryOutboxEventRow.user_id,
+                    FinanceCategoryOutboxEventRow.created_at,
+                )
+                .join(UserRow, UserRow.id == FinanceCategoryOutboxEventRow.user_id)
+                .join(
+                    FinanceAccountRow,
+                    FinanceAccountRow.user_id == FinanceCategoryOutboxEventRow.user_id,
+                )
+                .where(
+                    FinanceCategoryOutboxEventRow.published_at.is_(None),
+                    FinanceCategoryOutboxEventRow.dead_lettered_at.is_(None),
+                    FinanceCategoryOutboxEventRow.next_attempt_at.is_not(None),
+                    FinanceCategoryOutboxEventRow.next_attempt_at <= now,
+                    UserRow.disabled_at.is_(None),
+                    FinanceAccountRow.status == "active",
+                    FinanceAccountRow.is_default.is_(True),
+                    FinanceCategoryOutboxEventRow.user_id.not_in(
+                        select(blocked_users.c.user_id)
+                    ),
+                )
+                .order_by(
+                    FinanceCategoryOutboxEventRow.created_at.asc(),
+                    FinanceCategoryOutboxEventRow.id.asc(),
+                )
+                .limit(1)
+            )
+            if excluded_user_ids:
+                category_query = category_query.where(
+                    FinanceCategoryOutboxEventRow.user_id.not_in(excluded_user_ids)
+                )
+            category_row = (await database.execute(category_query)).one_or_none()
 
         candidates = tuple(
             candidate
@@ -451,6 +494,14 @@ class PostgresHomeProjector:
                     event_id=goal_row.id,
                     user_id=goal_row.user_id,
                     created_at=_aware_utc(goal_row.created_at),
+                ),
+                None
+                if category_row is None
+                else _OutboxCandidate(
+                    kind="category",
+                    event_id=category_row.id,
+                    user_id=category_row.user_id,
+                    created_at=_aware_utc(category_row.created_at),
                 ),
             )
             if candidate is not None
@@ -616,17 +667,50 @@ class PostgresHomeProjector:
                     )
                 ).all()
             )
+            # Archived rows included: an operation keeps pointing at the
+            # category it was recorded against, and hiding it must not blank
+            # the label on a transaction that already happened.
+            categories = tuple(
+                (
+                    await database.scalars(
+                        select(FinanceCategoryRow).where(
+                            FinanceCategoryRow.user_id == user_id
+                        )
+                    )
+                ).all()
+            )
+            category_events = tuple(
+                (
+                    await database.scalars(
+                        select(FinanceCategoryOutboxEventRow)
+                        .where(
+                            FinanceCategoryOutboxEventRow.user_id == user_id,
+                            FinanceCategoryOutboxEventRow.published_at.is_(None),
+                        )
+                        .order_by(
+                            FinanceCategoryOutboxEventRow.created_at.asc(),
+                            FinanceCategoryOutboxEventRow.id.asc(),
+                        )
+                        .with_for_update()
+                    )
+                ).all()
+            )
             eligibility_at = _aware_utc(self._clock())
             if _stream_is_blocked(
                 account_events=account_events,
                 operation_events=operation_events,
                 planned_cost_events=planned_cost_events,
                 goal_events=goal_events,
+                category_events=category_events,
                 eligibility_at=eligibility_at,
             ):
                 raise _ProjectionStreamBlocked
             pending_events = bool(
-                account_events or operation_events or planned_cost_events or goal_events
+                account_events
+                or operation_events
+                or planned_cost_events
+                or goal_events
+                or category_events
             )
             if require_pending and not pending_events:
                 return False
@@ -654,6 +738,10 @@ class PostgresHomeProjector:
                     (entry.user_id, entry.command_id): entry
                     for entry in goal_contributions
                 },
+            )
+            _validate_category_events(
+                category_events,
+                categories_by_id={category.id: category for category in categories},
             )
 
             generated_at = _aware_utc(self._clock())
@@ -683,9 +771,16 @@ class PostgresHomeProjector:
                 raise HomeProjectionInvariantError(
                     "newer Home projection schema is already authoritative"
                 )
+            # ADR 0020: a report reads the link, never the stored text. The
+            # text stays on the operation as evidence of what the user wrote,
+            # and is the fallback for anything recorded before the catalogue.
+            category_names = {category.id: category.name for category in categories}
             projection = build_current_home_revision(
                 account=_account_fact(account),
-                operations=tuple(_operation_fact(row) for row in operations),
+                operations=tuple(
+                    _operation_fact(row, category_names=category_names)
+                    for row in operations
+                ),
                 generated_at=generated_at,
                 planned_costs=tuple(_planned_cost_fact(row) for row in planned_costs),
                 goals=tuple(_goal_fact(row) for row in goals),
@@ -782,6 +877,16 @@ class PostgresHomeProjector:
                 goal_event.last_failed_at = None
                 goal_event.failure_code = None
                 goal_event.dead_lettered_at = None
+            for category_event in category_events:
+                category_event.published_at = projection.generated_at
+                category_event.attempt_count = min(
+                    category_event.attempt_count + 1,
+                    32767,
+                )
+                category_event.next_attempt_at = None
+                category_event.last_failed_at = None
+                category_event.failure_code = None
+                category_event.dead_lettered_at = None
         return True
 
     async def _record_failed_attempt(self, error: _OutboxContractError) -> None:
@@ -828,6 +933,27 @@ class PostgresHomeProjector:
                         policy=self._retry_policy,
                     )
                     _apply_retry_decision(goal_event, decision=decision)
+                return
+            if error.kind == "category":
+                category_event = await database.scalar(
+                    select(FinanceCategoryOutboxEventRow)
+                    .where(
+                        FinanceCategoryOutboxEventRow.id == error.event_id,
+                        FinanceCategoryOutboxEventRow.published_at.is_(None),
+                        FinanceCategoryOutboxEventRow.dead_lettered_at.is_(None),
+                    )
+                    .with_for_update()
+                )
+                if category_event is not None:
+                    decision = event_retry_decision(
+                        previous_validation_failure_count=(
+                            category_event.validation_failure_count
+                        ),
+                        failed_at=failed_at,
+                        failure_code=error.failure_code,
+                        policy=self._retry_policy,
+                    )
+                    _apply_retry_decision(category_event, decision=decision)
                 return
             if error.kind == "planned_cost":
                 planned_cost_event = await database.scalar(
@@ -1022,12 +1148,38 @@ def _validate_goal_events(
                 raise _OutboxContractError(kind="goal", event_id=event.id)
 
 
+def _validate_category_events(
+    events: Sequence[FinanceCategoryOutboxEventRow],
+    *,
+    categories_by_id: dict[UUID, FinanceCategoryRow],
+) -> None:
+    for event in events:
+        category = categories_by_id.get(event.aggregate_id)
+        if category is None or category.user_id != event.user_id:
+            raise _OutboxContractError(kind="category", event_id=event.id)
+        if (
+            event.aggregate_type != "finance_category"
+            or event.event_type != "finance.category.renamed.v1"
+        ):
+            raise _OutboxContractError(kind="category", event_id=event.id)
+        # Identifier-only. The new name is deliberately absent: the projector
+        # reads it from the category row, so no event can replay a stale label.
+        if event.payload != {
+            "schemaVersion": "1",
+            "categoryId": str(category.id),
+            "userId": str(category.user_id),
+            "commandId": str(event.command_id),
+        }:
+            raise _OutboxContractError(kind="category", event_id=event.id)
+
+
 def _stream_is_blocked(
     *,
     account_events: Sequence[FinanceAccountOutboxEventRow],
     operation_events: Sequence[FinanceOutboxEventRow],
     planned_cost_events: Sequence[PlannedCostOutboxEventRow],
     goal_events: Sequence[FinanceGoalOutboxEventRow],
+    category_events: Sequence[FinanceCategoryOutboxEventRow],
     eligibility_at: datetime,
 ) -> bool:
     return (
@@ -1047,6 +1199,10 @@ def _stream_is_blocked(
             _event_is_blocked(event, eligibility_at=eligibility_at)
             for event in goal_events
         )
+        or any(
+            _event_is_blocked(event, eligibility_at=eligibility_at)
+            for event in category_events
+        )
     )
 
 
@@ -1054,7 +1210,8 @@ def _event_is_blocked(
     event: FinanceAccountOutboxEventRow
     | FinanceOutboxEventRow
     | PlannedCostOutboxEventRow
-    | FinanceGoalOutboxEventRow,
+    | FinanceGoalOutboxEventRow
+    | FinanceCategoryOutboxEventRow,
     *,
     eligibility_at: datetime,
 ) -> bool:
@@ -1069,7 +1226,8 @@ def _apply_retry_decision(
     event: FinanceAccountOutboxEventRow
     | FinanceOutboxEventRow
     | PlannedCostOutboxEventRow
-    | FinanceGoalOutboxEventRow,
+    | FinanceGoalOutboxEventRow
+    | FinanceCategoryOutboxEventRow,
     *,
     decision: EventRetryDecision,
 ) -> None:
@@ -1095,7 +1253,27 @@ def _account_fact(row: FinanceAccountRow) -> ProjectionAccount:
     )
 
 
-def _operation_fact(row: FinanceOperationRow) -> ProjectionOperation:
+def _category_label(
+    row: FinanceOperationRow,
+    *,
+    category_names: Mapping[UUID, str],
+) -> str | None:
+    if row.category_id is None:
+        return row.category
+    name = category_names.get(row.category_id)
+    if name is None:
+        # The composite foreign key makes this unreachable while the row
+        # exists, and categories are archived rather than deleted. Falling back
+        # rather than raising keeps one impossible row from blanking a label.
+        return row.category
+    return name
+
+
+def _operation_fact(
+    row: FinanceOperationRow,
+    *,
+    category_names: Mapping[UUID, str],
+) -> ProjectionOperation:
     return ProjectionOperation(
         operation_id=row.id,
         user_id=row.user_id,
@@ -1103,7 +1281,10 @@ def _operation_fact(row: FinanceOperationRow) -> ProjectionOperation:
         operation_type=row.operation_type,
         amount=row.amount,
         currency=row.currency,
-        category=row.category,
+        # The linked category's current name wins, so renaming one renames it
+        # everywhere it is reported. The stored text remains for operations
+        # recorded before the catalogue, which have no link to follow.
+        category=_category_label(row, category_names=category_names),
         merchant=row.merchant,
         occurred_on=row.occurred_on,
         occurred_at=row.occurred_at,

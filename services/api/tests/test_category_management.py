@@ -23,12 +23,22 @@ from mobile_finance_api.category_contracts import (
     ManagedCategoryListResponse,
     RenameCategoryCommand,
 )
+from mobile_finance_api.db_models import (
+    FinanceCategoryOutboxEventRow,
+    FinanceCategoryRow,
+    FinanceOperationRow,
+)
 from mobile_finance_api.main import create_app
 from mobile_finance_api.postgres_category_repository import (
     CategoryArchived,
     CategoryNameTaken,
     CategoryNotFound,
     _outbox_payload,
+)
+from mobile_finance_api.postgres_home_projector import (
+    _category_label,
+    _OutboxContractError,
+    _validate_category_events,
 )
 
 _USER_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -61,6 +71,65 @@ def test_the_rename_event_carries_identifiers_and_no_name() -> None:
         "userId": str(_USER_ID),
         "commandId": str(command_id),
     }
+
+
+def test_a_report_reads_the_link_and_falls_back_to_the_written_text() -> None:
+    """ADR 0020: reports read the link, never the stored text.
+
+    This is what makes a rename visible. Before it, Home showed the label as it
+    was written at the time, so renaming a category changed nothing a user
+    could see and looked broken.
+    """
+
+    names = {_GROCERIES: "Еда"}
+    linked = _operation_row(category_id=_GROCERIES, category="Продукты")
+    assert _category_label(linked, category_names=names) == "Еда"
+
+    # Recorded before the catalogue existed: there is no link to follow, and
+    # the text the user wrote is all there is.
+    unlinked = _operation_row(category_id=None, category="Продукты")
+    assert _category_label(unlinked, category_names=names) == "Продукты"
+    assert _category_label(_operation_row(), category_names=names) is None
+
+    # A hidden category keeps its name, so hiding one never blanks the label on
+    # a transaction that already happened.
+    assert (
+        _category_label(
+            _operation_row(category_id=_HIDDEN, category="Аренда"),
+            category_names={_HIDDEN: "Аренда"},
+        )
+        == "Аренда"
+    )
+
+
+def test_a_rename_event_that_cannot_be_trusted_is_refused() -> None:
+    """A malformed event must dead-letter rather than rebuild from a payload."""
+
+    category = _category_row()
+    valid = _rename_event(category)
+    _validate_category_events([valid], categories_by_id={_GROCERIES: category})
+
+    foreign = _category_row(user_id=uuid4())
+    for event, catalogue in (
+        (valid, {}),
+        (_rename_event(category), {_GROCERIES: foreign}),
+        (
+            _rename_event(category, aggregate_type="finance_goal"),
+            {_GROCERIES: category},
+        ),
+        (
+            _rename_event(category, event_type="finance.category.archived.v1"),
+            {_GROCERIES: category},
+        ),
+        # A payload carrying the new name would let a replay write a label the
+        # projector never read from the database.
+        (
+            _rename_event(category, extra={"name": "Еда"}),
+            {_GROCERIES: category},
+        ),
+    ):
+        with pytest.raises(_OutboxContractError):
+            _validate_category_events([event], categories_by_id=catalogue)
 
 
 # --- contract rules ---------------------------------------------------------
@@ -420,6 +489,65 @@ def test_an_unknown_category_is_not_found_rather_than_created() -> None:
         assert response.status_code == 404
 
     asyncio.run(scenario())
+
+
+def _operation_row(
+    *,
+    category_id: UUID | None = None,
+    category: str | None = None,
+) -> FinanceOperationRow:
+    return FinanceOperationRow(
+        id=uuid4(),
+        user_id=_USER_ID,
+        category_id=category_id,
+        category=category,
+    )
+
+
+def _category_row(*, user_id: UUID | None = None) -> FinanceCategoryRow:
+    return FinanceCategoryRow(
+        id=_GROCERIES,
+        user_id=user_id if user_id is not None else _USER_ID,
+        name="Продукты",
+        direction="expense",
+        system_key=None,
+        created_at=_NOW,
+        archived_at=None,
+    )
+
+
+def _rename_event(
+    category: FinanceCategoryRow,
+    *,
+    aggregate_type: str = "finance_category",
+    event_type: str = "finance.category.renamed.v1",
+    extra: dict[str, object] | None = None,
+) -> FinanceCategoryOutboxEventRow:
+    command_id = uuid4()
+    payload: dict[str, object] = {
+        "schemaVersion": "1",
+        "categoryId": str(category.id),
+        "userId": str(_USER_ID),
+        "commandId": str(command_id),
+    }
+    payload.update(extra or {})
+    return FinanceCategoryOutboxEventRow(
+        id=uuid4(),
+        aggregate_type=aggregate_type,
+        aggregate_id=category.id,
+        user_id=_USER_ID,
+        command_id=command_id,
+        event_type=event_type,
+        payload=payload,
+        created_at=_NOW,
+        published_at=None,
+        attempt_count=0,
+        validation_failure_count=0,
+        next_attempt_at=_NOW,
+        last_failed_at=None,
+        failure_code=None,
+        dead_lettered_at=None,
+    )
 
 
 class _StaticAuthenticator:
