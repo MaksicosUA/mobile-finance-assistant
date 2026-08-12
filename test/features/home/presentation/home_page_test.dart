@@ -525,34 +525,6 @@ void main() {
     expect(find.byKey(const Key('home-fatal-error')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets('settings select theme and all accent choices natively', (
-    tester,
-  ) async {
-    await _pumpApp(
-      tester,
-      repository: _ValueHomeRepository(
-        loadHomeFixtureSnapshotSync('populated.json'),
-      ),
-    );
-    await tester.pump();
-
-    await tester.tap(find.byKey(const Key('open-settings')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('settings-page')), findsOneWidget);
-
-    for (final accent in AppAccent.values) {
-      await tester.tap(find.byKey(Key('accent-${accent.name}')));
-      await tester.pump();
-      final context = tester.element(find.byKey(const Key('settings-page')));
-      expect(Theme.of(context).colorScheme.primary, accent.color);
-    }
-
-    await tester.tap(find.byKey(const Key('theme-dark')));
-    await tester.pump();
-    final context = tester.element(find.byKey(const Key('settings-page')));
-    expect(Theme.of(context).brightness, Brightness.dark);
-  });
 }
 
 Future<void> _pumpApp(
@@ -608,7 +580,6 @@ Future<void> _pumpHomePage(
         home: Scaffold(
           body: HomePage(
             localClock: _fixedLocalClock,
-            onOpenSettings: _ignore,
             onNotificationsPressed: _ignore,
             onVoicePressed: _ignore,
             onAnalyticsPressed: _ignore,

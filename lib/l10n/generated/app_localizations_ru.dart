@@ -389,7 +389,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get baseCurrencySetting => 'Основная валюта';
 
   @override
-  String get settingsNote => 'Настройки языка и валюты пока демонстрационные.';
+  String get settingsNote => 'Переключение языка пока недоступно.';
 
   @override
   String get baselineSettingsAction => 'Дата начала учёта';
@@ -1312,5 +1312,33 @@ class AppLocalizationsRu extends AppLocalizations {
     final String monthString = monthDateFormat.format(month);
 
     return '$monthString';
+  }
+
+  @override
+  String get profileLoadError => 'Не удалось загрузить профиль';
+
+  @override
+  String get profileEmailLabel => 'Почта для входа';
+
+  @override
+  String get profileAccountSection => 'СЧЁТ';
+
+  @override
+  String get profileTimezoneSetting => 'Часовой пояс';
+
+  @override
+  String get profileNoAccount => 'Счёт появится после первой записи';
+
+  @override
+  String profileOpeningDateValue(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return 'Сейчас $dateString';
+  }
+
+  @override
+  String profileVersion(String version) {
+    return 'Версия $version';
   }
 }

@@ -756,7 +756,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsNote.
   ///
   /// In ru, this message translates to:
-  /// **'Настройки языка и валюты пока демонстрационные.'**
+  /// **'Переключение языка пока недоступно.'**
   String get settingsNote;
 
   /// No description provided for @baselineSettingsAction.
@@ -2390,6 +2390,48 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'{month}'**
   String analyticsMonth(DateTime month);
+
+  /// Profile screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить профиль'**
+  String get profileLoadError;
+
+  /// Profile screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Почта для входа'**
+  String get profileEmailLabel;
+
+  /// Profile screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'СЧЁТ'**
+  String get profileAccountSection;
+
+  /// Profile screen: the canonical reporting timezone (ADR 0010).
+  ///
+  /// In ru, this message translates to:
+  /// **'Часовой пояс'**
+  String get profileTimezoneSetting;
+
+  /// Profile screen: a registered user without an account is a real state.
+  ///
+  /// In ru, this message translates to:
+  /// **'Счёт появится после первой записи'**
+  String get profileNoAccount;
+
+  /// Profile screen: the opening baseline date beside the action that changes it.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сейчас {date}'**
+  String profileOpeningDateValue(DateTime date);
+
+  /// Profile screen: which build is installed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Версия {version}'**
+  String profileVersion(String version);
 }
 
 class _AppLocalizationsDelegate

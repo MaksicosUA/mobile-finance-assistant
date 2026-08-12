@@ -47,6 +47,8 @@ abstract interface class FinanceEntryRepositoryClient {
 
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics();
 
+  Future<FinanceEntryResult<UserProfile>> readProfile();
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories();
 
   Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
@@ -220,6 +222,13 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() {
     return _authorized(
       (accessToken) => _api.readAnalytics(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<UserProfile>> readProfile() {
+    return _authorized(
+      (accessToken) => _api.readProfile(accessToken: accessToken),
     );
   }
 

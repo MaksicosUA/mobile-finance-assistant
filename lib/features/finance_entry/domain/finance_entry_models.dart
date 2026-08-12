@@ -1374,6 +1374,82 @@ final class AnalyticsTrendPoint {
   final String amount;
 }
 
+/// Who is signed in, and the durable facts of their account.
+///
+/// Deliberately carries no money. A balance belongs on Home, and a second
+/// surface reporting it is a second thing that can disagree with the
+/// authoritative projection.
+@immutable
+final class UserProfile {
+  const UserProfile({
+    required this.displayName,
+    required this.email,
+    this.account,
+  });
+
+  factory UserProfile.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'user', 'account'});
+    _requireSchemaVersion(json);
+    final user = _nestedObject(json, 'user');
+    _expectKeys(user, const {'id', 'displayName', 'email'});
+    final account = json['account'];
+    return UserProfile(
+      displayName: _boundedText(user, 'displayName', maximumLength: 100),
+      email: _email(user, 'email'),
+      // Null until the account is bootstrapped: a registered user without one
+      // is a real state, not an error.
+      account: account == null
+          ? null
+          : ProfileAccountFacts.fromJson(_asObject(account)),
+    );
+  }
+
+  final String displayName;
+  final String email;
+  final ProfileAccountFacts? account;
+}
+
+@immutable
+final class ProfileAccountFacts {
+  const ProfileAccountFacts({
+    required this.currency,
+    required this.canonicalTimezone,
+    required this.openingBalanceOn,
+  });
+
+  factory ProfileAccountFacts.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'id',
+      'currency',
+      'canonicalTimezone',
+      'openingBalanceOn',
+    });
+    return ProfileAccountFacts(
+      currency: _currency(json, 'currency'),
+      canonicalTimezone: _timezone(json, 'canonicalTimezone'),
+      openingBalanceOn: _date(json, 'openingBalanceOn'),
+    );
+  }
+
+  final String currency;
+
+  /// The timezone every local date is resolved in (ADR 0010).
+  final String canonicalTimezone;
+
+  /// The baseline no operation may precede (ADR 0016).
+  final String openingBalanceOn;
+}
+
+/// A sign-in address as the server already validated it.
+///
+/// Bounded and control-free rather than re-validated: the client shows this
+/// string, it never routes mail with it.
+String _email(Map<String, Object?> json, String key) {
+  final value = _boundedText(json, key, maximumLength: 254);
+  if (!value.contains('@')) throw FormatException('Invalid $key.');
+  return value;
+}
+
 List<AnalyticsCategoryTotal> _categoryTotals(Object? raw) {
   if (raw is! List<Object?> || raw.length > 200) {
     throw const FormatException('Invalid analytics breakdown.');

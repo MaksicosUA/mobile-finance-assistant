@@ -574,7 +574,85 @@ void main() {
         expect(_failure(unsafe).kind, FinanceEntryFailureKind.securityFailure);
       },
     );
+
+    test('reads the caller own profile, with no identifier to pass', () async {
+      final adapter = _QueueAdapter([_JsonResponse(200, _profile())]);
+      final api = _api(adapter);
+
+      final result = await api.readProfile(accessToken: 'access-token');
+
+      final profile = (result as FinanceEntrySuccess<UserProfile>).value;
+      expect(profile.displayName, 'Синтетический Пользователь');
+      expect(profile.email, 'owner@example.test');
+      expect(profile.account?.currency, 'EUR');
+      expect(profile.account?.canonicalTimezone, 'Europe/Berlin');
+      expect(profile.account?.openingBalanceOn, '2026-06-01');
+      final request = adapter.requests.single;
+      expect(request.uri.path, '/api/v1/profile');
+      // The subject is the token, never a parameter: asking for someone
+      // else's profile has to stay unrepresentable, not merely refused.
+      expect(request.uri.queryParameters, isEmpty);
+    });
+
+    test('accepts a registered user who has no account yet', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(200, _profile(account: false)),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.readProfile(accessToken: 'access-token');
+
+      final profile = (result as FinanceEntrySuccess<UserProfile>).value;
+      expect(profile.account, isNull);
+    });
+
+    test('refuses money arriving on the profile contract', () async {
+      final withBalance = _profile();
+      (withBalance['account']! as Map<String, Object?>)['balance'] = '10.00';
+      final adapter = _QueueAdapter([_JsonResponse(200, withBalance)]);
+      final api = _api(adapter);
+
+      final result = await api.readProfile(accessToken: 'access-token');
+
+      // Failing closed is the point. A second surface quietly reporting a
+      // balance is a second thing that can disagree with the projection.
+      expect(_failure(result).kind, FinanceEntryFailureKind.malformedResponse);
+    });
+
+    test('maps an unavailable profile to a typed failure', () async {
+      final adapter = _QueueAdapter([
+        const _JsonResponse(503, {
+          'detail': {'code': 'PROFILE_UNAVAILABLE'},
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.readProfile(accessToken: 'access-token');
+
+      final failure = _failure(result);
+      expect(failure.kind, FinanceEntryFailureKind.serviceUnavailable);
+      expect(failure.code, FinanceEntryErrorCode.profileUnavailable);
+    });
   });
+}
+
+Map<String, Object?> _profile({bool account = true}) {
+  return <String, Object?>{
+    'schemaVersion': '1',
+    'user': <String, Object?>{
+      'id': '44444444-4444-4444-8444-444444444444',
+      'displayName': 'Синтетический Пользователь',
+      'email': 'owner@example.test',
+    },
+    'account': account
+        ? <String, Object?>{
+            'id': '55555555-5555-4555-8555-555555555555',
+            'currency': 'EUR',
+            'canonicalTimezone': 'Europe/Berlin',
+            'openingBalanceOn': '2026-06-01',
+          }
+        : null,
+  };
 }
 
 FinanceEntryApi _api(_QueueAdapter adapter) {

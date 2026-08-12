@@ -273,7 +273,7 @@
   "languageSetting": "Язык",
   "russianLanguage": "Русский",
   "baseCurrencySetting": "Основная валюта",
-  "settingsNote": "Настройки языка и валюты пока демонстрационные.",
+  "settingsNote": "Переключение языка пока недоступно.",
   "baselineSettingsAction": "Дата начала учёта",
   "baselineSettingsDescription": "Разрешить операции за более ранний период",
   "baselineCorrectionTitle": "Дата начала учёта",
@@ -978,6 +978,45 @@
       "month": {
         "type": "DateTime",
         "format": "LLLL"
+      }
+    }
+  },
+  "profileLoadError": "Не удалось загрузить профиль",
+  "@profileLoadError": {
+    "description": "Profile screen."
+  },
+  "profileEmailLabel": "Почта для входа",
+  "@profileEmailLabel": {
+    "description": "Profile screen."
+  },
+  "profileAccountSection": "СЧЁТ",
+  "@profileAccountSection": {
+    "description": "Profile screen."
+  },
+  "profileTimezoneSetting": "Часовой пояс",
+  "@profileTimezoneSetting": {
+    "description": "Profile screen: the canonical reporting timezone (ADR 0010)."
+  },
+  "profileNoAccount": "Счёт появится после первой записи",
+  "@profileNoAccount": {
+    "description": "Profile screen: a registered user without an account is a real state."
+  },
+  "profileOpeningDateValue": "Сейчас {date}",
+  "@profileOpeningDateValue": {
+    "description": "Profile screen: the opening baseline date beside the action that changes it.",
+    "placeholders": {
+      "date": {
+        "type": "DateTime",
+        "format": "yMMMMd"
+      }
+    }
+  },
+  "profileVersion": "Версия {version}",
+  "@profileVersion": {
+    "description": "Profile screen: which build is installed.",
+    "placeholders": {
+      "version": {
+        "type": "String"
       }
     }
   }

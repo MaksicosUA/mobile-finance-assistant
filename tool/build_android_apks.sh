@@ -122,7 +122,8 @@ if ! $network_only; then
   "$flutter_bin" build apk \
     --debug \
     "--build-name=$build_name" \
-    "--build-number=$build_number"
+    "--build-number=$build_number" \
+    "--dart-define=APP_VERSION=$build_name"
   replace_apk "$source_apk" "$fixture_apk"
 fi
 
@@ -133,6 +134,7 @@ fi
   --debug \
   "--build-name=$build_name" \
   "--build-number=$build_number" \
+  "--dart-define=APP_VERSION=$build_name" \
   "--dart-define=API_BASE_URL=$api_base_url" \
   "--dart-define=HOME_API_TIMEZONE=$home_timezone"
 replace_apk "$source_apk" "$network_apk"

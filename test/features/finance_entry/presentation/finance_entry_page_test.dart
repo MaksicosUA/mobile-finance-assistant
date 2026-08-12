@@ -527,6 +527,9 @@ final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() =>
       throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<UserProfile>> readProfile() =>
+      throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<OperationHistoryList>> listOperations({
     required int limit,
     String? cursor,
