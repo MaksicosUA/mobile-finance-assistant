@@ -52,16 +52,17 @@ void main() {
 
     expect(find.byKey(const Key('home-populated')), findsOneWidget);
     expect(find.text('3 240,50 €'), findsOneWidget);
-    expect(find.textContaining('Итоги за июль'), findsOneWidget);
-    expect(find.byKey(const Key('spending-chart')), findsOneWidget);
-    expect(find.byKey(const Key('primary-goal')), findsOneWidget);
     expect(find.byKey(const Key('upcoming-payments')), findsOneWidget);
-    expect(find.byKey(const Key('recent-transactions')), findsOneWidget);
     expect(find.byKey(const Key('payment-payment_fixture_3')), findsOneWidget);
-    expect(
-      find.byKey(const Key('transaction-transaction_fixture_3')),
-      findsOneWidget,
-    );
+
+    // Home answers "how much do I have" and "record something". The monthly
+    // totals, the chart, the goal and the operation list moved to Analytics
+    // and Goals; the API still sends them, this screen just stops drawing
+    // them.
+    expect(find.textContaining('Итоги за июль'), findsNothing);
+    expect(find.byKey(const Key('spending-chart')), findsNothing);
+    expect(find.byKey(const Key('primary-goal')), findsNothing);
+    expect(find.byKey(const Key('recent-transactions')), findsNothing);
 
     await tester.tap(find.byKey(const Key('voice-cta')));
     await tester.pump();
@@ -162,10 +163,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('•••••• €'), findsWidgets);
-    expect(find.text(r'•••••• $'), findsOneWidget);
-    expect(find.text('суммы скрыты'), findsOneWidget);
     expect(find.bySemanticsLabel(RegExp('••••••')), findsWidgets);
-    expect(find.bySemanticsLabel('Подробнее'), findsOneWidget);
 
     for (final rawValue in [
       '3 240,50',
@@ -219,7 +217,7 @@ void main() {
     );
     await tester.pump();
     expect(tester.takeException(), isNull);
-    expect(find.byKey(const Key('recent-transactions')), findsOneWidget);
+    expect(find.byKey(const Key('upcoming-payments')), findsOneWidget);
   });
 
   testWidgets('renders nullable goal and empty blocks from contract fixture', (
@@ -234,39 +232,13 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('home-populated')), findsOneWidget);
-    expect(find.byKey(const Key('goal-unavailable')), findsOneWidget);
-    expect(find.text('Пока недостаточно данных для графика'), findsOneWidget);
     expect(find.text('Ближайших платежей нет'), findsOneWidget);
-    expect(find.text('Подтверждённых операций пока нет'), findsOneWidget);
+    // The goal, the chart and the operation list report their own empty states
+    // on the screens they moved to.
+    expect(find.byKey(const Key('goal-unavailable')), findsNothing);
+    expect(find.text('Пока недостаточно данных для графика'), findsNothing);
+    expect(find.text('Подтверждённых операций пока нет'), findsNothing);
   });
-
-  testWidgets(
-    'uses occurredOn and localized fallbacks for incomplete transactions',
-    (tester) async {
-      await _pumpApp(
-        tester,
-        repository: _ValueHomeRepository(
-          loadHomeFixtureSnapshotSync('nullable_goal.json'),
-        ),
-      );
-      await tester.pump();
-
-      final context = tester.element(
-        find.byKey(const Key('recent-transactions')),
-      );
-      final date = MaterialLocalizations.of(
-        context,
-      ).formatMediumDate(DateTime.utc(2026, 7, 10));
-
-      // The localized direction is used both as the missing title fallback and
-      // as the row's kind label.
-      expect(find.text('расход'), findsNWidgets(2));
-      expect(find.text('Без категории · $date'), findsOneWidget);
-      expect(find.textContaining('17:45'), findsNothing);
-      expect(find.textContaining('5,96'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
 
   testWidgets('static Home respects reduced-motion accessibility setting', (
     tester,
@@ -283,7 +255,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const Key('spending-chart')), findsOneWidget);
+    expect(find.byKey(const Key('balance-card')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -307,12 +279,14 @@ void main() {
     );
     await tester.pump();
 
+    // The banner still says the snapshot is partial, because it is. What
+    // changed is that the failed block belongs to another screen now, so Home
+    // has nothing to replace and keeps all three of its own.
     expect(find.byKey(const Key('partial-banner')), findsOneWidget);
-    expect(find.byKey(const Key('goal-unavailable')), findsOneWidget);
     expect(find.byKey(const Key('balance-card')), findsOneWidget);
-    expect(find.byKey(const Key('spending-chart')), findsOneWidget);
+    expect(find.byKey(const Key('voice-cta')), findsOneWidget);
     expect(find.byKey(const Key('upcoming-payments')), findsOneWidget);
-    expect(find.byKey(const Key('recent-transactions')), findsOneWidget);
+    expect(find.byKey(const Key('goal-unavailable')), findsNothing);
   });
 
   testWidgets(
@@ -367,13 +341,7 @@ void main() {
 
   for (final partialCase in <(HomeBlock, Key)>[
     (HomeBlock.balance, const Key('balance-unavailable')),
-    (HomeBlock.monthSummary, const Key('month-summary-unavailable')),
-    (HomeBlock.trend, const Key('trend-unavailable')),
     (HomeBlock.upcomingPayments, const Key('upcoming-payments-unavailable')),
-    (
-      HomeBlock.recentTransactions,
-      const Key('recent-transactions-unavailable'),
-    ),
   ]) {
     testWidgets('isolates ${partialCase.$1.name} block failure', (
       tester,
@@ -398,6 +366,40 @@ void main() {
       expect(find.byKey(const Key('partial-banner')), findsOneWidget);
       expect(find.byKey(const Key('voice-cta')), findsOneWidget);
       expect(find.byKey(const Key('home-populated')), findsOneWidget);
+    });
+  }
+
+  for (final moved in <HomeBlock>[
+    HomeBlock.monthSummary,
+    HomeBlock.trend,
+    HomeBlock.recentTransactions,
+    HomeBlock.primaryGoal,
+  ]) {
+    testWidgets('a failed ${moved.name} block no longer touches Home', (
+      tester,
+    ) async {
+      await _pumpApp(
+        tester,
+        repository: _ResultHomeRepository(
+          HomePartialResult(
+            snapshot: loadHomeFixtureSnapshotSync('populated.json'),
+            blockFailures: {
+              moved: const HomeBlockFailure(
+                code: 'synthetic_unavailable',
+                requestId: 'req_block_widget',
+              ),
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // The block moved to another screen, so its failure is that screen's
+      // problem. Home keeps its own three and says nothing about it.
+      expect(find.byKey(const Key('home-populated')), findsOneWidget);
+      expect(find.byKey(const Key('balance-card')), findsOneWidget);
+      expect(find.byKey(const Key('voice-cta')), findsOneWidget);
+      expect(find.byKey(const Key('upcoming-payments')), findsOneWidget);
     });
   }
 

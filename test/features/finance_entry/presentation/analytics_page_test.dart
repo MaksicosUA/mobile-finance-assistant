@@ -86,6 +86,26 @@ void main() {
     expect(opened, 1);
   });
 
+  testWidgets('an operation with no category still names its row', (
+    tester,
+  ) async {
+    // The fallback moved here with the list: a row without a category shows
+    // the localized label rather than an empty title. Covered on Home before
+    // the block moved.
+    await _pumpPage(
+      tester,
+      repository: _FakeRepository(uncategorizedRecent: true),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('analytics-all-operations')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Без категории'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('losing the operations list does not hide the totals', (
     tester,
   ) async {
@@ -223,11 +243,13 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     this.failure,
     this.failRecentOperations = false,
     this.empty = false,
+    this.uncategorizedRecent = false,
   });
 
   final FinanceEntryFailureKind? failure;
   final bool failRecentOperations;
   final bool empty;
+  final bool uncategorizedRecent;
 
   @override
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() async {
@@ -260,16 +282,16 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
       value: OperationHistoryList(
         operations: empty
             ? const []
-            : const [
+            : [
                 OperationHistoryItem(
                   operationId: _operationId,
                   type: FinanceOperationType.expense,
                   amount: '420.00',
                   currency: 'EUR',
                   accountId: null,
-                  category: 'Продукты',
-                  categoryId: _groceriesId,
-                  categoryText: 'Продукты',
+                  category: uncategorizedRecent ? null : 'Продукты',
+                  categoryId: uncategorizedRecent ? null : _groceriesId,
+                  categoryText: uncategorizedRecent ? null : 'Продукты',
                   merchant: null,
                   occurredOn: '2026-08-12',
                   occurredAt: null,
