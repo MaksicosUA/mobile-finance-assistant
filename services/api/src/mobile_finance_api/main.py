@@ -40,6 +40,8 @@ from .planned_cost_core import PlannedCostCore, UnavailablePlannedCostRepository
 from .planned_cost_routes import router as planned_cost_router
 from .postgres_analytics_repository import UnavailableAnalyticsRepository
 from .postgres_category_repository import UnavailableCategoryRepository
+from .postgres_profile_repository import UnavailableProfileRepository
+from .profile_routes import router as profile_router
 from .repository import (
     HomeCanonicalTimezoneMismatch,
     HomeQuery,
@@ -263,6 +265,7 @@ def create_app(
     category_repository: object | None = None,
     finance_operation_repository: object | None = None,
     analytics_repository: object | None = None,
+    profile_repository: object | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
@@ -332,6 +335,11 @@ def create_app(
         if finance_operation_repository is not None
         else application.state.finance_core.operation_store
     )
+    application.state.profile_repository = (
+        profile_repository
+        if profile_repository is not None
+        else UnavailableProfileRepository()
+    )
     application.state.analytics_repository = (
         analytics_repository
         if analytics_repository is not None
@@ -383,6 +391,7 @@ def create_app(
     application.include_router(goal_router)
     application.include_router(category_router)
     application.include_router(analytics_router)
+    application.include_router(profile_router)
     application.include_router(router)
     return application
 
