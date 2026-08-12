@@ -10,7 +10,7 @@ import calendar
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
-from typing import Literal
+from typing import Literal, Protocol
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -40,6 +40,85 @@ class ProjectionAccount:
     status: str
     is_default: bool
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReportingPeriod:
+    """The local month a report covers, and the day it is read on."""
+
+    timezone_name: str
+    cutoff_local_date: date
+    period_start: date
+    period_end: date
+
+
+def reporting_period(
+    *,
+    timezone_name: str,
+    generated_at: datetime,
+) -> ReportingPeriod:
+    """Resolve the local month from an instant and a canonical timezone.
+
+    Shared with the analytics read so the two can never disagree about which
+    month a user is looking at. A month boundary is a local fact (ADR 0007);
+    computing it twice is how two screens start showing different totals.
+    """
+
+    cutoff_local_date = (
+        _aware_utc(generated_at).astimezone(ZoneInfo(timezone_name)).date()
+    )
+    return ReportingPeriod(
+        timezone_name=timezone_name,
+        cutoff_local_date=cutoff_local_date,
+        period_start=cutoff_local_date.replace(day=1),
+        period_end=cutoff_local_date.replace(
+            day=calendar.monthrange(cutoff_local_date.year, cutoff_local_date.month)[1]
+        ),
+    )
+
+
+def effective_operations[T: ProjectionOperationLike](
+    allocated: tuple[T, ...],
+    *,
+    opening_balance_on: date,
+    cutoff_local_date: date,
+) -> tuple[T, ...]:
+    """Operations that count: on or after the baseline, not in the future."""
+
+    return tuple(
+        operation
+        for operation in allocated
+        if opening_balance_on <= operation.occurred_on <= cutoff_local_date
+    )
+
+
+def period_operations[T: ProjectionOperationLike](
+    effective: tuple[T, ...],
+    *,
+    period_start: date,
+    opening_balance_on: date,
+    cutoff_local_date: date,
+) -> tuple[T, ...]:
+    """Operations inside the reported month.
+
+    The month starts at the later of its first day and the account baseline: a
+    month the account did not exist for is partial, not zero.
+    """
+
+    return tuple(
+        operation
+        for operation in effective
+        if max(period_start, opening_balance_on)
+        <= operation.occurred_on
+        <= cutoff_local_date
+    )
+
+
+class ProjectionOperationLike(Protocol):
+    """The subset of an operation the shared period filters read."""
+
+    @property
+    def occurred_on(self) -> date: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,10 +314,9 @@ def _build_current_home_revision(
         raise HomeProjectionInvariantError(
             "opening baseline is later than the projection date"
         )
-    period_start = cutoff_local_date.replace(day=1)
-    period_end = cutoff_local_date.replace(
-        day=calendar.monthrange(cutoff_local_date.year, cutoff_local_date.month)[1]
-    )
+    period = reporting_period(timezone_name=timezone_name, generated_at=generated_at)
+    period_start = period.period_start
+    period_end = period.period_end
 
     allocated = tuple(
         operation
@@ -246,22 +324,21 @@ def _build_current_home_revision(
         if operation.account_id == account.account_id
         and operation.created_at <= data_as_of
     )
-    effective = tuple(
-        operation
-        for operation in allocated
-        if account.opening_balance_on <= operation.occurred_on <= cutoff_local_date
+    effective = effective_operations(
+        allocated,
+        opening_balance_on=account.opening_balance_on,
+        cutoff_local_date=cutoff_local_date,
     )
 
     balance_amount = account.opening_balance + sum(
         (_signed_amount(operation) for operation in effective),
         start=Decimal(0),
     )
-    month_operations = tuple(
-        operation
-        for operation in effective
-        if max(period_start, account.opening_balance_on)
-        <= operation.occurred_on
-        <= cutoff_local_date
+    month_operations = period_operations(
+        effective,
+        period_start=period_start,
+        opening_balance_on=account.opening_balance_on,
+        cutoff_local_date=cutoff_local_date,
     )
     month_income = sum(
         (

@@ -16,6 +16,7 @@ from .goal_core import GoalCore
 from .main import create_app
 from .passwords import PasswordService
 from .planned_cost_core import PlannedCostCore
+from .postgres_analytics_repository import PostgresAnalyticsRepository
 from .postgres_category_repository import PostgresCategoryRepository
 from .postgres_finance_account_repository import PostgresFinanceAccountRepository
 from .postgres_finance_repository import PostgresFinanceOperationRepository
@@ -68,5 +69,8 @@ app = create_app(
         ),
     ),
     category_repository=finance_categories,
+    analytics_repository=PostgresAnalyticsRepository(
+        session_factory=session_factory,
+    ),
     database_engine=engine,
 )

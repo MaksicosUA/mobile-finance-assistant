@@ -21,6 +21,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .account_core import AccountCore, UnavailableFinanceAccountRepository
 from .account_routes import router as account_router
+from .analytics_routes import router as analytics_router
 from .auth import (
     AuthenticatedUser,
     CurrentUserAuthenticator,
@@ -37,6 +38,7 @@ from .models import HomeResponse, HomeV1Response
 from .operation_routes import router as operation_router
 from .planned_cost_core import PlannedCostCore, UnavailablePlannedCostRepository
 from .planned_cost_routes import router as planned_cost_router
+from .postgres_analytics_repository import UnavailableAnalyticsRepository
 from .postgres_category_repository import UnavailableCategoryRepository
 from .repository import (
     HomeCanonicalTimezoneMismatch,
@@ -260,6 +262,7 @@ def create_app(
     goal_core: GoalCore | None = None,
     category_repository: object | None = None,
     finance_operation_repository: object | None = None,
+    analytics_repository: object | None = None,
     database_engine: AsyncEngine | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
@@ -329,6 +332,11 @@ def create_app(
         if finance_operation_repository is not None
         else application.state.finance_core.operation_store
     )
+    application.state.analytics_repository = (
+        analytics_repository
+        if analytics_repository is not None
+        else UnavailableAnalyticsRepository()
+    )
 
     @application.exception_handler(RequestValidationError)
     async def redacted_request_validation_error(
@@ -374,6 +382,7 @@ def create_app(
     application.include_router(planned_cost_router)
     application.include_router(goal_router)
     application.include_router(category_router)
+    application.include_router(analytics_router)
     application.include_router(router)
     return application
 
