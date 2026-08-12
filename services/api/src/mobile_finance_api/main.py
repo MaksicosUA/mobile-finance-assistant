@@ -320,11 +320,14 @@ def create_app(
         else UnavailableCategoryRepository()
     )
     # Reading history is not a Finance Core decision, so the route reaches the
-    # adapter directly rather than widening the core with a read method.
+    # adapter directly rather than widening the core with a read method. It
+    # defaults to the core's own adapter rather than to the unavailable stub:
+    # a caller that wired writes has wired reads, and forgetting the second
+    # parameter used to answer 503 to every read while writes worked.
     application.state.finance_operation_repository = (
         finance_operation_repository
         if finance_operation_repository is not None
-        else UnavailableFinanceOperationRepository()
+        else application.state.finance_core.operation_store
     )
 
     @application.exception_handler(RequestValidationError)

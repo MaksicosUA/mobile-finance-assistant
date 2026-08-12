@@ -17,6 +17,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
 from mobile_finance_api.auth import AuthenticatedUser
+from mobile_finance_api.finance_core import FinanceCore
 from mobile_finance_api.main import create_app
 from mobile_finance_api.operation_contracts import (
     ListOperationsResponse,
@@ -222,6 +223,37 @@ def test_reading_history_requires_authentication() -> None:
     asyncio.run(scenario())
 
 
+def test_wiring_the_core_wires_reading_it_back() -> None:
+    """The regression that shipped: writes worked, every read answered 503.
+
+    `runtime.py` builds the repository inside the core and never passed it
+    separately, so the history route fell through to the unavailable stub. The
+    route now defaults to the core's own adapter, which makes that state
+    unreachable rather than merely fixed once.
+    """
+
+    async def scenario() -> None:
+        store = _FakeHistory(count=1)
+        app = create_app(
+            current_user_authenticator=_StaticAuthenticator(),
+            # Exactly what runtime.py does: the store reaches the app only
+            # through the core.
+            finance_core=FinanceCore(
+                repository=store,  # type: ignore[arg-type]
+                account_directory=_UnusedAccounts(),  # type: ignore[arg-type]
+            ),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.get("/api/v1/operations", headers=_AUTH)
+        assert response.status_code == 200, response.text
+        assert len(response.json()["operations"]) == 1
+
+    asyncio.run(scenario())
+
+
 def test_an_unwired_store_fails_closed_without_leaking() -> None:
     async def scenario() -> None:
         app = create_app(current_user_authenticator=_StaticAuthenticator())
@@ -317,6 +349,17 @@ class _FakeHistory:
             operations=tuple(page),
             next_cursor=str(start + limit) if remaining else None,
         )
+
+
+class _UnusedAccounts:
+    async def get_owned_active_account(
+        self,
+        *,
+        user_id: UUID,
+        account_id: UUID,
+    ) -> None:
+        del user_id, account_id
+        raise AssertionError("reading history must not consult accounts")
 
 
 class _ExplodingHistory:

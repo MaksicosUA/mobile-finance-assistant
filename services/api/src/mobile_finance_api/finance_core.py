@@ -156,6 +156,17 @@ class FinanceCore:
             else UnavailableFinanceCategoryDirectory()
         )
 
+    @property
+    def operation_store(self) -> FinanceOperationRepository:
+        """The adapter this core writes through, for read-only routes.
+
+        Exposed so wiring the core also wires reading operations back. Keeping
+        them separate meant a deployment could accept writes and answer 503 to
+        every read, which is exactly what happened once.
+        """
+
+        return self._repository
+
     async def evaluate(
         self,
         *,
