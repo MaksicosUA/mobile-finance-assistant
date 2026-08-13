@@ -71,6 +71,13 @@ abstract interface class FinanceEntryApiClient {
     required String accessToken,
   });
 
+  Future<FinanceEntryResult<OperationProposal>> parseOperationText({
+    required String accessToken,
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  });
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories({
     required String accessToken,
   });
@@ -428,6 +435,40 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       acceptedStatuses: const {200},
       contract: _ContractKind.profile,
       parse: (json, statusCode) => _parseProfile(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<OperationProposal>> parseOperationText({
+    required String accessToken,
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  }) {
+    final sentence = text.trim();
+    if (sentence.isEmpty ||
+        sentence.length > maximumEntryTextLength ||
+        _containsControl(sentence)) {
+      return Future<FinanceEntryResult<OperationProposal>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/operations/parse',
+      accessToken: accessToken,
+      body: <String, Object?>{
+        'schemaVersion': '1',
+        'text': sentence,
+        'capturedAt': capturedAt,
+        'capturedTimezone': capturedTimezone,
+      },
+      acceptedStatuses: const {200},
+      contract: _ContractKind.textEntry,
+      parse: (json, statusCode) => _parseProposal(json, statusCode),
     );
   }
 
@@ -834,6 +875,11 @@ AnalyticsSummary _parseAnalytics(Map<String, Object?> json, int status) {
 UserProfile _parseProfile(Map<String, Object?> json, int status) {
   if (status != 200) throw const FormatException('Invalid status.');
   return UserProfile.fromJson(json);
+}
+
+OperationProposal _parseProposal(Map<String, Object?> json, int status) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  return OperationProposal.fromJson(json);
 }
 
 OperationHistoryList _parseOperationHistory(
@@ -1383,11 +1429,12 @@ _ErrorDetail? _tryErrorDetail(
     final detail = _object(root['detail']);
     final rawCode = _requiredString(detail, 'code');
     final isBaselineRejection = rawCode == 'BASELINE_REJECTED';
-    // Analytics and the profile are reads. Nothing is submitted, so their
-    // errors carry a code and no issue list at all.
+    // Analytics, the profile, and parsing submit no draft, so their errors
+    // carry a code and no issue list at all.
     final isReadContract =
         contract == _ContractKind.analytics ||
-        contract == _ContractKind.profile;
+        contract == _ContractKind.profile ||
+        contract == _ContractKind.textEntry;
     _expectKeys(detail, switch ((isBaselineRejection, isReadContract)) {
       (true, _) => const {'code', 'issues', 'baselineIssues'},
       (_, true) => const {'code'},
@@ -1486,6 +1533,8 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     _ContractKind.analytics => false,
     // The profile is a read. Nothing is submitted, so nothing is rejected.
     _ContractKind.profile => false,
+    // Parsing proposes; it rejects nothing, because it decides nothing.
+    _ContractKind.textEntry => false,
     _ContractKind.account => const {
       FinanceIssueCode.accountAlreadyInitialized,
       FinanceIssueCode.openingBalanceDateInFuture,
@@ -1559,6 +1608,9 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
     _ContractKind.profile => const {
       FinanceEntryErrorCode.profileUnavailable,
     }.contains(code),
+    _ContractKind.textEntry => const {
+      FinanceEntryErrorCode.textEntryUnavailable,
+    }.contains(code),
     _ContractKind.category => const {
       FinanceEntryErrorCode.malformedCategoryCommand,
       FinanceEntryErrorCode.categoryNotFound,
@@ -1612,6 +1664,7 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
     FinanceEntryErrorCode.categoryPersistenceUnavailable,
   'ANALYTICS_UNAVAILABLE' => FinanceEntryErrorCode.analyticsUnavailable,
   'PROFILE_UNAVAILABLE' => FinanceEntryErrorCode.profileUnavailable,
+  'TEXT_ENTRY_UNAVAILABLE' => FinanceEntryErrorCode.textEntryUnavailable,
   'MALFORMED_ANALYTICS_QUERY' => FinanceEntryErrorCode.malformedAnalyticsQuery,
   'MALFORMED_PLANNED_COST' => FinanceEntryErrorCode.malformedPlannedCost,
   'PLANNED_COST_REJECTED' => FinanceEntryErrorCode.plannedCostRejected,
@@ -1815,6 +1868,7 @@ enum _ContractKind {
   category,
   analytics,
   profile,
+  textEntry,
 }
 
 final class _ErrorDetail {

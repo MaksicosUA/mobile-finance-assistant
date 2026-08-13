@@ -49,6 +49,12 @@ abstract interface class FinanceEntryRepositoryClient {
 
   Future<FinanceEntryResult<UserProfile>> readProfile();
 
+  Future<FinanceEntryResult<OperationProposal>> parseOperationText({
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  });
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories();
 
   Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
@@ -229,6 +235,24 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<UserProfile>> readProfile() {
     return _authorized(
       (accessToken) => _api.readProfile(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<OperationProposal>> parseOperationText({
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  }) {
+    // Reading a sentence writes nothing, so this needs none of the commit
+    // preflight a financial command does (ADR 0022).
+    return _authorized(
+      (accessToken) => _api.parseOperationText(
+        accessToken: accessToken,
+        text: text,
+        capturedAt: capturedAt,
+        capturedTimezone: capturedTimezone,
+      ),
     );
   }
 

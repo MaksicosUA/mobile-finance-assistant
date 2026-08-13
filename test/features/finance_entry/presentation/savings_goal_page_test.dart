@@ -315,6 +315,12 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<UserProfile>> readProfile() =>
       throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<OperationProposal>> parseOperationText({
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<OperationHistoryList>> listOperations({
     required int limit,
     String? cursor,

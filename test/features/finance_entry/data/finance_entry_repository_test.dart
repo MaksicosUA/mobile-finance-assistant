@@ -637,6 +637,13 @@ class _ListApi implements FinanceEntryApiClient {
     required String accessToken,
   }) => throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<OperationProposal>> parseOperationText({
+    required String accessToken,
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<OperationHistoryList>> listOperations({
     required String accessToken,
     required int limit,
