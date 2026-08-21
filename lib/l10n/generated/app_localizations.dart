@@ -2492,6 +2492,78 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Категорию не подобрал — выберите её.'**
   String get entrySentenceGapCategory;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Слова категории'**
+  String get categoryKeywordsTitle;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Слова'**
+  String get categoryKeywordsAction;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Если слово из фразы начинается с одного из этих, операция попадёт в эту категорию. «авто» поймает и «автохимию», «продукт» — и «продуктов».'**
+  String get categoryKeywordsDescription;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Слов пока нет — категория подберётся только по названию.'**
+  String get categoryKeywordsEmpty;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить слово'**
+  String get categoryKeywordsField;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Добавить'**
+  String get categoryKeywordsAdd;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Убрать слово {keyword}'**
+  String categoryKeywordsRemove(String keyword);
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Слово — от трёх букв или цифр, без пробелов.'**
+  String get categoryKeywordsInvalid;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Это слово уже ведёт в другую категорию. Уберите его там.'**
+  String get categoryKeywordsTaken;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скрытая категория не участвует в подборе.'**
+  String get categoryKeywordsArchived;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить слова'**
+  String get categoryKeywordsLoadError;
+
+  /// Category keywords (ADR 0020, step 3).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось сохранить слово'**
+  String get categoryKeywordsSaveError;
 }
 
 class _AppLocalizationsDelegate

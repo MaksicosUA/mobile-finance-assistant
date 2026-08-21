@@ -885,8 +885,7 @@
   "categoryLoadError": "Не удалось загрузить категории",
   "@categoryLoadError": {
     "description": "Category management (ADR 0020, step 2b)."
-  }
-  ,
+  },
   "operationHistoryTitle": "Все операции",
   "@operationHistoryTitle": {
     "description": "Operation history (ADR 0020, step 4)."
@@ -944,8 +943,7 @@
   "operationDetailOriginalTextHint": "Категорию позже переименовали",
   "@operationDetailOriginalTextHint": {
     "description": "Operation history (ADR 0020, step 4)."
-  }
-  ,
+  },
   "analyticsExpenseByCategory": "Расходы по категориям",
   "@analyticsExpenseByCategory": {
     "description": "Analytics (ADR 0020, step 5)."
@@ -1059,5 +1057,58 @@
   "entrySentenceGapCategory": "Категорию не подобрал — выберите её.",
   "@entrySentenceGapCategory": {
     "description": "Natural-language entry (ADR 0022)."
+  },
+  "categoryKeywordsTitle": "Слова категории",
+  "@categoryKeywordsTitle": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsAction": "Слова",
+  "@categoryKeywordsAction": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsDescription": "Если слово из фразы начинается с одного из этих, операция попадёт в эту категорию. «авто» поймает и «автохимию», «продукт» — и «продуктов».",
+  "@categoryKeywordsDescription": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsEmpty": "Слов пока нет — категория подберётся только по названию.",
+  "@categoryKeywordsEmpty": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsField": "Добавить слово",
+  "@categoryKeywordsField": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsAdd": "Добавить",
+  "@categoryKeywordsAdd": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsRemove": "Убрать слово {keyword}",
+  "@categoryKeywordsRemove": {
+    "description": "Category keywords (ADR 0020, step 3).",
+    "placeholders": {
+      "keyword": {
+        "type": "String"
+      }
+    }
+  },
+  "categoryKeywordsInvalid": "Слово — от трёх букв или цифр, без пробелов.",
+  "@categoryKeywordsInvalid": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsTaken": "Это слово уже ведёт в другую категорию. Уберите его там.",
+  "@categoryKeywordsTaken": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsArchived": "Скрытая категория не участвует в подборе.",
+  "@categoryKeywordsArchived": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsLoadError": "Не удалось загрузить слова",
+  "@categoryKeywordsLoadError": {
+    "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "categoryKeywordsSaveError": "Не удалось сохранить слово",
+  "@categoryKeywordsSaveError": {
+    "description": "Category keywords (ADR 0020, step 3)."
   }
 }

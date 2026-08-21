@@ -74,6 +74,15 @@ abstract interface class FinanceEntryRepositoryClient {
     String categoryId,
   );
 
+  Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords(
+    String categoryId,
+  );
+
+  Future<FinanceEntryResult<CategoryKeywords>> replaceCategoryKeywords(
+    String categoryId,
+    List<String> keywords,
+  );
+
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal(
     SavingsGoalDraft draft,
   );
@@ -228,6 +237,33 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() {
     return _authorized(
       (accessToken) => _api.readAnalytics(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords(
+    String categoryId,
+  ) {
+    return _authorized(
+      (accessToken) => _api.listCategoryKeywords(
+        accessToken: accessToken,
+        categoryId: categoryId,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<CategoryKeywords>> replaceCategoryKeywords(
+    String categoryId,
+    List<String> keywords,
+  ) {
+    // A keyword is a label, not money: no commit preflight (ADR 0020).
+    return _authorized(
+      (accessToken) => _api.replaceCategoryKeywords(
+        accessToken: accessToken,
+        categoryId: categoryId,
+        keywords: keywords,
+      ),
     );
   }
 

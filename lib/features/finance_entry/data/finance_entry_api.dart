@@ -103,6 +103,17 @@ abstract interface class FinanceEntryApiClient {
     required String categoryId,
   });
 
+  Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords({
+    required String accessToken,
+    required String categoryId,
+  });
+
+  Future<FinanceEntryResult<CategoryKeywords>> replaceCategoryKeywords({
+    required String accessToken,
+    required String categoryId,
+    required List<String> keywords,
+  });
+
   Future<FinanceEntryResult<SavingsGoalCreated>> createGoal({
     required String accessToken,
     required SavingsGoalDraft draft,
@@ -419,6 +430,67 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       acceptedStatuses: const {200},
       contract: _ContractKind.analytics,
       parse: (json, statusCode) => _parseAnalytics(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords({
+    required String accessToken,
+    required String categoryId,
+  }) {
+    try {
+      validateCategoryId(categoryId);
+    } on Object {
+      return Future<FinanceEntryResult<CategoryKeywords>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'GET',
+      path: '/api/v1/categories/$categoryId/keywords',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.category,
+      parse: (json, statusCode) => _parseCategoryKeywords(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<CategoryKeywords>> replaceCategoryKeywords({
+    required String accessToken,
+    required String categoryId,
+    required List<String> keywords,
+  }) {
+    final List<String> normalized;
+    try {
+      validateCategoryId(categoryId);
+      normalized = [
+        for (final word in keywords) validatedCategoryKeyword(word),
+      ];
+      if (normalized.toSet().length != normalized.length ||
+          normalized.length > maximumCategoryKeywords) {
+        throw const FormatException('Invalid category keywords.');
+      }
+    } on Object {
+      return Future<FinanceEntryResult<CategoryKeywords>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    // The whole set travels, so the write stays idempotent by target state.
+    return _request(
+      method: 'PUT',
+      path: '/api/v1/categories/$categoryId/keywords',
+      accessToken: accessToken,
+      body: <String, Object?>{'schemaVersion': '1', 'keywords': normalized},
+      acceptedStatuses: const {200},
+      contract: _ContractKind.category,
+      parse: (json, statusCode) => _parseCategoryKeywords(json, statusCode),
     );
   }
 
@@ -875,6 +947,11 @@ AnalyticsSummary _parseAnalytics(Map<String, Object?> json, int status) {
 UserProfile _parseProfile(Map<String, Object?> json, int status) {
   if (status != 200) throw const FormatException('Invalid status.');
   return UserProfile.fromJson(json);
+}
+
+CategoryKeywords _parseCategoryKeywords(Map<String, Object?> json, int status) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  return CategoryKeywords.fromJson(json);
 }
 
 OperationProposal _parseProposal(Map<String, Object?> json, int status) {
@@ -1429,22 +1506,30 @@ _ErrorDetail? _tryErrorDetail(
     final detail = _object(root['detail']);
     final rawCode = _requiredString(detail, 'code');
     final isBaselineRejection = rawCode == 'BASELINE_REJECTED';
-    // Analytics, the profile, and parsing submit no draft, so their errors
-    // carry a code and no issue list at all.
-    final isReadContract =
+    // Contracts that submit no draft carry a code and no issue list at all.
+    // The catalogue is one of them, and its keyword conflict adds the word and
+    // the category that already owns it so the user can act on the refusal.
+    final isCodeOnly =
         contract == _ContractKind.analytics ||
         contract == _ContractKind.profile ||
-        contract == _ContractKind.textEntry;
-    _expectKeys(detail, switch ((isBaselineRejection, isReadContract)) {
-      (true, _) => const {'code', 'issues', 'baselineIssues'},
-      (_, true) => const {'code'},
-      _ => const {'code', 'issues'},
-    });
+        contract == _ContractKind.textEntry ||
+        contract == _ContractKind.category;
+    _expectKeys(
+      detail,
+      switch ((isBaselineRejection, isCodeOnly)) {
+        (true, _) => const {'code', 'issues', 'baselineIssues'},
+        (_, true) => const {'code'},
+        _ => const {'code', 'issues'},
+      },
+      optional: contract == _ContractKind.category
+          ? const {'keyword', 'owner'}
+          : const <String>{},
+    );
     final code = _errorCode(rawCode);
     if (!_errorAllowed(code, contract)) {
       throw const FormatException('Wrong Finance error contract.');
     }
-    if (isReadContract) {
+    if (isCodeOnly) {
       return _ErrorDetail(
         code: code,
         issues: const <FinanceIssue>[],
@@ -1616,6 +1701,7 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.categoryNotFound,
       FinanceEntryErrorCode.categoryNameTaken,
       FinanceEntryErrorCode.categoryArchived,
+      FinanceEntryErrorCode.categoryKeywordTaken,
       FinanceEntryErrorCode.categoryPersistenceUnavailable,
     }.contains(code),
   };
@@ -1660,6 +1746,7 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'CATEGORY_NOT_FOUND' => FinanceEntryErrorCode.categoryNotFound,
   'CATEGORY_NAME_TAKEN' => FinanceEntryErrorCode.categoryNameTaken,
   'CATEGORY_ARCHIVED' => FinanceEntryErrorCode.categoryArchived,
+  'CATEGORY_KEYWORD_TAKEN' => FinanceEntryErrorCode.categoryKeywordTaken,
   'CATEGORY_PERSISTENCE_UNAVAILABLE' =>
     FinanceEntryErrorCode.categoryPersistenceUnavailable,
   'ANALYTICS_UNAVAILABLE' => FinanceEntryErrorCode.analyticsUnavailable,

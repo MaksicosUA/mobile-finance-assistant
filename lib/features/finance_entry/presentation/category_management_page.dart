@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/category_management_controller.dart';
+
 import '../domain/finance_entry_models.dart';
+import 'category_keywords_page.dart';
 import '../domain/finance_entry_result.dart';
 import 'widgets/category_picker.dart';
 
@@ -178,6 +180,7 @@ class _CategoryManagementPageState
             onSubmitRename: controller.submitRename,
             onCancelRename: controller.cancelRenaming,
             onHide: () => _confirmHide(context, l10n, category),
+            onOpenKeywords: () => _openKeywords(context, category),
           ),
         if (hidden.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -225,6 +228,21 @@ class _CategoryManagementPageState
     );
   }
 
+  void _openKeywords(BuildContext context, ManagedFinanceCategory category) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CategoryKeywordsPage(
+          categoryId: category.categoryId,
+          categoryName: categoryLabel(
+            AppLocalizations.of(context),
+            _asCategory(category),
+          ),
+          onSignInRequested: widget.onSignInRequested,
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmHide(
     BuildContext context,
     AppLocalizations l10n,
@@ -267,6 +285,7 @@ class _CategoryRow extends StatelessWidget {
     required this.onSubmitRename,
     required this.onCancelRename,
     required this.onHide,
+    required this.onOpenKeywords,
   });
 
   final ManagedFinanceCategory category;
@@ -280,6 +299,7 @@ class _CategoryRow extends StatelessWidget {
   final Future<void> Function() onSubmitRename;
   final VoidCallback onCancelRename;
   final Future<void> Function() onHide;
+  final VoidCallback onOpenKeywords;
 
   @override
   Widget build(BuildContext context) {
@@ -309,6 +329,12 @@ class _CategoryRow extends StatelessWidget {
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                IconButton(
+                  key: Key('category-keywords-${category.categoryId}'),
+                  onPressed: enabled ? onOpenKeywords : null,
+                  tooltip: l10n.categoryKeywordsAction,
+                  icon: const Icon(Icons.tag_outlined),
+                ),
                 IconButton(
                   key: Key('category-rename-${category.categoryId}'),
                   onPressed: enabled ? onStartRename : null,

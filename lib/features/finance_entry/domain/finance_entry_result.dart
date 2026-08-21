@@ -41,6 +41,7 @@ enum FinanceEntryErrorCode {
   categoryNotFound,
   categoryNameTaken,
   categoryArchived,
+  categoryKeywordTaken,
   categoryPersistenceUnavailable,
   analyticsUnavailable,
   malformedAnalyticsQuery,
