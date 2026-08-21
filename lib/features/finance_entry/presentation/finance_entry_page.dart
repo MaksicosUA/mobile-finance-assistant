@@ -439,6 +439,14 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
       if (amount != null) _amountController.text = amount;
       final occurredOn = DateTime.tryParse('${proposal.occurredOn}T00:00:00Z');
       if (occurredOn != null) _occurredOn = occurredOn;
+      // Categories are typed by direction, so one chosen while the entry was
+      // an expense cannot survive a sentence that turns it into income: the
+      // picker would then hold a value its own list no longer offers.
+      final previous = _categoryChoice;
+      if (previous is CategoryFromCatalogue &&
+          previous.category.direction != proposal.type) {
+        _categoryChoice = const CategoryUnset();
+      }
       final categoryId = proposal.categoryId;
       if (categoryId == null) return;
       for (final category in catalogue.forDirection(proposal.type)) {
