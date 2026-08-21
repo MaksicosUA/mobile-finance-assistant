@@ -644,6 +644,17 @@ class _ListApi implements FinanceEntryApiClient {
     required String capturedTimezone,
   }) => throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords({
+    required String accessToken,
+    required String categoryId,
+  }) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<CategoryKeywords>> replaceCategoryKeywords({
+    required String accessToken,
+    required String categoryId,
+    required List<String> keywords,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<OperationHistoryList>> listOperations({
     required String accessToken,
     required int limit,

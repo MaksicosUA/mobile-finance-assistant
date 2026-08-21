@@ -1374,6 +1374,68 @@ final class AnalyticsTrendPoint {
   final String amount;
 }
 
+/// The shortest keyword a category may claim, mirroring the server rule.
+///
+/// Below this a keyword stops describing a category and starts matching
+/// everything.
+const int minimumCategoryKeywordLength = 3;
+
+/// How many words one category may claim.
+const int maximumCategoryKeywords = 32;
+
+// Unicode property classes, not `\w`: Dart's `\w` is ASCII-only even with the
+// unicode flag, so a Cyrillic keyword would be refused before it ever reached
+// the server that happily accepts it.
+final RegExp _categoryKeywordPattern = RegExp(
+  r'^[\p{L}\p{N}]{3,40}$',
+  unicode: true,
+);
+
+/// One spelling per word, so matching never depends on how it was typed.
+///
+/// Checked here as well as on the server so a mistyped word is answered
+/// immediately instead of costing a round trip.
+String validatedCategoryKeyword(String value) {
+  final normalized = value.trim().toLowerCase();
+  if (!_categoryKeywordPattern.hasMatch(normalized)) {
+    throw const FormatException('Invalid category keyword.');
+  }
+  return normalized;
+}
+
+/// The words that lead to one category (ADR 0020 step 3).
+@immutable
+final class CategoryKeywords {
+  CategoryKeywords({required this.categoryId, required List<String> keywords})
+    : keywords = List<String>.unmodifiable(keywords);
+
+  factory CategoryKeywords.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'categoryId', 'keywords'});
+    _requireSchemaVersion(json);
+    final raw = json['keywords'];
+    if (raw is! List<Object?> || raw.length > maximumCategoryKeywords) {
+      throw const FormatException('Invalid category keywords.');
+    }
+    final keywords = <String>[];
+    for (final item in raw) {
+      if (item is! String) {
+        throw const FormatException('Invalid category keyword.');
+      }
+      keywords.add(validatedCategoryKeyword(item));
+    }
+    if (keywords.toSet().length != keywords.length) {
+      throw const FormatException('A keyword appears at most once.');
+    }
+    return CategoryKeywords(
+      categoryId: _requiredUuid(json, 'categoryId'),
+      keywords: keywords,
+    );
+  }
+
+  final String categoryId;
+  final List<String> keywords;
+}
+
 /// The longest sentence the parse endpoint accepts.
 ///
 /// The server enforces this; the client checks it only to avoid spending a

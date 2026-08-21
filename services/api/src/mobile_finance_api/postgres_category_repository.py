@@ -12,16 +12,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .category_contracts import (
     SEEDED_CATEGORIES,
+    SEEDED_CATEGORY_KEYWORDS,
     Category,
+    CategoryKeywordsResponse,
     CreateCategoryCommand,
     ListCategoriesResponse,
     ManagedCategory,
     ManagedCategoryListResponse,
     RenameCategoryCommand,
+    ReplaceCategoryKeywordsCommand,
 )
 from .database import AsyncSessionFactory
 from .db_models import (
     FinanceCategoryAuditRow,
+    FinanceCategoryKeywordAuditRow,
+    FinanceCategoryKeywordRow,
     FinanceCategoryOutboxEventRow,
     FinanceCategoryRow,
     UserRow,
@@ -43,6 +48,16 @@ class CategoryNameTaken(Exception):
 
 class CategoryArchived(Exception):
     """The category is hidden, so it cannot be renamed until it is restored."""
+
+
+class CategoryKeywordTaken(Exception):
+    """Another category of this direction already claims one of those words."""
+
+    def __init__(self, keyword: str, owner: str) -> None:
+        super().__init__(keyword)
+        self.keyword = keyword
+        #: Named so the user can act on the refusal instead of guessing.
+        self.owner = owner
 
 
 def seeded_category_rows(
@@ -68,6 +83,36 @@ def seeded_category_rows(
         )
         for seeded in SEEDED_CATEGORIES
     ]
+
+
+def seeded_category_keyword_rows(
+    *,
+    categories: list[FinanceCategoryRow],
+    created_at: datetime,
+) -> list[FinanceCategoryKeywordRow]:
+    """Build the starting vocabulary for freshly seeded categories.
+
+    Written in the same transaction as the categories themselves, so a new
+    account can read a sentence from its first day instead of matching nothing
+    until the user teaches it every word.
+    """
+
+    rows: list[FinanceCategoryKeywordRow] = []
+    for category in categories:
+        if category.system_key is None:
+            continue
+        for keyword in SEEDED_CATEGORY_KEYWORDS.get(category.system_key, ()):
+            rows.append(
+                FinanceCategoryKeywordRow(
+                    id=uuid4(),
+                    category_id=category.id,
+                    user_id=category.user_id,
+                    direction=category.direction,
+                    keyword=keyword,
+                    created_at=created_at,
+                )
+            )
+    return rows
 
 
 class PostgresCategoryRepository:
@@ -343,6 +388,184 @@ class PostgresCategoryRepository:
                 restored = _to_managed_one(row)
         return restored, True
 
+    async def list_category_keywords(
+        self, *, user_id: UUID
+    ) -> dict[UUID, tuple[str, ...]]:
+        """Every word this user has taught, grouped by category.
+
+        Deliberately not part of the catalogue contract: the picker's response
+        is frozen for the installed client, and the parser is the only thing
+        that needs these.
+        """
+
+        async with self._session_factory() as database:
+            rows = (
+                await database.scalars(
+                    select(FinanceCategoryKeywordRow)
+                    .where(FinanceCategoryKeywordRow.user_id == user_id)
+                    .order_by(FinanceCategoryKeywordRow.keyword.asc())
+                )
+            ).all()
+        grouped: dict[UUID, list[str]] = {}
+        for row in rows:
+            grouped.setdefault(row.category_id, []).append(row.keyword)
+        return {key: tuple(value) for key, value in grouped.items()}
+
+    async def list_keywords(
+        self, *, user_id: UUID, category_id: UUID
+    ) -> CategoryKeywordsResponse:
+        async with self._session_factory() as database:
+            category = await database.scalar(
+                select(FinanceCategoryRow).where(
+                    FinanceCategoryRow.id == category_id,
+                    FinanceCategoryRow.user_id == user_id,
+                )
+            )
+            if category is None:
+                raise CategoryNotFound
+            rows = (
+                await database.scalars(
+                    select(FinanceCategoryKeywordRow)
+                    .where(
+                        FinanceCategoryKeywordRow.user_id == user_id,
+                        FinanceCategoryKeywordRow.category_id == category_id,
+                    )
+                    .order_by(FinanceCategoryKeywordRow.keyword.asc())
+                )
+            ).all()
+        return CategoryKeywordsResponse(
+            category_id=category_id,
+            keywords=tuple(row.keyword for row in rows),
+        )
+
+    async def replace_keywords(
+        self,
+        *,
+        user_id: UUID,
+        category_id: UUID,
+        command: ReplaceCategoryKeywordsCommand,
+    ) -> tuple[CategoryKeywordsResponse, bool]:
+        """Make the stored set equal to the requested one.
+
+        Idempotent by target state, like every other catalogue write: no client
+        command id, and sending the same set twice reports that nothing moved.
+        """
+
+        wanted = set(command.keywords)
+        async with self._session_factory() as database:
+            async with database.begin():
+                await self._lock_user(database, user_id=user_id)
+                category = await self._locked_category(
+                    database, user_id=user_id, category_id=category_id
+                )
+                if category.archived_at is not None:
+                    # Same rule as renaming: a hidden category is not offered
+                    # for new operations, so teaching it words would be
+                    # teaching something the parser will never choose.
+                    raise CategoryArchived
+
+                existing_rows = (
+                    await database.scalars(
+                        select(FinanceCategoryKeywordRow).where(
+                            FinanceCategoryKeywordRow.user_id == user_id,
+                            FinanceCategoryKeywordRow.category_id == category_id,
+                        )
+                    )
+                ).all()
+                existing = {row.keyword: row for row in existing_rows}
+                added = sorted(wanted - existing.keys())
+                removed = sorted(existing.keys() - wanted)
+                if not added and not removed:
+                    return (
+                        CategoryKeywordsResponse(
+                            category_id=category_id,
+                            keywords=tuple(sorted(existing)),
+                        ),
+                        False,
+                    )
+
+                await self._refuse_claimed_keywords(
+                    database,
+                    user_id=user_id,
+                    direction=category.direction,
+                    category_id=category_id,
+                    keywords=added,
+                )
+
+                created_at = _aware_utc(self._clock())
+                for keyword in removed:
+                    await database.delete(existing[keyword])
+                    database.add(
+                        _keyword_audit_row(
+                            category_id=category_id,
+                            user_id=user_id,
+                            event_type="keyword_removed",
+                            keyword=keyword,
+                            created_at=created_at,
+                        )
+                    )
+                for keyword in added:
+                    database.add(
+                        FinanceCategoryKeywordRow(
+                            id=uuid4(),
+                            category_id=category_id,
+                            user_id=user_id,
+                            direction=category.direction,
+                            keyword=keyword,
+                            created_at=created_at,
+                        )
+                    )
+                    database.add(
+                        _keyword_audit_row(
+                            category_id=category_id,
+                            user_id=user_id,
+                            event_type="keyword_added",
+                            keyword=keyword,
+                            created_at=created_at,
+                        )
+                    )
+                # No outbox event: a keyword changes no published label, so
+                # nothing already projected became stale. Only a rename does.
+        return (
+            CategoryKeywordsResponse(
+                category_id=category_id,
+                keywords=tuple(sorted(wanted)),
+            ),
+            True,
+        )
+
+    async def _refuse_claimed_keywords(
+        self,
+        database: AsyncSession,
+        *,
+        user_id: UUID,
+        direction: str,
+        category_id: UUID,
+        keywords: list[str],
+    ) -> None:
+        """Name the category that already owns a word instead of stealing it."""
+
+        if not keywords:
+            return
+        clash = (
+            await database.execute(
+                select(FinanceCategoryKeywordRow.keyword, FinanceCategoryRow.name)
+                .join(
+                    FinanceCategoryRow,
+                    FinanceCategoryRow.id == FinanceCategoryKeywordRow.category_id,
+                )
+                .where(
+                    FinanceCategoryKeywordRow.user_id == user_id,
+                    FinanceCategoryKeywordRow.direction == direction,
+                    FinanceCategoryKeywordRow.keyword.in_(keywords),
+                    FinanceCategoryKeywordRow.category_id != category_id,
+                )
+                .limit(1)
+            )
+        ).first()
+        if clash is not None:
+            raise CategoryKeywordTaken(keyword=clash[0], owner=clash[1])
+
     async def _lock_user(self, database: AsyncSession, *, user_id: UUID) -> None:
         active_user = await database.scalar(
             select(UserRow)
@@ -417,6 +640,28 @@ def _active_name_query(
         FinanceCategoryRow.direction == direction,
         FinanceCategoryRow.archived_at.is_(None),
         func.lower(FinanceCategoryRow.name) == name.lower(),
+    )
+
+
+def _keyword_audit_row(
+    *,
+    category_id: UUID,
+    user_id: UUID,
+    event_type: str,
+    keyword: str,
+    created_at: datetime,
+) -> FinanceCategoryKeywordAuditRow:
+    return FinanceCategoryKeywordAuditRow(
+        id=uuid4(),
+        category_id=category_id,
+        user_id=user_id,
+        # Minted here, not by the client: a catalogue write carries no client
+        # command, and this only ties one accepted change to its audit row.
+        command_id=uuid4(),
+        event_type=event_type,
+        actor_type="user",
+        keyword=keyword,
+        created_at=created_at,
     )
 
 
@@ -534,6 +779,28 @@ def _to_contract(rows: Sequence[FinanceCategoryRow]) -> tuple[Category, ...]:
 
 
 class UnavailableCategoryRepository:
+    async def list_category_keywords(
+        self, *, user_id: UUID
+    ) -> dict[UUID, tuple[str, ...]]:
+        del user_id
+        raise CategoryPersistenceUnavailable
+
+    async def list_keywords(
+        self, *, user_id: UUID, category_id: UUID
+    ) -> CategoryKeywordsResponse:
+        del user_id, category_id
+        raise CategoryPersistenceUnavailable
+
+    async def replace_keywords(
+        self,
+        *,
+        user_id: UUID,
+        category_id: UUID,
+        command: ReplaceCategoryKeywordsCommand,
+    ) -> tuple[CategoryKeywordsResponse, bool]:
+        del user_id, category_id, command
+        raise CategoryPersistenceUnavailable
+
     async def list_categories(self, *, user_id: UUID) -> ListCategoriesResponse:
         del user_id
         raise CategoryPersistenceUnavailable

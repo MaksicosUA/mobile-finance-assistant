@@ -35,6 +35,11 @@ class CategoryReader(Protocol):
     async def list_categories(self, *, user_id: UUID) -> ListCategoriesResponse:
         """Return the caller's own non-archived categories."""
 
+    async def list_category_keywords(
+        self, *, user_id: UUID
+    ) -> dict[UUID, tuple[str, ...]]:
+        """Return the words that lead to each of them."""
+
 
 def _category_repository(request: Request) -> CategoryReader:
     return cast(CategoryReader, request.app.state.category_repository)
@@ -68,6 +73,9 @@ async def parse_operation(
     user_id = _user_id(user)
     try:
         catalogue = await repository.list_categories(user_id=user_id)
+        # Read separately because the catalogue response is frozen for the
+        # installed client; only the parser needs these (ADR 0020 step 3).
+        keywords = await repository.list_category_keywords(user_id=user_id)
         # The day the sentence means, in the user's own timezone. The parser
         # never decides what "today" is.
         today = request.captured_at.astimezone(
@@ -81,6 +89,7 @@ async def parse_operation(
                     category_id=category.category_id,
                     name=category.name,
                     direction=category.direction,
+                    keywords=keywords.get(category.category_id, ()),
                 )
                 for category in catalogue.categories
             ),

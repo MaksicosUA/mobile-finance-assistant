@@ -1374,4 +1374,47 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get entrySentenceGapCategory => 'Категорию не подобрал — выберите её.';
+
+  @override
+  String get categoryKeywordsTitle => 'Слова категории';
+
+  @override
+  String get categoryKeywordsAction => 'Слова';
+
+  @override
+  String get categoryKeywordsDescription =>
+      'Если слово из фразы начинается с одного из этих, операция попадёт в эту категорию. «авто» поймает и «автохимию», «продукт» — и «продуктов».';
+
+  @override
+  String get categoryKeywordsEmpty =>
+      'Слов пока нет — категория подберётся только по названию.';
+
+  @override
+  String get categoryKeywordsField => 'Добавить слово';
+
+  @override
+  String get categoryKeywordsAdd => 'Добавить';
+
+  @override
+  String categoryKeywordsRemove(String keyword) {
+    return 'Убрать слово $keyword';
+  }
+
+  @override
+  String get categoryKeywordsInvalid =>
+      'Слово — от трёх букв или цифр, без пробелов.';
+
+  @override
+  String get categoryKeywordsTaken =>
+      'Это слово уже ведёт в другую категорию. Уберите его там.';
+
+  @override
+  String get categoryKeywordsArchived =>
+      'Скрытая категория не участвует в подборе.';
+
+  @override
+  String get categoryKeywordsLoadError => 'Не удалось загрузить слова';
+
+  @override
+  String get categoryKeywordsSaveError => 'Не удалось сохранить слово';
 }

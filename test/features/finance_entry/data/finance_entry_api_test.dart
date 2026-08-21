@@ -736,6 +736,103 @@ void main() {
       expect(failure.code, FinanceEntryErrorCode.textEntryUnavailable);
     });
 
+    test('reads and replaces the words that lead to a category', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(200, _keywords(const ['авто', 'машин'])),
+        _JsonResponse(200, _keywords(const ['авто'])),
+      ]);
+      final api = _api(adapter);
+
+      final read = await api.listCategoryKeywords(
+        accessToken: 'access-token',
+        categoryId: _categoryId,
+      );
+      final written = await api.replaceCategoryKeywords(
+        accessToken: 'access-token',
+        categoryId: _categoryId,
+        keywords: const ['  Авто '],
+      );
+
+      expect((read as FinanceEntrySuccess<CategoryKeywords>).value.keywords, [
+        'авто',
+        'машин',
+      ]);
+      expect(
+        (written as FinanceEntrySuccess<CategoryKeywords>).value.keywords,
+        ['авто'],
+      );
+      expect(
+        adapter.requests.first.uri.path,
+        '/api/v1/categories/$_categoryId/keywords',
+      );
+      expect(adapter.requests.last.method, 'PUT');
+      // Normalized before it travels, so one word has one spelling.
+      expect((adapter.requests.last.data as Map<String, Object?>)['keywords'], [
+        'авто',
+      ]);
+    });
+
+    test('a malformed keyword never reaches the network', () async {
+      final adapter = _QueueAdapter([]);
+      final api = _api(adapter);
+
+      final result = await api.replaceCategoryKeywords(
+        accessToken: 'access-token',
+        categoryId: _categoryId,
+        keywords: const ['ав'],
+      );
+
+      expect(_failure(result).kind, FinanceEntryFailureKind.invalidInput);
+      expect(adapter.requests, isEmpty);
+    });
+
+    test('a word claimed by another category is a typed conflict', () async {
+      final adapter = _QueueAdapter([
+        const _JsonResponse(409, {
+          'detail': {
+            'code': 'CATEGORY_KEYWORD_TAKEN',
+            'keyword': 'авто',
+            'owner': 'Транспорт',
+          },
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.replaceCategoryKeywords(
+        accessToken: 'access-token',
+        categoryId: _categoryId,
+        keywords: const ['авто'],
+      );
+
+      final failure = _failure(result);
+      expect(failure.kind, FinanceEntryFailureKind.conflict);
+      expect(failure.code, FinanceEntryErrorCode.categoryKeywordTaken);
+    });
+
+    test(
+      'a catalogue error carries its code even without an issue list',
+      () async {
+        // The catalogue answers with a code and nothing else; requiring an
+        // "issues" key here silently threw the code away.
+        final adapter = _QueueAdapter([
+          const _JsonResponse(409, {
+            'detail': {'code': 'CATEGORY_NAME_TAKEN'},
+          }),
+        ]);
+        final api = _api(adapter);
+
+        final result = await api.createCategory(
+          accessToken: 'access-token',
+          command: const CreateCategoryCommand(
+            name: 'Кофе',
+            direction: FinanceOperationType.expense,
+          ),
+        );
+
+        expect(_failure(result).code, FinanceEntryErrorCode.categoryNameTaken);
+      },
+    );
+
     test('maps an unavailable profile to a typed failure', () async {
       final adapter = _QueueAdapter([
         const _JsonResponse(503, {
@@ -751,6 +848,16 @@ void main() {
       expect(failure.code, FinanceEntryErrorCode.profileUnavailable);
     });
   });
+}
+
+const _categoryId = '88888888-8888-4888-8888-888888888888';
+
+Map<String, Object?> _keywords(List<String> words) {
+  return <String, Object?>{
+    'schemaVersion': '1',
+    'categoryId': _categoryId,
+    'keywords': words,
+  };
 }
 
 Map<String, Object?> _proposal() {

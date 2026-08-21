@@ -536,6 +536,15 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     required String capturedTimezone,
   }) => throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords(
+    String categoryId,
+  ) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<CategoryKeywords>> replaceCategoryKeywords(
+    String categoryId,
+    List<String> keywords,
+  ) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<OperationHistoryList>> listOperations({
     required int limit,
     String? cursor,

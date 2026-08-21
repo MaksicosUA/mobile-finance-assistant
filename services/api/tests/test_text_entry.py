@@ -186,6 +186,136 @@ def test_a_month_name_does_not_match_an_ordinary_word() -> None:
     assert parsed.occurred_on == _TODAY
 
 
+# --- keywords (ADR 0020 step 3) ----------------------------------------------
+
+_CAR = UUID("55555555-5555-4555-8555-555555555555")
+_KEYWORD_CATEGORIES = (
+    CategoryOption(
+        category_id=_CAR,
+        name="Автомобиль",
+        direction="expense",
+        keywords=("авто", "машин", "заправ", "car", "wagen"),
+    ),
+    CategoryOption(
+        category_id=_GROCERIES,
+        name="Продукты",
+        direction="expense",
+        keywords=("продукт",),
+    ),
+    CategoryOption(
+        category_id=_CAFE,
+        name="Прочее",
+        direction="expense",
+        keywords=(),
+    ),
+    CategoryOption(
+        category_id=_SALARY,
+        name="Криптовалюта",
+        direction="income",
+        keywords=("крипт",),
+    ),
+)
+
+
+def _by_keyword(text: str) -> object:
+    return parse_operation_text(text=text, today=_TODAY, categories=_KEYWORD_CATEGORIES)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # The three shapes a keyword has to cover: the word itself, a compound
+        # that starts with it, and a different verb entirely.
+        "заправил авто на 20 евро",
+        "купил для машины автохимию за 35",
+        "сделал сервис авто поменял масло 180",
+        "paid for car service 90",
+    ],
+)
+def test_a_keyword_reaches_a_category_its_name_would_miss(text: str) -> None:
+    """ "Автомобиль" is the right label; nobody writes it in a sentence."""
+
+    assert _by_keyword(text).category_id == _CAR
+
+
+def test_a_keyword_matches_an_inflected_form() -> None:
+    """Matching a word start is what replaces a morphology dictionary."""
+
+    assert _by_keyword("купил продуктов на 30").category_id == _GROCERIES
+    assert _by_keyword("получил доход с криптовалюты 40").category_id == _SALARY
+
+
+def test_the_word_the_user_wrote_is_kept_not_the_stem() -> None:
+    parsed = _by_keyword("Заправил авто на 20 евро")
+
+    # The stored text is evidence of what they typed; "заправ" is not a word.
+    assert parsed.category == "Заправил"
+
+
+def test_a_keyword_never_fires_from_inside_a_word() -> None:
+    """Anchored at a word start, so a stem cannot hit a word that merely
+    contains it.
+
+    A keyword that is itself too broad is the user's own call — that is what
+    the minimum length guards against, not this.
+    """
+
+    parsed = parse_operation_text(
+        text="заплатил за квартиру 800",
+        today=_TODAY,
+        categories=(
+            CategoryOption(
+                category_id=_CAR,
+                name="Развлечения",
+                # "тир" sits inside "квартиру" but does not start it.
+                direction="expense",
+                keywords=("тир",),
+            ),
+        ),
+    )
+
+    assert parsed.category_id is None
+
+
+def test_the_longer_evidence_wins() -> None:
+    """A specific word beats a broad one, whichever order they arrive in."""
+
+    broad = CategoryOption(
+        category_id=_CAR, name="Транспорт", direction="expense", keywords=("авто",)
+    )
+    specific = CategoryOption(
+        category_id=_GROCERIES,
+        name="Автобус",
+        direction="expense",
+        keywords=("автобус",),
+    )
+    for order in ((broad, specific), (specific, broad)):
+        parsed = parse_operation_text(
+            text="потратил 3 на автобус", today=_TODAY, categories=order
+        )
+        assert parsed.category_id == _GROCERIES
+
+
+def test_a_keyword_of_the_wrong_direction_is_not_considered() -> None:
+    assert _by_keyword("потратил 50 на криптовалюту").category_id is None
+
+
+def test_a_keyword_shorter_than_the_minimum_is_ignored() -> None:
+    """A two-letter keyword would drag half of every sentence into it."""
+
+    parsed = parse_operation_text(
+        text="потратил 10 на ужин",
+        today=_TODAY,
+        categories=(
+            CategoryOption(
+                category_id=_CAR, name="Еда", direction="expense", keywords=("уж",)
+            ),
+        ),
+    )
+
+    assert parsed.category_id is None
+
+
 # --- what it refuses to guess ------------------------------------------------
 
 
@@ -400,6 +530,12 @@ class _FakeCategories:
                 ),
             )
         )
+
+    async def list_category_keywords(
+        self, *, user_id: UUID
+    ) -> dict[UUID, tuple[str, ...]]:
+        del user_id
+        return {_GROCERIES: ("продукт",)}
 
     async def __getattr__(self, name: str) -> object:  # pragma: no cover
         raise AttributeError(name)
