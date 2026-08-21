@@ -1142,6 +1142,13 @@ class FinanceCategoryRow(Base):
             "user_id",
             name="uq_finance_categories_id_user",
         ),
+        # Lets a keyword row carry its direction and have the database prove it
+        # matches this category's, rather than trusting whoever wrote the row.
+        UniqueConstraint(
+            "id",
+            "direction",
+            name="uq_finance_categories_id_direction",
+        ),
         Index(
             "ix_finance_categories_user_active",
             "user_id",
@@ -1247,6 +1254,116 @@ class FinanceCategoryAuditRow(Base):
     new_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     previous_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     new_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceCategoryKeywordRow(Base):
+    """One word that leads to a category (ADR 0020 step 3).
+
+    A name and a keyword do different jobs. The name is what reports and the
+    picker show, so it must stay readable; the keyword is what a written
+    sentence is matched against. Keeping them apart is what lets a category be
+    called "Автомобиль" while "заправил", "машина" and "car" all reach it, and
+    what lets one catalogue serve four languages without a translation table.
+
+    The stored form is already normalized, and the parser matches it from a
+    word start, so one row covers an inflected form and a compound alike.
+    """
+
+    __tablename__ = "finance_category_keywords"
+    __table_args__ = (
+        CheckConstraint(
+            "direction IN ('expense', 'income')",
+            name="ck_finance_category_keywords_direction",
+        ),
+        CheckConstraint(
+            "keyword = lower(keyword) AND char_length(keyword) >= 3 "
+            "AND keyword !~ '[^[:alnum:]]'",
+            name="ck_finance_category_keywords_word_shape",
+        ),
+        CheckConstraint(
+            "created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_category_keywords_operational_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "user_id"],
+            ["finance_categories.id", "finance_categories.user_id"],
+            ondelete="CASCADE",
+            name="fk_finance_category_keywords_owned_category",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "direction"],
+            ["finance_categories.id", "finance_categories.direction"],
+            ondelete="CASCADE",
+            name="fk_finance_category_keywords_direction",
+        ),
+        # One word means one category per direction, so a match can never
+        # depend on row order. Archiving is ignored on purpose: a hidden
+        # category keeps its name and therefore its words, and restoring it
+        # must not collide with something claimed in the meantime.
+        UniqueConstraint(
+            "user_id",
+            "direction",
+            "keyword",
+            name="uq_finance_category_keywords_word",
+        ),
+        Index("ix_finance_category_keywords_category", "category_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    category_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    keyword: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceCategoryKeywordAuditRow(Base):
+    """Immutable record of every keyword a user added or removed.
+
+    Keywords decide where later entries land, so "why did this go to
+    Автомобиль" has to be answerable after the fact.
+    """
+
+    __tablename__ = "finance_category_keyword_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('keyword_added', 'keyword_removed') "
+            "AND actor_type = 'user'",
+            name="ck_finance_category_keyword_audit_event_type",
+        ),
+        CheckConstraint(
+            "created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_category_keyword_audit_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "user_id"],
+            ["finance_categories.id", "finance_categories.user_id"],
+            ondelete="CASCADE",
+            name="fk_finance_category_keyword_audit_owned_category",
+        ),
+        Index(
+            "ix_finance_category_keyword_audit_category",
+            "category_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    category_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    keyword: Mapped[str] = mapped_column(String(40), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

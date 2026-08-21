@@ -46,6 +46,14 @@ MAX_TEXT_LENGTH = 280
 #: that accepts or refuses a currency; this is only the proposal's default.
 DEFAULT_CURRENCY = "EUR"
 
+#: The shortest keyword allowed. Below this a keyword stops describing a
+#: category and starts matching everything.
+MINIMUM_KEYWORD_LENGTH = 3
+
+#: A word of the sentence. Keywords match from a word start only, so "прочее"
+#: never fires on "прочитал" and a stem cannot hit the middle of a word.
+_WORD = re.compile(r"\w+")
+
 
 @dataclass(frozen=True)
 class CategoryOption:
@@ -54,6 +62,11 @@ class CategoryOption:
     category_id: UUID
     name: str
     direction: OperationDirection
+    #: Words that lead to this category, already normalized to lower case.
+    #: They exist because a name has a different job: it is what reports and
+    #: the picker show, so "Автомобиль" must stay readable while "авто",
+    #: "машин" and "car" are what people actually write.
+    keywords: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -416,29 +429,57 @@ def _find_category(
     direction: OperationDirection,
     categories: tuple[CategoryOption, ...],
 ) -> tuple[UUID | None, str | None]:
-    """Match a category the user already owns; never invent one (ADR 0020)."""
+    """Match a category the user already owns; never invent one (ADR 0020).
+
+    Two ways in, and the longer evidence wins so a specific word beats a broad
+    one: a keyword that starts a word in the sentence, or the category name
+    appearing literally. Keywords carry the load — matching a *word start*
+    rather than a whole word is what makes one entry cover an inflected form
+    ("продукт" reads "продуктов") and a compound ("авто" reads "автохимию")
+    without a morphology dictionary or a model.
+    """
 
     candidates = [
         category for category in categories if category.direction == direction
     ]
-    # Longest name first, so "Кафе и рестораны" wins over "Кафе".
-    best: tuple[int, int, CategoryOption] | None = None
+    words = list(_WORD.finditer(haystack))
+    # Ranked by how much evidence matched, but quoting the whole word the user
+    # wrote: a keyword is a stem, and storing "заправ" as what they typed would
+    # be a worse record than storing "заправил".
+    best: tuple[int, tuple[int, int], CategoryOption] | None = None
+
+    def offer(*, span: tuple[int, int], weight: int, category: CategoryOption) -> None:
+        nonlocal best
+        if best is None or weight > best[0]:
+            best = (weight, span, category)
+
     for category in candidates:
+        for keyword in category.keywords:
+            if len(keyword) < MINIMUM_KEYWORD_LENGTH:
+                # Two letters would drag half the sentences into one category.
+                continue
+            for word in words:
+                if word.group().startswith(keyword):
+                    offer(span=word.span(), weight=len(keyword), category=category)
+                    break
         needle = unicodedata.normalize("NFC", category.name).casefold()
         if not needle:
             continue
         index = haystack.find(needle)
-        if index < 0:
-            continue
-        if best is None or len(needle) > best[1]:
-            best = (index, len(needle), category)
+        if index >= 0:
+            offer(
+                span=(index, index + len(needle)),
+                weight=len(needle),
+                category=category,
+            )
+
     if best is None:
         return None, None
-    index, length, category = best
+    _, (start, end), category = best
     # The user's own spelling, not the catalogue's, because the text is the
     # evidence of what they wrote. Casefolding can change a string's length in
     # some scripts, which would slice the wrong span, so that case falls back
     # to the catalogue name rather than quoting the user inaccurately.
     if len(haystack) != len(original):
         return category.category_id, category.name
-    return category.category_id, original[index : index + length]
+    return category.category_id, original[start:end]

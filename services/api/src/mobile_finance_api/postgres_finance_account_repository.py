@@ -34,7 +34,10 @@ from .db_models import (
     FinanceOperationRow,
     UserRow,
 )
-from .postgres_category_repository import seeded_category_rows
+from .postgres_category_repository import (
+    seeded_category_keyword_rows,
+    seeded_category_rows,
+)
 
 
 class PostgresFinanceAccountRepository:
@@ -258,8 +261,17 @@ class PostgresFinanceAccountRepository:
                 )
                 # Seeded in the same transaction as the account, so a user never
                 # faces an empty picker and a failure leaves neither (ADR 0020).
+                categories = seeded_category_rows(
+                    user_id=user_id, created_at=created_at
+                )
+                database.add_all(categories)
+                # Their starting vocabulary goes in the same transaction, so a
+                # new account can read a sentence from its first day instead of
+                # matching nothing until every word is taught by hand.
                 database.add_all(
-                    seeded_category_rows(user_id=user_id, created_at=created_at)
+                    seeded_category_keyword_rows(
+                        categories=categories, created_at=created_at
+                    )
                 )
             return _write_result(
                 user=user,

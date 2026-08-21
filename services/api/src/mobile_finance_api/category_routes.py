@@ -22,15 +22,18 @@ from .category_contracts import (
     CategoryErrorCode,
     CategoryErrorDetail,
     CategoryErrorResponse,
+    CategoryKeywordsResponse,
     CategoryResponse,
     CreateCategoryCommand,
     ListCategoriesResponse,
     ManagedCategory,
     ManagedCategoryListResponse,
     RenameCategoryCommand,
+    ReplaceCategoryKeywordsCommand,
 )
 from .postgres_category_repository import (
     CategoryArchived,
+    CategoryKeywordTaken,
     CategoryNameTaken,
     CategoryNotFound,
     CategoryPersistenceUnavailable,
@@ -76,6 +79,20 @@ class CategoryReader(Protocol):
         category_id: UUID,
     ) -> tuple[ManagedCategory, bool]:
         """Hide one category, reporting whether it changed."""
+
+    async def list_keywords(
+        self, *, user_id: UUID, category_id: UUID
+    ) -> CategoryKeywordsResponse:
+        """Return the words that lead to one category."""
+
+    async def replace_keywords(
+        self,
+        *,
+        user_id: UUID,
+        category_id: UUID,
+        command: ReplaceCategoryKeywordsCommand,
+    ) -> tuple[CategoryKeywordsResponse, bool]:
+        """Make the stored set equal to the requested one."""
 
     async def restore_category(
         self,
@@ -252,6 +269,85 @@ async def restore_category(
     )
 
 
+@router.get(
+    "/{category_id}/keywords",
+    response_model=CategoryKeywordsResponse,
+    response_model_by_alias=True,
+    responses={
+        401: {"description": "Authentication is required"},
+        404: {"model": CategoryErrorResponse, "description": "No such category"},
+        503: {
+            "model": CategoryErrorResponse,
+            "description": "The catalogue cannot be read",
+        },
+    },
+)
+async def list_category_keywords(
+    category_id: UUID,
+    repository: CategoryRepositoryDependency,
+    user: CurrentUserDependency,
+) -> CategoryKeywordsResponse:
+    try:
+        return await repository.list_keywords(
+            user_id=_user_id(user), category_id=category_id
+        )
+    except CategoryNotFound:
+        raise _not_found() from None
+    except Exception:
+        public_error = _unavailable()
+    raise public_error
+
+
+@router.put(
+    "/{category_id}/keywords",
+    response_model=CategoryKeywordsResponse,
+    response_model_by_alias=True,
+    responses={
+        401: {"description": "Authentication is required"},
+        404: {"model": CategoryErrorResponse, "description": "No such category"},
+        409: {
+            "model": CategoryErrorResponse,
+            "description": "A word already leads elsewhere, or the category is hidden",
+        },
+        422: {"description": "The request is malformed"},
+        503: {
+            "model": CategoryErrorResponse,
+            "description": "The catalogue cannot be written",
+        },
+    },
+)
+async def replace_category_keywords(
+    category_id: UUID,
+    command: ReplaceCategoryKeywordsCommand,
+    repository: CategoryRepositoryDependency,
+    user: CurrentUserDependency,
+    response: Response,
+) -> CategoryKeywordsResponse:
+    """Replace the whole set, so the write is idempotent by target state."""
+
+    try:
+        keywords, changed = await repository.replace_keywords(
+            user_id=_user_id(user),
+            category_id=category_id,
+            command=command,
+        )
+    except CategoryNotFound:
+        raise _not_found() from None
+    except CategoryArchived:
+        raise _archived() from None
+    except CategoryKeywordTaken as taken:
+        # The owner travels in the message so the user can act on the refusal
+        # rather than guess which category already claimed the word.
+        raise _keyword_taken(keyword=taken.keyword, owner=taken.owner) from None
+    except Exception:
+        public_error = _unavailable()
+    else:
+        if not changed:
+            response.headers["X-Category-Unchanged"] = "1"
+        return keywords
+    raise public_error
+
+
 async def _write(
     pending: Awaitable[tuple[ManagedCategory, bool]],
     *,
@@ -304,6 +400,17 @@ def _not_found() -> HTTPException:
         status_code=status.HTTP_404_NOT_FOUND,
         code="CATEGORY_NOT_FOUND",
     )
+
+
+def _keyword_taken(*, keyword: str, owner: str) -> HTTPException:
+    detail = CategoryErrorDetail(code="CATEGORY_KEYWORD_TAKEN").model_dump(
+        mode="json", by_alias=True
+    )
+    # The clashing word and its current owner are the user's own catalogue
+    # text, returned only to the authenticated owner of both.
+    detail["keyword"] = keyword
+    detail["owner"] = owner
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
 def _name_taken() -> HTTPException:

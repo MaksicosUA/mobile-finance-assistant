@@ -6,6 +6,7 @@ a monthly total, a net flow, or a trend point.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import Annotated, Literal, Self
 from uuid import UUID
@@ -49,7 +50,36 @@ CategoryErrorCode = Literal[
     "CATEGORY_NOT_FOUND",
     "CATEGORY_NAME_TAKEN",
     "CATEGORY_ARCHIVED",
+    # A word leads to exactly one category per direction, so claiming one that
+    # is already taken is refused with the owner named rather than silently
+    # moved (ADR 0020 step 3).
+    "CATEGORY_KEYWORD_TAKEN",
     "CATEGORY_PERSISTENCE_UNAVAILABLE",
+]
+
+#: The shortest keyword allowed. Below this it stops describing a category and
+#: starts matching everything.
+MINIMUM_CATEGORY_KEYWORD_LENGTH = 3
+
+#: How many words one category may claim. A bound, not a judgement: it keeps
+#: one request and one match cheap.
+MAXIMUM_CATEGORY_KEYWORDS = 32
+
+_KEYWORD_PATTERN = re.compile(r"^[^\W_]{3,40}$", re.UNICODE)
+
+
+def _normalized_keyword(value: str) -> str:
+    """One spelling per word, so matching never depends on how it was typed."""
+
+    folded = _safe_text(value).strip().lower()
+    if _KEYWORD_PATTERN.match(folded) is None:
+        raise ValueError("a keyword is 3 to 40 letters or digits, without spaces")
+    return folded
+
+
+CategoryKeyword = Annotated[
+    str,
+    AfterValidator(_normalized_keyword),
 ]
 
 
@@ -202,6 +232,73 @@ SEEDED_CATEGORIES: tuple[SeededCategory, ...] = (
     SeededCategory(system_key="interest", name="Проценты", direction="income"),
     SeededCategory(system_key="other_income", name="Прочее", direction="income"),
 )
+
+
+class CategoryKeywordsResponse(CategoryApiModel):
+    """The words that currently lead to one category."""
+
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    category_id: UUID = Field(alias="categoryId")
+    keywords: tuple[CategoryKeyword, ...]
+
+    @model_validator(mode="after")
+    def keywords_are_unique_and_bounded(self) -> Self:
+        if len(set(self.keywords)) != len(self.keywords):
+            raise ValueError("a keyword appears at most once")
+        if len(self.keywords) > MAXIMUM_CATEGORY_KEYWORDS:
+            raise ValueError("too many keywords")
+        return self
+
+
+class ReplaceCategoryKeywordsCommand(CategoryApiModel):
+    """The whole set a category should end up with.
+
+    Replacing rather than adding keeps the write idempotent by target state,
+    which is how every other catalogue write behaves: no client command id, and
+    sending the same set twice changes nothing.
+    """
+
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    keywords: tuple[CategoryKeyword, ...]
+
+    @model_validator(mode="after")
+    def keywords_are_unique_and_bounded(self) -> Self:
+        if len(set(self.keywords)) != len(self.keywords):
+            raise ValueError("a keyword appears at most once")
+        if len(self.keywords) > MAXIMUM_CATEGORY_KEYWORDS:
+            raise ValueError("too many keywords")
+        return self
+
+
+#: What a fresh catalogue starts knowing, keyed by the seeded category's stable
+#: key. Chosen to be stems rather than whole words, because the parser matches
+#: from a word start: "продукт" reads "продуктов", "авто" reads "автохимию".
+#: Deliberately conservative — a wrong keyword misfiles money quietly, and the
+#: user can add their own vocabulary, which no seeded list can guess.
+SEEDED_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "groceries": ("продукт", "еда", "магазин", "супермаркет", "grocer"),
+    "eating_out": ("кафе", "ресторан", "кофе", "обед", "ужин", "бар"),
+    "transport": (
+        "транспорт",
+        "такси",
+        "метро",
+        "автобус",
+        "трамвай",
+        "поезд",
+        "билет",
+    ),
+    "housing": ("жиль", "аренда", "квартир", "ипотек", "коммунал"),
+    "utilities": ("интернет", "связь", "мобильн", "телефон", "провайдер"),
+    "health": ("здоровь", "врач", "аптек", "лекарств", "стоматолог", "клиник"),
+    "clothing": ("одежд", "обувь", "куртк", "джинс", "футболк"),
+    "entertainment": ("развлеч", "кино", "театр", "концерт", "игр", "подписк"),
+    "education": ("образован", "курс", "учеб", "книг", "школ", "универ"),
+    "gifts_out": ("подар", "сувенир"),
+    "salary": ("зарплат", "оклад", "аванс"),
+    "freelance": ("подработ", "фриланс", "заказ", "проект"),
+    "gifts_in": ("подар",),
+    "interest": ("процент", "вклад", "депозит"),
+}
 
 
 def category_contract_schema() -> dict[str, object]:
