@@ -149,6 +149,46 @@ void main() {
     expect(repository.parsed, isEmpty);
     expect(find.byKey(const Key('operation-sentence-error')), findsOneWidget);
   });
+  testWidgets('a sentence that flips direction does not crash the picker', (
+    tester,
+  ) async {
+    // The category chosen while this was an expense is not offered once the
+    // entry becomes income, and a dropdown asserts when its value is missing
+    // from its own items. It reached a device as a red screen.
+    final repository = _FakeRepository(
+      proposals: [
+        _proposal(),
+        OperationProposal(
+          type: FinanceOperationType.income,
+          amount: '50',
+          currency: 'EUR',
+          occurredOn: '2026-07-28',
+          sourceExpression: 'вчера',
+          categoryId: null,
+          category: null,
+          gaps: const [OperationParseGap.categoryNotMatched],
+        ),
+      ],
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'потратил 12,50 на продукты',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'получил доход от крипты вчера 50',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('operation-category-picker')), findsOneWidget);
+  });
 }
 
 Future<void> _pumpPage(
@@ -226,10 +266,15 @@ final class _FixedCapture implements FinanceCaptureContextSource {
 }
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
-  _FakeRepository({OperationProposal? proposal, this.failure})
-    : proposal = proposal ?? _proposal();
+  _FakeRepository({
+    OperationProposal? proposal,
+    List<OperationProposal>? proposals,
+    this.failure,
+  }) : proposal = proposal ?? _proposal(),
+       _queued = List<OperationProposal>.of(proposals ?? const []);
 
   final OperationProposal proposal;
+  final List<OperationProposal> _queued;
   final FinanceEntryFailureKind? failure;
   final List<({String text, String capturedAt, String capturedTimezone})>
   parsed = [];
@@ -296,7 +341,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     }
     return FinanceEntrySuccess<OperationProposal>(
       requestId: 'req_synthetic',
-      value: proposal,
+      value: _queued.isEmpty ? proposal : _queued.removeAt(0),
     );
   }
 

@@ -87,11 +87,19 @@ class CategoryPicker extends StatelessWidget {
       );
     }
 
-    final selectedId = switch (choice) {
+    final chosenId = switch (choice) {
       CategoryFromCatalogue(:final category) => category.categoryId,
       CategoryFreeText() => _freeTextValue,
       CategoryUnset() => null,
     };
+    // A dropdown asserts when its value is absent from its own items, which
+    // turns a stale selection into a crashed screen. Showing "no category" is
+    // a far better answer to inconsistent input than losing the form.
+    final offersChosenId =
+        chosenId == null ||
+        chosenId == _freeTextValue ||
+        categories.any((category) => category.categoryId == chosenId);
+    final selectedId = offersChosenId ? chosenId : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
