@@ -77,6 +77,89 @@ def reporting_period(
     )
 
 
+#: The windows analytics can report. "month" is what Home projects, and it
+#: stays the default so a caller that asks for nothing gets exactly what it
+#: got before.
+ReportingPeriodKind = Literal["last_7_days", "month", "quarter", "year", "custom"]
+
+
+def resolved_period(
+    *,
+    kind: ReportingPeriodKind,
+    timezone_name: str,
+    generated_at: datetime,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> ReportingPeriod:
+    """Resolve any reported window in the account's canonical timezone.
+
+    Built on the same local-today that `reporting_period` uses, so every screen
+    keeps agreeing about which day it is. A window never extends past today:
+    the future holds no committed operations, and showing it as zero would read
+    as a fact rather than an absence.
+    """
+
+    today = _aware_utc(generated_at).astimezone(ZoneInfo(timezone_name)).date()
+    if kind == "month":
+        return reporting_period(timezone_name=timezone_name, generated_at=generated_at)
+    if kind == "last_7_days":
+        start, end = today - timedelta(days=6), today
+    elif kind == "quarter":
+        first_month = 3 * ((today.month - 1) // 3) + 1
+        start = date(today.year, first_month, 1)
+        end = _end_of_month(date(today.year, first_month + 2, 1))
+    elif kind == "year":
+        start, end = date(today.year, 1, 1), date(today.year, 12, 31)
+    else:
+        if from_date is None or to_date is None or from_date > to_date:
+            raise ValueError("a custom period needs a from date and a to date")
+        start, end = from_date, to_date
+    return ReportingPeriod(
+        timezone_name=timezone_name,
+        # Never report beyond today, whatever was asked for.
+        cutoff_local_date=min(end, today),
+        period_start=start,
+        period_end=end,
+    )
+
+
+def preceding_period(
+    period: ReportingPeriod, *, kind: ReportingPeriodKind
+) -> ReportingPeriod:
+    """The comparable window immediately before this one.
+
+    Comparison is the reason periods exist — "did I spend more than last
+    month" — and it is only honest against a window of the same shape.
+
+    Calendar windows are stepped calendrically, never by subtracting days:
+    March has 31 and February 28, so "the same number of days earlier" would
+    put the previous month's start in January. A rolling window has no
+    calendar to follow, so there the day arithmetic is the right answer.
+
+    A past window has no future to trim, so its cutoff is its own end.
+    """
+
+    end = period.period_start - timedelta(days=1)
+    if kind == "month":
+        start = end.replace(day=1)
+    elif kind == "quarter":
+        start = date(end.year, 3 * ((end.month - 1) // 3) + 1, 1)
+    elif kind == "year":
+        start = date(end.year, 1, 1)
+    else:
+        start = end - (period.period_end - period.period_start)
+    return ReportingPeriod(
+        timezone_name=period.timezone_name,
+        cutoff_local_date=end,
+        period_start=start,
+        period_end=end,
+    )
+
+
+def _end_of_month(day: date) -> date:
+    return day.replace(day=calendar.monthrange(day.year, day.month)[1])
+
+
 def effective_operations[T: ProjectionOperationLike](
     allocated: tuple[T, ...],
     *,
