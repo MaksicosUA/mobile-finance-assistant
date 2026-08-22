@@ -265,6 +265,11 @@ class PostgresFinanceAccountRepository:
                     user_id=user_id, created_at=created_at
                 )
                 database.add_all(categories)
+                # Flushed before the keywords below: nothing relates the two
+                # mappers, so the unit of work is free to order the keyword
+                # inserts first, and the composite foreign key then refuses
+                # them because their category does not exist yet.
+                await database.flush()
                 # Their starting vocabulary goes in the same transaction, so a
                 # new account can read a sentence from its first day instead of
                 # matching nothing until every word is taught by hand.

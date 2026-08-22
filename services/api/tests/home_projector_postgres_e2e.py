@@ -180,7 +180,13 @@ def _assert_retry_metadata_blocks_lossy_downgrade() -> None:
         try:
             command.downgrade(_alembic_config(), "0005_home_projector")
         except RuntimeError as error:
-            assert "outbox retry or dead-letter metadata exists" in str(error)
+            # Whichever guard is newest refuses first: by the time the chain
+            # reaches the projector's own metadata, the category, goal, and
+            # reversal layers above it have already had their say. What must
+            # hold is that the downgrade is refused rather than losing rows.
+            assert "Refusing lossy downgrade" in str(error) or (
+                "outbox retry or dead-letter metadata exists" in str(error)
+            ), str(error)
         else:
             raise AssertionError("projector retry metadata allowed a lossy downgrade")
     finally:
