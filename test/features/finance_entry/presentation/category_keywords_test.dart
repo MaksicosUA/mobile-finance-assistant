@@ -112,6 +112,20 @@ void main() {
     expect(find.byKey(const Key('category-keywords-failure')), findsOneWidget);
     expect(find.byKey(const Key('category-keywords-retry')), findsOneWidget);
   });
+  testWidgets('a pull re-reads the screen', (tester) async {
+    final repository = _FakeRepository(current: const ['авто']);
+    await _pump(tester, repository);
+    await tester.fling(
+      find.byKey(const Key('category-keywords-page')),
+      const Offset(0, 400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.listCalls, 2);
+    // The words never leave the screen while they are being re-read.
+    expect(find.text('авто'), findsOneWidget);
+  });
 }
 
 Future<void> _pump(WidgetTester tester, _FakeRepository repository) async {
@@ -151,11 +165,13 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
   final FinanceEntryFailure? failure;
   final FinanceEntryFailureKind? loadFailure;
   final List<List<String>> replaced = [];
+  int listCalls = 0;
 
   @override
   Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords(
     String categoryId,
   ) async {
+    listCalls += 1;
     final kind = loadFailure;
     if (kind != null) {
       return FinanceEntryFailureResult<CategoryKeywords>(

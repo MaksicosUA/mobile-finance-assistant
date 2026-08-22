@@ -97,29 +97,48 @@ class OperationHistoryController extends Notifier<OperationHistoryState> {
     return const OperationHistoryLoading();
   }
 
-  Future<void> load() async {
-    if (_requestInFlight) return;
+  Future<void> load() => _read(keepVisible: false);
+
+  /// Re-reads the screen while the current reading stays visible.
+  ///
+  /// A pull that blanks usable data, or replaces it with an error page when
+  /// the network blinks, is worse than no refresh at all. Returns `false` when
+  /// the screen is still showing the older reading.
+  ///
+  /// A refresh reads the first page again, so a newly recorded operation
+  /// appears at the top; pages already read below it are dropped rather than
+  /// stitched onto a list that moved underneath them.
+  Future<bool> refresh() => _read(keepVisible: true);
+
+  Future<bool> _read({required bool keepVisible}) async {
+    if (_requestInFlight) return true;
     final requestGeneration = _beginRequest();
+    final retained = keepVisible && state is OperationHistoryReady;
     try {
       final result = await _repository.listOperations(
         limit: operationHistoryPageSize,
       );
-      if (!_isCurrentRequest(requestGeneration)) return;
+      if (!_isCurrentRequest(requestGeneration)) return false;
       switch (result) {
         case FinanceEntrySuccess(:final value):
           state = OperationHistoryReady(
             operations: value.operations,
             nextCursor: value.nextCursor,
           );
+          return true;
         case FinanceEntryFailureResult(:final failure):
-          state = _requiresAuthentication(failure)
-              ? const OperationHistoryAuthenticationRequired()
-              : OperationHistoryFailure(failure);
+          if (_requiresAuthentication(failure)) {
+            state = const OperationHistoryAuthenticationRequired();
+          } else if (!retained) {
+            state = OperationHistoryFailure(failure);
+          }
+          return false;
       }
     } on Object {
-      if (_isCurrentRequest(requestGeneration)) {
+      if (_isCurrentRequest(requestGeneration) && !retained) {
         state = OperationHistoryFailure(_unexpectedFailure());
       }
+      return false;
     } finally {
       _endRequest(requestGeneration);
     }

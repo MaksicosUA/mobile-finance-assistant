@@ -59,24 +59,39 @@ class ProfileController extends Notifier<ProfileState> {
     return const ProfileLoading();
   }
 
-  Future<void> load() async {
-    if (_requestInFlight) return;
+  Future<void> load() => _read(keepVisible: false);
+
+  /// Re-reads the screen while the current reading stays visible.
+  ///
+  /// A pull that blanks usable data, or replaces it with an error page when
+  /// the network blinks, is worse than no refresh at all. Returns `false` when
+  /// the screen is still showing the older reading.
+  Future<bool> refresh() => _read(keepVisible: true);
+
+  Future<bool> _read({required bool keepVisible}) async {
+    if (_requestInFlight) return true;
     final requestGeneration = _beginRequest();
+    final retained = keepVisible && state is ProfileReady;
     try {
       final result = await _repository.readProfile();
-      if (!_isCurrentRequest(requestGeneration)) return;
+      if (!_isCurrentRequest(requestGeneration)) return false;
       switch (result) {
         case FinanceEntrySuccess(:final value):
           state = ProfileReady(value);
+          return true;
         case FinanceEntryFailureResult(:final failure):
-          state = _requiresAuthentication(failure)
-              ? const ProfileAuthenticationRequired()
-              : ProfileFailure(failure);
+          if (_requiresAuthentication(failure)) {
+            state = const ProfileAuthenticationRequired();
+          } else if (!retained) {
+            state = ProfileFailure(failure);
+          }
+          return false;
       }
     } on Object {
-      if (_isCurrentRequest(requestGeneration)) {
+      if (_isCurrentRequest(requestGeneration) && !retained) {
         state = ProfileFailure(_unexpectedFailure());
       }
+      return false;
     } finally {
       _endRequest(requestGeneration);
     }

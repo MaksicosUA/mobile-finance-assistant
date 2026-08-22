@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/widgets/refreshable_message.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/category_management_controller.dart';
 
@@ -64,36 +65,56 @@ class _CategoryManagementPageState
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: switch (state) {
-            CategoryManagementLoading() => const Center(
-              key: Key('categories-loading'),
-              child: CircularProgressIndicator.adaptive(),
-            ),
-            CategoryManagementAuthenticationRequired() => const Center(
-              key: Key('categories-authentication'),
-              child: CircularProgressIndicator.adaptive(),
-            ),
-            CategoryManagementFailure() => Center(
-              key: const Key('categories-failure'),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(l10n.categoryLoadError, textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => ref
-                        .read(categoryManagementControllerProvider.notifier)
-                        .load(),
-                    child: Text(l10n.retryAction),
-                  ),
-                ],
+          child: RefreshIndicator(
+            onRefresh: () => _refresh(l10n),
+            child: switch (state) {
+              CategoryManagementLoading() => const RefreshableMessage(
+                key: Key('categories-loading'),
+                child: CircularProgressIndicator.adaptive(),
               ),
-            ),
-            CategoryManagementReady() => _ready(context, l10n, state),
-          },
+              CategoryManagementAuthenticationRequired() =>
+                const RefreshableMessage(
+                  key: Key('categories-authentication'),
+                  child: CircularProgressIndicator.adaptive(),
+                ),
+              CategoryManagementFailure() => RefreshableMessage(
+                key: const Key('categories-failure'),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(l10n.categoryLoadError, textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () => ref
+                          .read(categoryManagementControllerProvider.notifier)
+                          .load(),
+                      child: Text(l10n.retryAction),
+                    ),
+                  ],
+                ),
+              ),
+              CategoryManagementReady() => _ready(context, l10n, state),
+            },
+          ),
         ),
       ),
     );
+  }
+
+  /// A failed refresh keeps the catalogue that is already on screen, so the
+  /// only way the user learns it failed is to be told.
+  Future<void> _refresh(AppLocalizations l10n) async {
+    final refreshed = await ref
+        .read(categoryManagementControllerProvider.notifier)
+        .refresh();
+    if (refreshed || !mounted) return;
+    if (ref.read(categoryManagementControllerProvider)
+        is! CategoryManagementReady) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.categoryLoadError)));
   }
 
   Widget _ready(
@@ -108,6 +129,7 @@ class _CategoryManagementPageState
 
     return ListView(
       key: const Key('categories-page'),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 16),
       children: [
         SegmentedButton<FinanceOperationType>(

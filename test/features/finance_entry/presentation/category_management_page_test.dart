@@ -167,6 +167,18 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+  testWidgets('a pull re-reads the screen', (tester) async {
+    final repository = _FakeRepository();
+    await _pumpPage(tester, repository: repository);
+    await tester.fling(
+      find.byKey(const Key('categories-page')),
+      const Offset(0, 400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.listCalls, 2);
+  });
 }
 
 Future<void> _pumpPage(
@@ -212,6 +224,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
   final FinanceEntryFailureKind? listFailure;
   final FinanceEntryErrorCode? writeFailure;
   final List<String> archived = [];
+  int listCalls = 0;
   final Map<String, String> renamed = {};
 
   late final List<ManagedFinanceCategory> _categories = [
@@ -223,6 +236,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
   Future<FinanceEntryResult<ManagedCategoryList>>
   listManagedCategories() async {
+    listCalls += 1;
     if (listFailure != null) {
       return FinanceEntryFailureResult<ManagedCategoryList>(
         FinanceEntryFailure(kind: listFailure!, requestId: _requestId),

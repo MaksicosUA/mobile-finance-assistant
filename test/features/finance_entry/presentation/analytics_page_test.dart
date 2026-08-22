@@ -93,6 +93,66 @@ void main() {
     expect(find.text('•••••• €'), findsWidgets);
   });
 
+  testWidgets('the window result reads under the chart, above the categories', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeRepository());
+
+    final change = find.byKey(const Key('analytics-balance-change'));
+    expect(change, findsOneWidget);
+    expect(find.text('за период +2 200,00 €'), findsOneWidget);
+    // Under the line that draws it and above the table that explains it.
+    expect(
+      tester.getTopLeft(change).dy,
+      greaterThan(
+        tester.getTopLeft(find.byKey(const Key('spending-chart-canvas'))).dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(change).dy,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const Key('analytics-expense-changes')))
+            .dy,
+      ),
+    );
+  });
+
+  testWidgets('a pull re-reads the same window', (tester) async {
+    final repository = _FakeRepository();
+    await _pump(tester, repository);
+
+    await tester.fling(
+      find.byKey(const Key('analytics-page')),
+      const Offset(0, 400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.asked, [
+      AnalyticsPeriodKind.month,
+      AnalyticsPeriodKind.month,
+    ]);
+  });
+
+  testWidgets('a failed pull keeps the figures and says so', (tester) async {
+    await _pump(tester, _FakeRepository(failRefresh: true));
+
+    await tester.fling(
+      find.byKey(const Key('analytics-page')),
+      const Offset(0, 400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    // Replacing a readable month with an error page because one read timed
+    // out is exactly what a refresh must not do.
+    expect(find.byKey(const Key('analytics-failure')), findsNothing);
+    expect(find.textContaining('32 200,00 €'), findsWidgets);
+    // Which leaves being told as the only way to learn it failed.
+    expect(find.byType(SnackBar), findsOneWidget);
+  });
+
   testWidgets('a failed read offers a retry', (tester) async {
     await _pump(
       tester,
@@ -196,10 +256,13 @@ AnalyticsWindow _window({bool empty = false}) => AnalyticsWindow(
 );
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
-  _FakeRepository({this.failure, this.empty = false});
+  _FakeRepository({this.failure, this.empty = false, this.failRefresh = false});
 
   final FinanceEntryFailureKind? failure;
   final bool empty;
+
+  /// Answers the first read and refuses every one after it.
+  final bool failRefresh;
   final List<AnalyticsPeriodKind> asked = [];
 
   @override
@@ -209,9 +272,12 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     String? to,
   }) async {
     final kind = failure;
-    if (kind != null) {
+    if (kind != null || (failRefresh && asked.isNotEmpty)) {
       return FinanceEntryFailureResult<AnalyticsWindow>(
-        FinanceEntryFailure(kind: kind, requestId: 'req_synthetic'),
+        FinanceEntryFailure(
+          kind: kind ?? FinanceEntryFailureKind.timeout,
+          requestId: 'req_synthetic',
+        ),
       );
     }
     asked.add(period);
