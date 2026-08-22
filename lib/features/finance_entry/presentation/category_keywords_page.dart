@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_tokens.dart';
+import '../../../app/widgets/refreshable_message.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/category_keywords_controller.dart';
 import '../domain/finance_entry_result.dart';
@@ -71,37 +72,43 @@ class _CategoryKeywordsPageState extends ConsumerState<CategoryKeywordsPage> {
             constraints: const BoxConstraints(
               maxWidth: AppSizes.screenMaxWidth,
             ),
-            child: switch (state) {
-              CategoryKeywordsLoading() ||
-              CategoryKeywordsAuthenticationRequired() => const Center(
-                key: Key('category-keywords-loading'),
-                child: CircularProgressIndicator.adaptive(),
-              ),
-              CategoryKeywordsFailure() => Center(
-                key: const Key('category-keywords-failure'),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        l10n.categoryKeywordsLoadError,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      FilledButton(
-                        key: const Key('category-keywords-retry'),
-                        onPressed: () => ref
-                            .read(categoryKeywordsControllerProvider.notifier)
-                            .load(widget.categoryId),
-                        child: Text(l10n.retryAction),
-                      ),
-                    ],
+            child: RefreshIndicator(
+              onRefresh: () => ref
+                  .read(categoryKeywordsControllerProvider.notifier)
+                  .refresh(widget.categoryId),
+              child: switch (state) {
+                CategoryKeywordsLoading() ||
+                CategoryKeywordsAuthenticationRequired() =>
+                  const RefreshableMessage(
+                    key: Key('category-keywords-loading'),
+                    child: CircularProgressIndicator.adaptive(),
+                  ),
+                CategoryKeywordsFailure() => RefreshableMessage(
+                  key: const Key('category-keywords-failure'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          l10n.categoryKeywordsLoadError,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        FilledButton(
+                          key: const Key('category-keywords-retry'),
+                          onPressed: () => ref
+                              .read(categoryKeywordsControllerProvider.notifier)
+                              .load(widget.categoryId),
+                          child: Text(l10n.retryAction),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              CategoryKeywordsReady() => _ready(context, l10n, state),
-            },
+                CategoryKeywordsReady() => _ready(context, l10n, state),
+              },
+            ),
           ),
         ),
       ),
@@ -117,6 +124,7 @@ class _CategoryKeywordsPageState extends ConsumerState<CategoryKeywordsPage> {
     final notifier = ref.read(categoryKeywordsControllerProvider.notifier);
     return ListView(
       key: const Key('category-keywords-page'),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
         Text(widget.categoryName, style: theme.textTheme.titleLarge),

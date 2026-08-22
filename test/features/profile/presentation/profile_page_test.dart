@@ -230,6 +230,18 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+  testWidgets('a pull re-reads the profile', (tester) async {
+    final repository = _FakeRepository();
+    await _pumpPage(tester, repository: repository);
+
+    // Pulled from the top of the screen, the way the gesture is made: the
+    // indicator arms itself against the viewport, and this one is tall.
+    await tester.flingFrom(const Offset(195, 120), const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+
+    expect(repository.readCalls, 2);
+    expect(find.byKey(const Key('profile-version')), findsOneWidget);
+  });
 }
 
 Future<void> _pumpPage(
@@ -294,9 +306,11 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
 
   FinanceEntryFailureKind? failure;
   final bool account;
+  int readCalls = 0;
 
   @override
   Future<FinanceEntryResult<UserProfile>> readProfile() async {
+    readCalls += 1;
     final kind = failure;
     if (kind != null) {
       return FinanceEntryFailureResult<UserProfile>(

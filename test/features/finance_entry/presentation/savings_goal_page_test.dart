@@ -225,6 +225,24 @@ void main() {
     expect(find.byKey(const Key('savings-goal-failure')), findsOneWidget);
     expect(repository.listCalls, 1);
   });
+  testWidgets('a pull re-reads the goals without resetting the screen', (
+    tester,
+  ) async {
+    final repository = _FakeRepository(goals: [_goal(currentAmount: '1500')]);
+    await _pumpPage(tester, repository: repository);
+
+    await tester.fling(
+      find.byKey(const Key('savings-goal-ready')),
+      const Offset(0, 400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.goalListCalls, 2);
+    // The account is not read again: a pull asks for the list, and rebuilding
+    // the screen would discard a goal being described.
+    expect(repository.listCalls, 1);
+  });
 }
 
 Future<void> _pumpPage(
@@ -377,6 +395,7 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
   final List<(String, GoalContributionCommand)> contributions = [];
   final List<String> cancelled = [];
   int listCalls = 0;
+  int goalListCalls = 0;
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {
@@ -411,6 +430,7 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
 
   @override
   Future<FinanceEntryResult<SavingsGoalList>> listGoals() async {
+    goalListCalls += 1;
     return _success(SavingsGoalList(evaluatedOn: '2026-08-09', goals: goals));
   }
 

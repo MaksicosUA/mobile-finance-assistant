@@ -202,6 +202,23 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+  testWidgets('a pull re-reads the screen', (tester) async {
+    final repository = _FakeRepository(
+      pages: [
+        _page([_item(operationId: _firstId)]),
+      ],
+    );
+    await _pumpPage(tester, repository: repository);
+    await tester.fling(
+      find.byKey(const Key('history-list')),
+      const Offset(0, 400),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    // The first page again, not the next one: a pull asks what is newest.
+    expect(repository.requestedCursors, [null, null]);
+  });
 }
 
 Future<void> _pumpPage(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/settings/app_settings_controller.dart';
+import '../../../app/widgets/refreshable_message.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../home/domain/home_snapshot.dart';
 import '../../home/presentation/money_formatter.dart';
@@ -52,39 +53,59 @@ class _OperationHistoryPageState extends ConsumerState<OperationHistoryPage> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: switch (state) {
-            OperationHistoryLoading() => const Center(
-              key: Key('history-loading'),
-              child: CircularProgressIndicator.adaptive(),
-            ),
-            OperationHistoryAuthenticationRequired() => const Center(
-              key: Key('history-authentication'),
-              child: CircularProgressIndicator.adaptive(),
-            ),
-            OperationHistoryFailure() => Center(
-              key: const Key('history-failure'),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    l10n.operationHistoryLoadError,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => ref
-                        .read(operationHistoryControllerProvider.notifier)
-                        .load(),
-                    child: Text(l10n.retryAction),
-                  ),
-                ],
+          child: RefreshIndicator(
+            onRefresh: () => _refresh(l10n),
+            child: switch (state) {
+              OperationHistoryLoading() => const RefreshableMessage(
+                key: Key('history-loading'),
+                child: CircularProgressIndicator.adaptive(),
               ),
-            ),
-            OperationHistoryReady() => _ready(context, l10n, state, privacy),
-          },
+              OperationHistoryAuthenticationRequired() =>
+                const RefreshableMessage(
+                  key: Key('history-authentication'),
+                  child: CircularProgressIndicator.adaptive(),
+                ),
+              OperationHistoryFailure() => RefreshableMessage(
+                key: const Key('history-failure'),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      l10n.operationHistoryLoadError,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () => ref
+                          .read(operationHistoryControllerProvider.notifier)
+                          .load(),
+                      child: Text(l10n.retryAction),
+                    ),
+                  ],
+                ),
+              ),
+              OperationHistoryReady() => _ready(context, l10n, state, privacy),
+            },
+          ),
         ),
       ),
     );
+  }
+
+  /// A failed refresh keeps the list that is already on screen, so the only
+  /// way the user learns it failed is to be told.
+  Future<void> _refresh(AppLocalizations l10n) async {
+    final refreshed = await ref
+        .read(operationHistoryControllerProvider.notifier)
+        .refresh();
+    if (refreshed || !mounted) return;
+    if (ref.read(operationHistoryControllerProvider)
+        is! OperationHistoryReady) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.operationHistoryLoadError)));
   }
 
   Widget _ready(
@@ -94,7 +115,7 @@ class _OperationHistoryPageState extends ConsumerState<OperationHistoryPage> {
     bool privacy,
   ) {
     if (state.isEmpty) {
-      return Center(
+      return RefreshableMessage(
         key: const Key('history-empty'),
         child: Text(l10n.operationHistoryEmpty, textAlign: TextAlign.center),
       );
@@ -103,6 +124,7 @@ class _OperationHistoryPageState extends ConsumerState<OperationHistoryPage> {
     final controller = ref.read(operationHistoryControllerProvider.notifier);
     return ListView.separated(
       key: const Key('history-list'),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 16),
       itemCount: state.operations.length + (state.hasMore ? 1 : 0),
       separatorBuilder: (_, _) => const Divider(height: 1),

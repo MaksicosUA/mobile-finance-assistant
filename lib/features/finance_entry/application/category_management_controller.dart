@@ -44,12 +44,25 @@ class CategoryManagementController extends Notifier<CategoryManagementState> {
     return const CategoryManagementLoading();
   }
 
-  Future<void> load() async {
-    if (_requestInFlight) return;
+  Future<void> load() => _read(keepVisible: false);
+
+  /// Re-reads the screen while the current reading stays visible.
+  ///
+  /// A pull that blanks usable data, or replaces it with an error page when
+  /// the network blinks, is worse than no refresh at all. Returns `false` when
+  /// the screen is still showing the older reading.
+  ///
+  /// The chosen direction and the hidden-rows switch are the user's, not the
+  /// server's, so a refresh keeps them.
+  Future<bool> refresh() => _read(keepVisible: true);
+
+  Future<bool> _read({required bool keepVisible}) async {
+    if (_requestInFlight) return true;
     final requestGeneration = _beginRequest();
+    final retained = keepVisible && state is CategoryManagementReady;
     try {
       final result = await _repository.listManagedCategories();
-      if (!_isCurrentRequest(requestGeneration)) return;
+      if (!_isCurrentRequest(requestGeneration)) return false;
       switch (result) {
         case FinanceEntrySuccess(:final value):
           final current = state;
@@ -62,15 +75,20 @@ class CategoryManagementController extends Notifier<CategoryManagementState> {
                 ? current.showHidden
                 : false,
           );
+          return true;
         case FinanceEntryFailureResult(:final failure):
-          state = _requiresAuthentication(failure)
-              ? const CategoryManagementAuthenticationRequired()
-              : CategoryManagementFailure(failure);
+          if (_requiresAuthentication(failure)) {
+            state = const CategoryManagementAuthenticationRequired();
+          } else if (!retained) {
+            state = CategoryManagementFailure(failure);
+          }
+          return false;
       }
     } on Object {
-      if (_isCurrentRequest(requestGeneration)) {
+      if (_isCurrentRequest(requestGeneration) && !retained) {
         state = CategoryManagementFailure(_unexpectedFailure());
       }
+      return false;
     } finally {
       _endRequest(requestGeneration);
     }

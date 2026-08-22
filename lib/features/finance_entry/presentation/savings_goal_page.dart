@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/widgets/refreshable_message.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/savings_goal_controller.dart';
 import '../domain/finance_entry_models.dart';
@@ -68,10 +69,26 @@ class _SavingsGoalPageState extends ConsumerState<SavingsGoalPage> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _body(context, l10n, state),
+          child: RefreshIndicator(
+            onRefresh: () => _refresh(l10n),
+            child: _body(context, l10n, state),
+          ),
         ),
       ),
     );
+  }
+
+  /// A failed refresh keeps the goals that are already on screen, so the only
+  /// way the user learns it failed is to be told.
+  Future<void> _refresh(AppLocalizations l10n) async {
+    final refreshed = await ref
+        .read(savingsGoalControllerProvider.notifier)
+        .refresh();
+    if (refreshed || !mounted) return;
+    if (ref.read(savingsGoalControllerProvider) is! SavingsGoalReady) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.savingsGoalGenericFailure)));
   }
 
   Widget _body(
@@ -122,9 +139,9 @@ class _SavingsGoalPageState extends ConsumerState<SavingsGoalPage> {
   }
 
   Widget _centered({required Widget child, Key? key}) {
-    return Center(
+    return RefreshableMessage(
       key: key,
-      child: SingleChildScrollView(
+      child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: child,
       ),
@@ -141,6 +158,7 @@ class _SavingsGoalPageState extends ConsumerState<SavingsGoalPage> {
     final busy = state.isSubmitting || state.busyGoalId != null;
     return ListView(
       key: const Key('savings-goal-ready'),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 24),
       children: [
         Text(l10n.savingsGoalDescription),

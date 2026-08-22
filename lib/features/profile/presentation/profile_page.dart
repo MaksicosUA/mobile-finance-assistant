@@ -69,96 +69,113 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: AppSizes.screenMaxWidth),
-          child: ListView(
-            key: const Key('profile-page'),
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              20,
-              AppSpacing.md,
-              AppSpacing.xl,
+          child: RefreshIndicator(
+            onRefresh: () => _refresh(l10n),
+            child: ListView(
+              key: const Key('profile-page'),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                20,
+                AppSpacing.md,
+                AppSpacing.xl,
+              ),
+              children: [
+                Text(
+                  l10n.profileTab,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                // The identity and the account facts are one block and fail
+                // together. Everything below keeps working without them.
+                _IdentityBlock(state: state, l10n: l10n),
+                const SizedBox(height: AppSpacing.lg),
+                SettingsSectionLabel(l10n.accountSection),
+                const SizedBox(height: AppSpacing.sm),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: SettingsActionRow(
+                    key: const Key('profile-opening-date'),
+                    icon: Icons.calendar_month_outlined,
+                    label: l10n.baselineSettingsAction,
+                    // Shown beside the action, so reading the date no longer
+                    // means opening the screen that changes it.
+                    value: _openingDateLabel(profile, l10n),
+                    description: l10n.baselineSettingsDescription,
+                    onPressed: widget.onCorrectOpeningDate,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: SettingsActionRow(
+                    key: const Key('profile-plan-cost'),
+                    icon: Icons.event_repeat_outlined,
+                    label: l10n.plannedCostSettingsAction,
+                    description: l10n.plannedCostSettingsDescription,
+                    onPressed: widget.onPlanCost,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: SettingsActionRow(
+                    key: const Key('profile-categories'),
+                    icon: Icons.sell_outlined,
+                    label: l10n.categoriesSettingsAction,
+                    description: l10n.categoriesSettingsDescription,
+                    onPressed: widget.onManageCategories,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: SettingsActionRow(
+                    key: const Key('profile-operation-history'),
+                    icon: Icons.receipt_long_outlined,
+                    label: l10n.operationHistorySettingsAction,
+                    description: l10n.operationHistorySettingsDescription,
+                    onPressed: widget.onOperationHistory,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                const AppearanceSettingsSection(),
+                const SizedBox(height: AppSpacing.lg),
+                Semantics(
+                  button: true,
+                  child: OutlinedButton.icon(
+                    key: const Key('profile-sign-out'),
+                    onPressed: () => _confirmSignOut(context),
+                    icon: const Icon(Icons.logout_rounded),
+                    label: Text(l10n.signOutAction),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Text(
+                  l10n.profileVersion(appVersion),
+                  key: const Key('profile-version'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ),
-            children: [
-              Text(
-                l10n.profileTab,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              // The identity and the account facts are one block and fail
-              // together. Everything below keeps working without them.
-              _IdentityBlock(state: state, l10n: l10n),
-              const SizedBox(height: AppSpacing.lg),
-              SettingsSectionLabel(l10n.accountSection),
-              const SizedBox(height: AppSpacing.sm),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: SettingsActionRow(
-                  key: const Key('profile-opening-date'),
-                  icon: Icons.calendar_month_outlined,
-                  label: l10n.baselineSettingsAction,
-                  // Shown beside the action, so reading the date no longer
-                  // means opening the screen that changes it.
-                  value: _openingDateLabel(profile, l10n),
-                  description: l10n.baselineSettingsDescription,
-                  onPressed: widget.onCorrectOpeningDate,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: SettingsActionRow(
-                  key: const Key('profile-plan-cost'),
-                  icon: Icons.event_repeat_outlined,
-                  label: l10n.plannedCostSettingsAction,
-                  description: l10n.plannedCostSettingsDescription,
-                  onPressed: widget.onPlanCost,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: SettingsActionRow(
-                  key: const Key('profile-categories'),
-                  icon: Icons.sell_outlined,
-                  label: l10n.categoriesSettingsAction,
-                  description: l10n.categoriesSettingsDescription,
-                  onPressed: widget.onManageCategories,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Card(
-                clipBehavior: Clip.antiAlias,
-                child: SettingsActionRow(
-                  key: const Key('profile-operation-history'),
-                  icon: Icons.receipt_long_outlined,
-                  label: l10n.operationHistorySettingsAction,
-                  description: l10n.operationHistorySettingsDescription,
-                  onPressed: widget.onOperationHistory,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              const AppearanceSettingsSection(),
-              const SizedBox(height: AppSpacing.lg),
-              Semantics(
-                button: true,
-                child: OutlinedButton.icon(
-                  key: const Key('profile-sign-out'),
-                  onPressed: () => _confirmSignOut(context),
-                  icon: const Icon(Icons.logout_rounded),
-                  label: Text(l10n.signOutAction),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Text(
-                l10n.profileVersion(appVersion),
-                key: const Key('profile-version'),
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
           ),
         ),
       ),
     );
+  }
+
+  /// A failed refresh keeps the profile that is already on screen, so the
+  /// only way the user learns it failed is to be told.
+  Future<void> _refresh(AppLocalizations l10n) async {
+    final refreshed = await ref
+        .read(profileControllerProvider.notifier)
+        .refresh();
+    if (refreshed || !mounted) return;
+    if (ref.read(profileControllerProvider) is! ProfileReady) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.profileLoadError)));
   }
 
   String? _openingDateLabel(UserProfile? profile, AppLocalizations l10n) {

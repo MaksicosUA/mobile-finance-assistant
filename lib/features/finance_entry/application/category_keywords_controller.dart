@@ -92,6 +92,27 @@ class CategoryKeywordsController extends Notifier<CategoryKeywordsState> {
     );
   }
 
+  /// Re-reads the words while the ones on screen stay visible.
+  ///
+  /// A failed refresh reports itself on the card the words are on, so the
+  /// vocabulary never disappears because a read failed.
+  Future<bool> refresh(String categoryId) async {
+    final current = state;
+    if (current is! CategoryKeywordsReady) {
+      await load(categoryId);
+      return state is CategoryKeywordsReady;
+    }
+    if (_requestInFlight) return true;
+    final requestGeneration = _beginRequest();
+    return _run(
+      requestGeneration,
+      () => _repository.listCategoryKeywords(current.categoryId),
+      onFailure: (failure) => _requiresAuthentication(failure)
+          ? const CategoryKeywordsAuthenticationRequired()
+          : current.copyWith(failure: failure),
+    );
+  }
+
   Future<void> add(String word) async {
     final current = state;
     if (current is! CategoryKeywordsReady || _requestInFlight) return;
@@ -132,14 +153,14 @@ class CategoryKeywordsController extends Notifier<CategoryKeywordsState> {
     );
   }
 
-  Future<void> _run(
+  Future<bool> _run(
     int requestGeneration,
     Future<FinanceEntryResult<CategoryKeywords>> Function() request, {
     required CategoryKeywordsState Function(FinanceEntryFailure) onFailure,
   }) async {
     try {
       final result = await request();
-      if (!_isCurrentRequest(requestGeneration)) return;
+      if (!_isCurrentRequest(requestGeneration)) return false;
       state = switch (result) {
         FinanceEntrySuccess(:final value) => CategoryKeywordsReady(
           categoryId: value.categoryId,
@@ -147,10 +168,12 @@ class CategoryKeywordsController extends Notifier<CategoryKeywordsState> {
         ),
         FinanceEntryFailureResult(:final failure) => onFailure(failure),
       };
+      return result is FinanceEntrySuccess<CategoryKeywords>;
     } on Object {
       if (_isCurrentRequest(requestGeneration)) {
         state = onFailure(_unexpected());
       }
+      return false;
     } finally {
       _endRequest(requestGeneration);
     }

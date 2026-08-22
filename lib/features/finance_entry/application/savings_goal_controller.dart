@@ -53,6 +53,27 @@ class SavingsGoalController extends Notifier<SavingsGoalScreenState> {
 
   Future<void> load() => _load();
 
+  /// Re-reads the goals without resetting the screen.
+  ///
+  /// A full load rebuilds the ready state from scratch, which would discard a
+  /// goal the user is halfway through describing. A pull asks for the list, so
+  /// only the list is re-read. Returns `false` when the screen still shows the
+  /// older reading.
+  Future<bool> refresh() async {
+    final current = state;
+    if (current is! SavingsGoalReady) {
+      await _load();
+      return state is SavingsGoalReady;
+    }
+    if (_requestInFlight) return true;
+    final requestGeneration = _beginRequest();
+    try {
+      return await _loadGoals(requestGeneration);
+    } finally {
+      _endRequest(requestGeneration);
+    }
+  }
+
   void startCreating() {
     final current = state;
     if (_requestInFlight || current is! SavingsGoalReady) return;
@@ -385,12 +406,12 @@ class SavingsGoalController extends Notifier<SavingsGoalScreenState> {
     }
   }
 
-  Future<void> _loadGoals(int requestGeneration) async {
+  Future<bool> _loadGoals(int requestGeneration) async {
     try {
       final result = await _repository.listGoals();
-      if (!_isCurrentRequest(requestGeneration)) return;
+      if (!_isCurrentRequest(requestGeneration)) return false;
       final current = state;
-      if (current is! SavingsGoalReady) return;
+      if (current is! SavingsGoalReady) return false;
       switch (result) {
         case FinanceEntrySuccess(:final value):
           state = current.copyWith(
@@ -398,13 +419,14 @@ class SavingsGoalController extends Notifier<SavingsGoalScreenState> {
                 .where((goal) => goal.isActive)
                 .toList(growable: false),
           );
+          return true;
         case FinanceEntryFailureResult():
           // The list is secondary: failing to read it must not block creating
           // a goal.
-          return;
+          return false;
       }
     } on Object {
-      return;
+      return false;
     }
   }
 

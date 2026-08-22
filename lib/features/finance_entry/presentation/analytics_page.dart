@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/settings/app_settings_controller.dart';
+import '../../../app/widgets/refreshable_message.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../home/domain/home_snapshot.dart';
 import '../../home/presentation/money_formatter.dart';
@@ -58,33 +59,49 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: switch (state) {
-        AnalyticsLoading() => const Center(
-          key: Key('analytics-loading'),
-          child: CircularProgressIndicator.adaptive(),
-        ),
-        AnalyticsAuthenticationRequired() => const Center(
-          key: Key('analytics-authentication'),
-          child: CircularProgressIndicator.adaptive(),
-        ),
-        AnalyticsFailure() => Center(
-          key: const Key('analytics-failure'),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(l10n.analyticsLoadError, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () =>
-                    ref.read(analyticsControllerProvider.notifier).load(),
-                child: Text(l10n.retryAction),
-              ),
-            ],
+      child: RefreshIndicator(
+        onRefresh: () => _refresh(l10n),
+        child: switch (state) {
+          AnalyticsLoading() => const RefreshableMessage(
+            key: Key('analytics-loading'),
+            child: CircularProgressIndicator.adaptive(),
           ),
-        ),
-        AnalyticsReady() => _ready(context, l10n, state, privacy),
-      },
+          AnalyticsAuthenticationRequired() => const RefreshableMessage(
+            key: Key('analytics-authentication'),
+            child: CircularProgressIndicator.adaptive(),
+          ),
+          AnalyticsFailure() => RefreshableMessage(
+            key: const Key('analytics-failure'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(l10n.analyticsLoadError, textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () =>
+                      ref.read(analyticsControllerProvider.notifier).load(),
+                  child: Text(l10n.retryAction),
+                ),
+              ],
+            ),
+          ),
+          AnalyticsReady() => _ready(context, l10n, state, privacy),
+        },
+      ),
     );
+  }
+
+  /// A failed refresh keeps the figures that are already on screen, so the
+  /// only way the user learns it failed is to be told.
+  Future<void> _refresh(AppLocalizations l10n) async {
+    final refreshed = await ref
+        .read(analyticsControllerProvider.notifier)
+        .refresh();
+    if (refreshed || !mounted) return;
+    if (ref.read(analyticsControllerProvider) is! AnalyticsReady) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.analyticsLoadError)));
   }
 
   Widget _ready(
@@ -105,6 +122,7 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
 
     return ListView(
       key: const Key('analytics-page'),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 16),
       children: [
         _PeriodSelector(

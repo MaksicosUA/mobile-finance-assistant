@@ -81,26 +81,41 @@ class AnalyticsController extends Notifier<AnalyticsState> {
     await load();
   }
 
-  Future<void> load() async {
-    if (_requestInFlight) return;
+  Future<void> load() => _read(keepVisible: false);
+
+  /// Re-reads the same window while the current one stays on screen.
+  ///
+  /// A pull that replaces usable figures with a spinner, or with an error page
+  /// when the network blinks, is worse than no refresh at all. Returns `false`
+  /// when the screen is still showing the older reading.
+  Future<bool> refresh() => _read(keepVisible: true);
+
+  Future<bool> _read({required bool keepVisible}) async {
+    if (_requestInFlight) return true;
     final requestGeneration = _beginRequest();
-    state = const AnalyticsLoading();
+    final retained = keepVisible && state is AnalyticsReady;
+    if (!retained) state = const AnalyticsLoading();
     try {
       final result = await _repository.readAnalyticsWindow(period: _period);
-      if (!_isCurrentRequest(requestGeneration)) return;
+      if (!_isCurrentRequest(requestGeneration)) return false;
       switch (result) {
         case FinanceEntrySuccess(:final value):
           state = AnalyticsReady(window: value, recent: const []);
           await _loadRecent(requestGeneration);
+          return true;
         case FinanceEntryFailureResult(:final failure):
-          state = _requiresAuthentication(failure)
-              ? const AnalyticsAuthenticationRequired()
-              : AnalyticsFailure(failure);
+          if (_requiresAuthentication(failure)) {
+            state = const AnalyticsAuthenticationRequired();
+          } else if (!retained) {
+            state = AnalyticsFailure(failure);
+          }
+          return false;
       }
     } on Object {
-      if (_isCurrentRequest(requestGeneration)) {
+      if (_isCurrentRequest(requestGeneration) && !retained) {
         state = AnalyticsFailure(_unexpectedFailure());
       }
+      return false;
     } finally {
       _endRequest(requestGeneration);
     }
