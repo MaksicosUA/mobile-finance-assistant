@@ -93,9 +93,9 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
     AnalyticsReady state,
     bool privacy,
   ) {
-    final summary = state.summary;
+    final window = state.window;
     final locale = Localizations.localeOf(context).toLanguageTag();
-    final currency = summary.baseCurrency;
+    final currency = window.baseCurrency;
 
     String money(String amount) => MoneyFormatter.format(
       Money(amount: amount, currency: currency),
@@ -107,52 +107,65 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
       key: const Key('analytics-page'),
       padding: const EdgeInsets.symmetric(vertical: 16),
       children: [
-        MonthlySummary(
-          title: l10n.monthSummaryTitle(_monthLabel(summary.periodStart, l10n)),
-          incomeLabel: l10n.income,
-          incomeValue: money(summary.income),
-          incomeCaption: l10n.incomeCaption,
-          expenseLabel: l10n.expenses,
-          expenseValue: money(summary.expense),
-          expenseCaption: l10n.expensesCaption,
-          netLabel: l10n.netFlow,
-          netValue: money(summary.netFlow),
-          netCaption: summary.netFlow.startsWith('-')
-              ? l10n.expensesCaption
-              : l10n.netPositiveCaption,
+        _PeriodSelector(
+          selected: window.kind,
+          onSelected: (period) => ref
+              .read(analyticsControllerProvider.notifier)
+              .selectPeriod(period),
         ),
-        const SizedBox(height: 24),
-        SpendingChart(
-          trend: _trend(summary),
-          title: l10n.trendExpensesTitle,
-          periodDescription: l10n.trendLast7Days,
-          periodLabel: l10n.trend7DaysChip,
-          detailsLabel: l10n.detailsAction,
-          emptyLabel: l10n.trendEmpty,
-          semanticsLabel: l10n.trendSemantics(
-            l10n.trendExpensesTitle,
-            privacy ? l10n.amountsHidden : money(summary.trendTotal),
+        const SizedBox(height: 8),
+        Text(
+          l10n.analyticsWindowRange(
+            _day(context, window.periodStart),
+            _day(context, window.periodEnd),
           ),
-          amountsHiddenLabel: l10n.amountsHidden,
-          privacyEnabled: privacy,
+          key: const Key('analytics-window-range'),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 16),
+        MonthlySummary(
+          title: l10n.analyticsWindowRange(
+            _day(context, window.periodStart),
+            _day(context, window.periodEnd),
+          ),
+          incomeLabel: l10n.income,
+          incomeValue: money(window.income),
+          incomeCaption: l10n.analyticsPreviousAmount(
+            money(window.previousIncome),
+          ),
+          expenseLabel: l10n.expenses,
+          expenseValue: money(window.expense),
+          expenseCaption: l10n.analyticsPreviousAmount(
+            money(window.previousExpense),
+          ),
+          netLabel: l10n.netFlow,
+          netValue: money(window.netFlow),
+          netCaption: l10n.analyticsPreviousAmount(
+            money(window.previousNetFlow),
+          ),
         ),
         const SizedBox(height: 24),
-        _Breakdown(
-          key: const Key('analytics-expense-breakdown'),
+        _BalanceCard(
+          window: window,
+          money: money,
+          privacy: privacy,
+          l10n: l10n,
+        ),
+        const SizedBox(height: 24),
+        _ChangeTable(
+          key: const Key('analytics-expense-changes'),
           title: l10n.analyticsExpenseByCategory,
           emptyLabel: l10n.analyticsBreakdownEmpty,
-          items: summary.expenseByCategory,
+          rows: window.expenseChanges,
           money: money,
-          privacy: privacy,
         ),
         const SizedBox(height: 24),
-        _Breakdown(
-          key: const Key('analytics-income-breakdown'),
+        _ChangeTable(
+          key: const Key('analytics-income-changes'),
           title: l10n.analyticsIncomeByCategory,
           emptyLabel: l10n.analyticsBreakdownEmpty,
-          items: summary.incomeByCategory,
+          rows: window.incomeChanges,
           money: money,
-          privacy: privacy,
         ),
         const SizedBox(height: 24),
         RecentTransactionsList(
@@ -171,6 +184,12 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
         ),
       ],
     );
+  }
+
+  String _day(BuildContext context, String isoDate) {
+    final parsed = DateTime.tryParse(isoDate);
+    if (parsed == null) return isoDate;
+    return MaterialLocalizations.of(context).formatShortDate(parsed);
   }
 
   TransactionListItem _transactionItem(
@@ -198,21 +217,142 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
   }
 }
 
-class _Breakdown extends StatelessWidget {
-  const _Breakdown({
-    required this.title,
-    required this.emptyLabel,
-    required this.items,
+class _PeriodSelector extends StatelessWidget {
+  const _PeriodSelector({required this.selected, required this.onSelected});
+
+  final AnalyticsPeriodKind selected;
+  final ValueChanged<AnalyticsPeriodKind> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    const offered = [
+      AnalyticsPeriodKind.last7Days,
+      AnalyticsPeriodKind.month,
+      AnalyticsPeriodKind.quarter,
+      AnalyticsPeriodKind.year,
+    ];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final period in offered) ...[
+            ChoiceChip(
+              key: Key('analytics-period-${period.wire}'),
+              label: Text(_label(l10n, period)),
+              selected: period == selected,
+              onSelected: (_) => onSelected(period),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _label(AppLocalizations l10n, AnalyticsPeriodKind period) {
+    return switch (period) {
+      AnalyticsPeriodKind.last7Days => l10n.analyticsPeriod7Days,
+      AnalyticsPeriodKind.month => l10n.analyticsPeriodMonth,
+      AnalyticsPeriodKind.quarter => l10n.analyticsPeriodQuarter,
+      AnalyticsPeriodKind.year => l10n.analyticsPeriodYear,
+      AnalyticsPeriodKind.custom => l10n.analyticsPeriodLabel,
+    };
+  }
+}
+
+/// The balance from the control point it started at to the one it ended at.
+///
+/// The question a chart should answer is whether this got better; where the
+/// money went is the table's job, and the table below says it.
+class _BalanceCard extends StatelessWidget {
+  const _BalanceCard({
+    required this.window,
     required this.money,
     required this.privacy,
+    required this.l10n,
+  });
+
+  final AnalyticsWindow window;
+  final String Function(String) money;
+  final bool privacy;
+  final AppLocalizations l10n;
+
+  @override
+  Widget build(BuildContext context) {
+    final balance = window.balance;
+    return Column(
+      key: const Key('analytics-balance'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SpendingChart(
+          trend: TrendSummary(
+            metric: TrendMetric.balance,
+            period: TrendPeriod.days7,
+            total: Money(
+              amount: balance.closing,
+              currency: window.baseCurrency,
+            ),
+            points: [
+              for (final point in balance.points)
+                TrendPoint(
+                  date: DateTime.parse(point.date),
+                  amount: Money(
+                    amount: point.amount,
+                    currency: window.baseCurrency,
+                  ),
+                ),
+            ],
+          ),
+          title: l10n.analyticsBalanceTitle,
+          periodDescription: l10n.analyticsBalanceFromTo(
+            money(balance.opening),
+            money(balance.closing),
+          ),
+          periodLabel: privacy
+              ? l10n.amountsHidden
+              : l10n.analyticsBalanceChange(_signed(balance.change)),
+          detailsLabel: l10n.detailsAction,
+          emptyLabel: l10n.trendEmpty,
+          semanticsLabel: l10n.trendSemantics(
+            l10n.analyticsBalanceTitle,
+            privacy ? l10n.amountsHidden : money(balance.closing),
+          ),
+          amountsHiddenLabel: l10n.amountsHidden,
+          privacyEnabled: privacy,
+        ),
+        if (window.expense == '0') ...[
+          const SizedBox(height: 8),
+          Text(
+            // Seven zero points are not an empty list, so without this the
+            // card reads as a broken chart rather than a quiet period.
+            l10n.analyticsNoSpending,
+            key: const Key('analytics-no-spending'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _signed(String change) =>
+      change.startsWith('-') ? money(change) : '+${money(change)}';
+}
+
+/// Categories side by side with the window before them.
+class _ChangeTable extends StatelessWidget {
+  const _ChangeTable({
+    required this.title,
+    required this.emptyLabel,
+    required this.rows,
+    required this.money,
     super.key,
   });
 
   final String title;
   final String emptyLabel;
-  final List<AnalyticsCategoryTotal> items;
+  final List<AnalyticsCategoryChange> rows;
   final String Function(String) money;
-  final bool privacy;
 
   @override
   Widget build(BuildContext context) {
@@ -224,71 +364,45 @@ class _Breakdown extends StatelessWidget {
       children: [
         Text(title, style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
-        if (items.isEmpty)
+        if (rows.isEmpty)
           Text(emptyLabel, style: theme.textTheme.bodyMedium)
         else
-          for (final item in items)
+          for (final row in rows)
             Padding(
-              key: Key('analytics-row-${item.categoryId ?? 'none'}'),
+              key: Key('analytics-change-${row.categoryId ?? 'none'}'),
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Stacked once the text is large, the same rule the monthly
-                  // totals already use: at 200% an amount like "1 500,00 €"
-                  // cannot share a line with a category name, and a supported
-                  // text size must never overflow.
                   if (stacked) ...[
                     Text(
-                      item.name ?? l10n.categoryPickerNone,
+                      row.name ?? l10n.categoryPickerNone,
                       style: theme.textTheme.bodyLarge,
                     ),
-                    Text(money(item.amount), style: theme.textTheme.bodyLarge),
+                    Text(money(row.amount), style: theme.textTheme.bodyLarge),
                   ] else
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: Text(
-                            item.name ?? l10n.categoryPickerNone,
+                            row.name ?? l10n.categoryPickerNone,
                             style: theme.textTheme.bodyLarge,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            money(item.amount),
+                            money(row.amount),
                             textAlign: TextAlign.end,
                             style: theme.textTheme.bodyLarge,
                           ),
                         ),
                       ],
                     ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            // Decoration only: the share is also written out,
-                            // so the bar carries no meaning on its own.
-                            value: _fraction(item.sharePercent),
-                            minHeight: 6,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          privacy
-                              ? l10n.amountsHidden
-                              : l10n.analyticsShare(item.sharePercent),
-                          textAlign: TextAlign.end,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    l10n.analyticsPreviousAmount(money(row.previousAmount)),
+                    style: theme.textTheme.bodySmall,
                   ),
                 ],
               ),
@@ -296,30 +410,4 @@ class _Breakdown extends StatelessWidget {
       ],
     );
   }
-
-  double _fraction(String sharePercent) {
-    final parsed = double.tryParse(sharePercent);
-    if (parsed == null) return 0;
-    return (parsed / 100).clamp(0, 1);
-  }
-}
-
-TrendSummary _trend(AnalyticsSummary summary) => TrendSummary(
-  metric: TrendMetric.expense,
-  period: TrendPeriod.days7,
-  total: Money(amount: summary.trendTotal, currency: summary.baseCurrency),
-  points: [
-    for (final point in summary.trendPoints)
-      TrendPoint(
-        date: DateTime.parse(point.date),
-        amount: Money(amount: point.amount, currency: summary.baseCurrency),
-      ),
-  ],
-);
-
-/// The month a period belongs to, as `2026-08-01` carries it.
-String _monthLabel(String periodStart, AppLocalizations l10n) {
-  final parsed = DateTime.tryParse(periodStart);
-  if (parsed == null) return periodStart;
-  return l10n.analyticsMonth(parsed);
 }

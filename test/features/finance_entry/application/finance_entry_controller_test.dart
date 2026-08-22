@@ -1297,6 +1297,12 @@ final class _FakeFinanceEntryRepository
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() =>
       throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
+    required AnalyticsPeriodKind period,
+    String? from,
+    String? to,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<UserProfile>> readProfile() =>
       throw UnimplementedError();
   @override

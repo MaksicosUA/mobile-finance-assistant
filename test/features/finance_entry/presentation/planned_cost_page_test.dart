@@ -267,6 +267,12 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() =>
       throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
+    required AnalyticsPeriodKind period,
+    String? from,
+    String? to,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<UserProfile>> readProfile() =>
       throw UnimplementedError();
   @override

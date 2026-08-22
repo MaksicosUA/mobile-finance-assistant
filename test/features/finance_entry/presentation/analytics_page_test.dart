@@ -13,152 +13,103 @@ import 'package:mobile_finance_assistant/features/finance_entry/presentation/ana
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 const _groceriesId = '11111111-1111-4111-8111-111111111111';
-const _salaryId = '22222222-2222-4222-8222-222222222222';
-const _operationId = '33333333-3333-4333-8333-333333333333';
+const _carId = '22222222-2222-4222-8222-222222222222';
+const _salaryId = '33333333-3333-4333-8333-333333333333';
+const _operationId = '44444444-4444-4444-8444-444444444444';
 
+/// The analysed window: totals beside the window before it, the balance line,
+/// and the categories side by side.
 void main() {
-  testWidgets('a month shows both directions, not only spending', (
+  testWidgets('both directions are reported, each beside what it was', (
     tester,
   ) async {
-    await _pumpPage(tester, repository: _FakeRepository());
+    await _pump(tester, _FakeRepository());
 
-    // The whole reason this screen exists in its current shape: income is a
-    // first-class line, not a footnote under expenses.
     expect(find.text('1 500,00 €'), findsWidgets);
     expect(find.text('542,00 €'), findsWidgets);
-    expect(find.text('Расходы по категориям'), findsOneWidget);
-    expect(find.text('Доходы по категориям'), findsOneWidget);
+    // The comparison is the reason a period can be chosen at all.
+    expect(find.textContaining('было'), findsWidgets);
   });
 
-  testWidgets('a breakdown names its categories and their shares', (
+  testWidgets('the balance runs from one control point to the other', (
     tester,
   ) async {
-    await _pumpPage(tester, repository: _FakeRepository());
+    await _pump(tester, _FakeRepository());
 
-    expect(
-      find.byKey(const Key('analytics-row-$_groceriesId')),
-      findsOneWidget,
+    expect(find.byKey(const Key('analytics-balance')), findsOneWidget);
+    expect(find.textContaining('30 000,00 €'), findsWidgets);
+    expect(find.textContaining('32 200,00 €'), findsWidgets);
+  });
+
+  testWidgets('a category that stopped is still listed with its old amount', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeRepository());
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('analytics-change-$_carId')),
+      300,
+      scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('Продукты'), findsOneWidget);
-    // The share is written out, so the bar carries no meaning on its own.
-    expect(find.text('77.49%'), findsOneWidget);
+
+    // Dropping it would hide exactly the change worth seeing.
+    expect(find.text('Автомобиль'), findsOneWidget);
+    expect(find.textContaining('было 80,00 €'), findsWidgets);
   });
 
-  testWidgets('uncategorized spending is labelled, not left blank', (
+  testWidgets('choosing another period asks for that window', (tester) async {
+    final repository = _FakeRepository();
+    await _pump(tester, repository);
+
+    // Four chips do not fit 390 dp, so the last one has to be brought into
+    // view before it can be tapped at all.
+    final year = find.byKey(const Key('analytics-period-year'));
+    await tester.ensureVisible(year);
+    await tester.pumpAndSettle();
+    await tester.tap(year);
+    await tester.pumpAndSettle();
+
+    expect(repository.asked, [
+      AnalyticsPeriodKind.month,
+      AnalyticsPeriodKind.year,
+    ]);
+  });
+
+  testWidgets('a window without spending says so instead of drawing nothing', (
     tester,
   ) async {
-    await _pumpPage(tester, repository: _FakeRepository());
+    await _pump(tester, _FakeRepository(empty: true));
 
-    expect(find.byKey(const Key('analytics-row-none')), findsOneWidget);
-    // Hiding it would make the lines stop adding up to the total above them.
-    expect(find.text('Без категории'), findsWidgets);
+    // Seven zero points are not an empty list, so the chart used to render a
+    // blank box that read as a broken screen.
+    expect(find.byKey(const Key('analytics-no-spending')), findsOneWidget);
   });
 
-  testWidgets('privacy mode masks every amount and share', (tester) async {
-    await _pumpPage(tester, repository: _FakeRepository(), privacy: true);
+  testWidgets('privacy mode masks every amount on the screen', (tester) async {
+    await _pump(tester, _FakeRepository(), privacy: true);
 
-    expect(find.textContaining('542'), findsNothing);
     expect(find.textContaining('1 500'), findsNothing);
-    expect(find.text('77.49%'), findsNothing);
+    expect(find.textContaining('32 200'), findsNothing);
     expect(find.text('•••••• €'), findsWidgets);
   });
 
-  testWidgets('the newest operations are here, with a way to see them all', (
-    tester,
-  ) async {
-    var opened = 0;
-    await _pumpPage(
+  testWidgets('a failed read offers a retry', (tester) async {
+    await _pump(
       tester,
-      repository: _FakeRepository(),
-      onOpenAllOperations: () => opened += 1,
-    );
-
-    // The list builds lazily, so the block has to be scrolled to before it
-    // exists at all.
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('analytics-all-operations')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Последние операции'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('analytics-all-operations')));
-
-    expect(opened, 1);
-  });
-
-  testWidgets('an operation with no category still names its row', (
-    tester,
-  ) async {
-    // The fallback moved here with the list: a row without a category shows
-    // the localized label rather than an empty title. Covered on Home before
-    // the block moved.
-    await _pumpPage(
-      tester,
-      repository: _FakeRepository(uncategorizedRecent: true),
-    );
-
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('analytics-all-operations')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('Без категории'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('losing the operations list does not hide the totals', (
-    tester,
-  ) async {
-    await _pumpPage(
-      tester,
-      repository: _FakeRepository(failRecentOperations: true),
-    );
-
-    // The month is the point of this screen; a secondary block failing must
-    // not take it down.
-    expect(find.byKey(const Key('analytics-page')), findsOneWidget);
-    expect(find.text('Расходы по категориям'), findsOneWidget);
-  });
-
-  testWidgets('an unreadable month offers a retry', (tester) async {
-    await _pumpPage(
-      tester,
-      repository: _FakeRepository(
-        failure: FinanceEntryFailureKind.serviceUnavailable,
-      ),
+      _FakeRepository(failure: FinanceEntryFailureKind.timeout),
     );
 
     expect(find.byKey(const Key('analytics-failure')), findsOneWidget);
-    expect(find.text('Повторить'), findsOneWidget);
-  });
-
-  testWidgets('an empty month renders without failing', (tester) async {
-    await _pumpPage(tester, repository: _FakeRepository(empty: true));
-
-    expect(find.byKey(const Key('analytics-page')), findsOneWidget);
-    expect(find.text('За этот месяц записей нет'), findsWidgets);
-  });
-
-  testWidgets('the screen fits 360 dp at 200 percent text scale', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(360, 3000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    await _pumpPage(tester, repository: _FakeRepository(), textScale: 2);
-
-    expect(tester.takeException(), isNull);
   });
 }
 
-Future<void> _pumpPage(
-  WidgetTester tester, {
-  required _FakeRepository repository,
+Future<void> _pump(
+  WidgetTester tester,
+  _FakeRepository repository, {
   bool privacy = false,
-  double textScale = 1,
-  VoidCallback? onOpenAllOperations,
 }) async {
+  await tester.binding.setSurfaceSize(const Size(390, 1600));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -177,15 +128,10 @@ Future<void> _pumpPage(
           GlobalCupertinoLocalizations.delegate,
         ],
         theme: AppTheme.light(AppAccent.teal),
-        builder: (context, child) => MediaQuery.withClampedTextScaling(
-          minScaleFactor: textScale,
-          maxScaleFactor: textScale,
-          child: child!,
-        ),
         home: Scaffold(
           body: AnalyticsPage(
             onSignInRequested: () async {},
-            onOpenAllOperations: onOpenAllOperations ?? () {},
+            onOpenAllOperations: () {},
           ),
         ),
       ),
@@ -194,73 +140,84 @@ Future<void> _pumpPage(
   await tester.pumpAndSettle();
 }
 
-AnalyticsSummary _summary({bool empty = false}) => AnalyticsSummary(
+AnalyticsWindow _window({bool empty = false}) => AnalyticsWindow(
+  kind: AnalyticsPeriodKind.month,
   periodStart: '2026-08-01',
   periodEnd: '2026-08-31',
+  previousStart: '2026-07-01',
+  previousEnd: '2026-07-31',
   baseCurrency: 'EUR',
   income: empty ? '0' : '1500.00',
   expense: empty ? '0' : '542.00',
   netFlow: empty ? '0' : '958.00',
-  trendTotal: empty ? '0' : '542.00',
-  expenseByCategory: empty
+  previousIncome: '1200.00',
+  previousExpense: '620.00',
+  previousNetFlow: '580.00',
+  balance: AnalyticsBalanceLine(
+    bucket: AnalyticsBucket.day,
+    opening: '30000.00',
+    closing: '32200.00',
+    change: '2200.00',
+    points: [
+      for (var day = 1; day <= 7; day++)
+        AnalyticsTrendPoint(
+          date: '2026-08-${day.toString().padLeft(2, '0')}',
+          amount: day == 7 ? '32200.00' : '30000.00',
+        ),
+    ],
+  ),
+  expenseChanges: empty
       ? const []
       : const [
-          AnalyticsCategoryTotal(
+          AnalyticsCategoryChange(
             categoryId: _groceriesId,
             name: 'Продукты',
-            amount: '420.00',
-            sharePercent: '77.49',
+            amount: '542.00',
+            previousAmount: '540.00',
           ),
-          // No link at all: the screen must still name this line.
-          AnalyticsCategoryTotal(
-            categoryId: null,
-            name: null,
-            amount: '122.00',
-            sharePercent: '22.50',
+          // Spent on last month, not this one: the drop must stay visible.
+          AnalyticsCategoryChange(
+            categoryId: _carId,
+            name: 'Автомобиль',
+            amount: '0',
+            previousAmount: '80.00',
           ),
         ],
-  incomeByCategory: empty
+  incomeChanges: empty
       ? const []
       : const [
-          AnalyticsCategoryTotal(
+          AnalyticsCategoryChange(
             categoryId: _salaryId,
             name: 'Зарплата',
             amount: '1500.00',
-            sharePercent: '100.00',
+            previousAmount: '1200.00',
           ),
         ],
-  trendPoints: [
-    for (var day = 6; day <= 12; day++)
-      AnalyticsTrendPoint(
-        date: '2026-08-${day.toString().padLeft(2, '0')}',
-        amount: day == 12 && !empty ? '542.00' : '0',
-      ),
-  ],
 );
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
-  _FakeRepository({
-    this.failure,
-    this.failRecentOperations = false,
-    this.empty = false,
-    this.uncategorizedRecent = false,
-  });
+  _FakeRepository({this.failure, this.empty = false});
 
   final FinanceEntryFailureKind? failure;
-  final bool failRecentOperations;
   final bool empty;
-  final bool uncategorizedRecent;
+  final List<AnalyticsPeriodKind> asked = [];
 
   @override
-  Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics() async {
-    if (failure != null) {
-      return FinanceEntryFailureResult<AnalyticsSummary>(
-        FinanceEntryFailure(kind: failure!, requestId: 'req_synthetic'),
+  Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
+    required AnalyticsPeriodKind period,
+    String? from,
+    String? to,
+  }) async {
+    final kind = failure;
+    if (kind != null) {
+      return FinanceEntryFailureResult<AnalyticsWindow>(
+        FinanceEntryFailure(kind: kind, requestId: 'req_synthetic'),
       );
     }
-    return FinanceEntrySuccess<AnalyticsSummary>(
+    asked.add(period);
+    return FinanceEntrySuccess<AnalyticsWindow>(
       requestId: 'req_synthetic',
-      value: _summary(empty: empty),
+      value: _window(empty: empty),
     );
   }
 
@@ -269,14 +226,6 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     required int limit,
     String? cursor,
   }) async {
-    if (failRecentOperations) {
-      return FinanceEntryFailureResult<OperationHistoryList>(
-        FinanceEntryFailure(
-          kind: FinanceEntryFailureKind.timeout,
-          requestId: 'req_synthetic',
-        ),
-      );
-    }
     return FinanceEntrySuccess<OperationHistoryList>(
       requestId: 'req_synthetic',
       value: OperationHistoryList(
@@ -289,9 +238,9 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
                   amount: '420.00',
                   currency: 'EUR',
                   accountId: null,
-                  category: uncategorizedRecent ? null : 'Продукты',
-                  categoryId: uncategorizedRecent ? null : _groceriesId,
-                  categoryText: uncategorizedRecent ? null : 'Продукты',
+                  category: 'Продукты',
+                  categoryId: _groceriesId,
+                  categoryText: 'Продукты',
                   merchant: null,
                   occurredOn: '2026-08-12',
                   occurredAt: null,

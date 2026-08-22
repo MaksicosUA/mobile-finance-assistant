@@ -1242,6 +1242,213 @@ String validatedOperationCursor(String value) {
   return value;
 }
 
+/// A window the analytics screen can report.
+enum AnalyticsPeriodKind {
+  last7Days('last_7_days'),
+  month('month'),
+  quarter('quarter'),
+  year('year'),
+  custom('custom');
+
+  const AnalyticsPeriodKind(this.wire);
+
+  final String wire;
+}
+
+/// How wide one point of the balance line is.
+enum AnalyticsBucket { day, week, month }
+
+/// One category in the window, beside the window before it.
+///
+/// Covers the union of both windows, so a category spent on last month and not
+/// this one appears with a zero: the drop is what a comparison is for.
+@immutable
+final class AnalyticsCategoryChange {
+  const AnalyticsCategoryChange({
+    required this.categoryId,
+    required this.name,
+    required this.amount,
+    required this.previousAmount,
+  });
+
+  factory AnalyticsCategoryChange.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'categoryId', 'name', 'amount', 'previousAmount'});
+    final categoryId = json['categoryId'] == null
+        ? null
+        : _requiredUuid(json, 'categoryId');
+    final name = json['name'] == null
+        ? null
+        : _boundedText(json, 'name', maximumLength: 100);
+    if ((categoryId == null) != (name == null)) {
+      throw const FormatException('Invalid analytics category row.');
+    }
+    return AnalyticsCategoryChange(
+      categoryId: categoryId,
+      name: name,
+      amount: _signedMoney(json, 'amount'),
+      previousAmount: _signedMoney(json, 'previousAmount'),
+    );
+  }
+
+  final String? categoryId;
+  final String? name;
+  final String amount;
+  final String previousAmount;
+}
+
+/// What the account was worth across the window.
+@immutable
+final class AnalyticsBalanceLine {
+  AnalyticsBalanceLine({
+    required this.bucket,
+    required this.opening,
+    required this.closing,
+    required this.change,
+    required List<AnalyticsTrendPoint> points,
+  }) : points = List<AnalyticsTrendPoint>.unmodifiable(points);
+
+  factory AnalyticsBalanceLine.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'bucket',
+      'opening',
+      'closing',
+      'change',
+      'points',
+    });
+    final raw = json['points'];
+    if (raw is! List<Object?> || raw.isEmpty || raw.length > 400) {
+      throw const FormatException('Invalid balance line.');
+    }
+    return AnalyticsBalanceLine(
+      bucket: switch (_requiredString(json, 'bucket')) {
+        'day' => AnalyticsBucket.day,
+        'week' => AnalyticsBucket.week,
+        'month' => AnalyticsBucket.month,
+        _ => throw const FormatException('Unknown balance bucket.'),
+      },
+      opening: _signedMoney(json, 'opening'),
+      closing: _signedMoney(json, 'closing'),
+      change: _signedMoney(json, 'change'),
+      points: [
+        for (final item in raw) AnalyticsTrendPoint.fromJson(_asObject(item)),
+      ],
+    );
+  }
+
+  final AnalyticsBucket bucket;
+  final String opening;
+  final String closing;
+  final String change;
+  final List<AnalyticsTrendPoint> points;
+}
+
+/// One reported window: its totals, the window before it, and the line.
+@immutable
+final class AnalyticsWindow {
+  AnalyticsWindow({
+    required this.kind,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.previousStart,
+    required this.previousEnd,
+    required this.baseCurrency,
+    required this.income,
+    required this.expense,
+    required this.netFlow,
+    required this.previousIncome,
+    required this.previousExpense,
+    required this.previousNetFlow,
+    required this.balance,
+    required List<AnalyticsCategoryChange> expenseChanges,
+    required List<AnalyticsCategoryChange> incomeChanges,
+  }) : expenseChanges = List<AnalyticsCategoryChange>.unmodifiable(
+         expenseChanges,
+       ),
+       incomeChanges = List<AnalyticsCategoryChange>.unmodifiable(
+         incomeChanges,
+       );
+
+  factory AnalyticsWindow.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'generatedAt',
+      'baseCurrency',
+      'kind',
+      'period',
+      'previousPeriod',
+      'totals',
+      'previousTotals',
+      'expenseByCategory',
+      'incomeByCategory',
+      'expenseChanges',
+      'incomeChanges',
+      'balance',
+    });
+    if (json['schemaVersion'] != '2') {
+      throw const FormatException('Unsupported analytics schema version.');
+    }
+    final period = _nestedObject(json, 'period');
+    _expectKeys(period, const {'from', 'to'});
+    final previousPeriod = _nestedObject(json, 'previousPeriod');
+    _expectKeys(previousPeriod, const {'from', 'to'});
+    final totals = _nestedObject(json, 'totals');
+    _expectKeys(totals, const {'income', 'expense', 'netFlow'});
+    final previousTotals = _nestedObject(json, 'previousTotals');
+    _expectKeys(previousTotals, const {'income', 'expense', 'netFlow'});
+    return AnalyticsWindow(
+      kind: switch (_requiredString(json, 'kind')) {
+        'last_7_days' => AnalyticsPeriodKind.last7Days,
+        'month' => AnalyticsPeriodKind.month,
+        'quarter' => AnalyticsPeriodKind.quarter,
+        'year' => AnalyticsPeriodKind.year,
+        'custom' => AnalyticsPeriodKind.custom,
+        _ => throw const FormatException('Unknown analytics period.'),
+      },
+      periodStart: _date(period, 'from'),
+      periodEnd: _date(period, 'to'),
+      previousStart: _date(previousPeriod, 'from'),
+      previousEnd: _date(previousPeriod, 'to'),
+      baseCurrency: _currency(json, 'baseCurrency'),
+      income: _signedMoney(totals, 'income'),
+      expense: _signedMoney(totals, 'expense'),
+      netFlow: _signedMoney(totals, 'netFlow'),
+      previousIncome: _signedMoney(previousTotals, 'income'),
+      previousExpense: _signedMoney(previousTotals, 'expense'),
+      previousNetFlow: _signedMoney(previousTotals, 'netFlow'),
+      balance: AnalyticsBalanceLine.fromJson(_nestedObject(json, 'balance')),
+      expenseChanges: _categoryChanges(json['expenseChanges']),
+      incomeChanges: _categoryChanges(json['incomeChanges']),
+    );
+  }
+
+  final AnalyticsPeriodKind kind;
+  final String periodStart;
+  final String periodEnd;
+  final String previousStart;
+  final String previousEnd;
+  final String baseCurrency;
+  final String income;
+  final String expense;
+  final String netFlow;
+  final String previousIncome;
+  final String previousExpense;
+  final String previousNetFlow;
+  final AnalyticsBalanceLine balance;
+
+  /// Largest first, zeros included when the previous window had something.
+  final List<AnalyticsCategoryChange> expenseChanges;
+  final List<AnalyticsCategoryChange> incomeChanges;
+}
+
+List<AnalyticsCategoryChange> _categoryChanges(Object? raw) {
+  if (raw is! List<Object?> || raw.length > 200) {
+    throw const FormatException('Invalid analytics comparison.');
+  }
+  return [
+    for (final item in raw) AnalyticsCategoryChange.fromJson(_asObject(item)),
+  ];
+}
+
 /// What one category accounts for in the analysed month.
 @immutable
 final class AnalyticsCategoryTotal {

@@ -1110,5 +1110,87 @@
   "categoryKeywordsSaveError": "Не удалось сохранить слово",
   "@categoryKeywordsSaveError": {
     "description": "Category keywords (ADR 0020, step 3)."
+  },
+  "analyticsPeriod7Days": "7 дней",
+  "@analyticsPeriod7Days": {
+    "description": "Analytics periods (balance line and comparison)."
+  },
+  "analyticsPeriodMonth": "Месяц",
+  "@analyticsPeriodMonth": {
+    "description": "Analytics periods (balance line and comparison)."
+  },
+  "analyticsPeriodQuarter": "Квартал",
+  "@analyticsPeriodQuarter": {
+    "description": "Analytics periods (balance line and comparison)."
+  },
+  "analyticsPeriodYear": "Год",
+  "@analyticsPeriodYear": {
+    "description": "Analytics periods (balance line and comparison)."
+  },
+  "analyticsPeriodLabel": "Период",
+  "@analyticsPeriodLabel": {
+    "description": "Analytics periods (balance line and comparison)."
+  },
+  "analyticsBalanceTitle": "Баланс",
+  "@analyticsBalanceTitle": {
+    "description": "Analytics periods (balance line and comparison)."
+  },
+  "analyticsBalanceFromTo": "{opening} → {closing}",
+  "@analyticsBalanceFromTo": {
+    "description": "Analytics periods (balance line and comparison).",
+    "placeholders": {
+      "opening": {
+        "type": "String"
+      },
+      "closing": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsBalanceChange": "за период {change}",
+  "@analyticsBalanceChange": {
+    "description": "Analytics periods (balance line and comparison).",
+    "placeholders": {
+      "change": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsNoSpending": "За этот период трат не было",
+  "@analyticsNoSpending": {
+    "description": "Analytics periods (balance line and comparison)."
+  },
+  "analyticsPreviousAmount": "было {amount}",
+  "@analyticsPreviousAmount": {
+    "description": "Analytics periods (balance line and comparison).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsWindowRange": "{from} — {to}",
+  "@analyticsWindowRange": {
+    "description": "Analytics periods (balance line and comparison).",
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsComparedWith": "в сравнении с {from} — {to}",
+  "@analyticsComparedWith": {
+    "description": "Analytics periods (balance line and comparison).",
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
   }
 }
