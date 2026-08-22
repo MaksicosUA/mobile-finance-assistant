@@ -108,7 +108,14 @@ class AnalyticsView:
     trend_points: tuple[TrendPoint, ...]
     #: The reported window itself, bucketed to fit a phone screen.
     series_bucket: SeriesBucket = "day"
-    series_points: tuple[TrendPoint, ...] = ()
+    #: What the account was worth entering the window — the control point the
+    #: line starts from.
+    balance_opening: Decimal = Decimal(0)
+    #: The balance as at the end of each bucket, so the line answers "did this
+    #: get better" rather than "where did it go", which the table already says.
+    balance_points: tuple[TrendPoint, ...] = ()
+    balance_closing: Decimal = Decimal(0)
+    balance_change: Decimal = Decimal(0)
     #: The equally shaped window before this one.
     previous_income: Decimal = Decimal(0)
     previous_expense: Decimal = Decimal(0)
@@ -180,6 +187,30 @@ def build_analytics(
     previous_income = _total(earlier, "income")
     previous_expense = _total(earlier, "expense")
 
+    # The line the chart draws: what the account was worth entering the window,
+    # every bucket boundary along it, and what it is worth now. Its last point
+    # is the same arithmetic Home projects, so the two cannot disagree about
+    # the balance a user is looking at.
+    balance_opening = _balance_as_at(
+        effective,
+        opening_balance=account.opening_balance,
+        as_at=period.period_start - timedelta(days=1),
+    )
+    balance_points = tuple(
+        TrendPoint(
+            point_date=boundary,
+            amount=_balance_as_at(
+                effective, opening_balance=account.opening_balance, as_at=boundary
+            ),
+        )
+        for boundary in _bucket_boundaries(period)
+    )
+    balance_closing = _balance_as_at(
+        effective,
+        opening_balance=account.opening_balance,
+        as_at=period.cutoff_local_date,
+    )
+
     trend_start = period.cutoff_local_date - timedelta(days=_TREND_DAYS - 1)
     trend_points = tuple(
         TrendPoint(
@@ -213,7 +244,10 @@ def build_analytics(
         trend_total=sum((point.amount for point in trend_points), start=Decimal(0)),
         trend_points=trend_points,
         series_bucket=_bucket_for(period),
-        series_points=_series(effective, period=period),
+        balance_opening=balance_opening,
+        balance_points=balance_points,
+        balance_closing=balance_closing,
+        balance_change=balance_closing - balance_opening,
         previous_income=previous_income,
         previous_expense=previous_expense,
         previous_net_flow=previous_income - previous_expense,
@@ -231,13 +265,11 @@ def _bucket_for(period: ReportingPeriod) -> SeriesBucket:
     return "month"
 
 
-def _series(
-    effective: tuple[AnalyticsOperation, ...], *, period: ReportingPeriod
-) -> tuple[TrendPoint, ...]:
-    """Expense per bucket across the window, ending at what has happened.
+def _bucket_boundaries(period: ReportingPeriod) -> tuple[date, ...]:
+    """The last day of each bucket, with the final one cut at today.
 
-    Buckets are labelled by the day they start, and the last one is cut at the
-    cutoff so an unfinished month is not drawn as a collapse.
+    Drawing an unfinished month all the way to its calendar end would show a
+    flat line into the future, which reads as a fact rather than an absence.
     """
 
     bucket = _bucket_for(period)
@@ -246,28 +278,17 @@ def _series(
     while cursor <= period.cutoff_local_date:
         starts.append(cursor)
         cursor = _next_bucket(cursor, bucket)
-    points: list[TrendPoint] = []
-    for index, start in enumerate(starts):
-        end = (
-            starts[index + 1] - timedelta(days=1)
-            if index + 1 < len(starts)
-            else period.cutoff_local_date
+    return tuple(
+        min(
+            (
+                starts[index + 1] - timedelta(days=1)
+                if index + 1 < len(starts)
+                else period.cutoff_local_date
+            ),
+            period.cutoff_local_date,
         )
-        points.append(
-            TrendPoint(
-                point_date=start,
-                amount=sum(
-                    (
-                        operation.amount
-                        for operation in effective
-                        if operation.operation_type == "expense"
-                        and start <= operation.occurred_on <= end
-                    ),
-                    start=Decimal(0),
-                ),
-            )
-        )
-    return tuple(points)
+        for index in range(len(starts))
+    )
 
 
 def _next_bucket(start: date, bucket: SeriesBucket) -> date:
@@ -277,6 +298,31 @@ def _next_bucket(start: date, bucket: SeriesBucket) -> date:
         return start + timedelta(days=7)
     year, month = divmod(start.month, 12)
     return date(start.year + year, month + 1, 1)
+
+
+def _balance_as_at(
+    effective: tuple[AnalyticsOperation, ...],
+    *,
+    opening_balance: Decimal,
+    as_at: date,
+) -> Decimal:
+    """The account's worth on `as_at`, by the same rule Home projects.
+
+    Income raises it and expense lowers it; nothing else moves it. A goal
+    contribution earmarks money already here (ADR 0019) and a planned cost is
+    a forecast (ADR 0018), so neither appears.
+    """
+
+    return opening_balance + sum(
+        (
+            operation.amount
+            if operation.operation_type == "income"
+            else -operation.amount
+            for operation in effective
+            if operation.occurred_on <= as_at
+        ),
+        start=Decimal(0),
+    )
 
 
 def _changes(
