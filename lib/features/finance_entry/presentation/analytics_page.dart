@@ -309,9 +309,6 @@ class _BalanceCard extends StatelessWidget {
             money(balance.opening),
             money(balance.closing),
           ),
-          periodLabel: privacy
-              ? l10n.amountsHidden
-              : l10n.analyticsBalanceChange(_signed(balance.change)),
           detailsLabel: l10n.detailsAction,
           emptyLabel: l10n.trendEmpty,
           semanticsLabel: l10n.trendSemantics(
@@ -320,6 +317,18 @@ class _BalanceCard extends StatelessWidget {
           ),
           amountsHiddenLabel: l10n.amountsHidden,
           privacyEnabled: privacy,
+        ),
+        const SizedBox(height: 12),
+        // The window's result belongs under the line that draws it and above
+        // the categories that explain it, not in a corner of the header.
+        Text(
+          privacy
+              ? l10n.amountsHidden
+              : l10n.analyticsBalanceChange(_signed(balance.change)),
+          key: const Key('analytics-balance-change'),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         if (window.expense == '0') ...[
           const SizedBox(height: 8),

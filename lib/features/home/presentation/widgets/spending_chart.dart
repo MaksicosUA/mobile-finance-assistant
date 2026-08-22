@@ -11,19 +11,22 @@ class SpendingChart extends StatelessWidget {
     required this.trend,
     required this.title,
     required this.periodDescription,
-    required this.periodLabel,
     required this.detailsLabel,
     required this.emptyLabel,
     required this.semanticsLabel,
     required this.amountsHiddenLabel,
     required this.privacyEnabled,
+    this.periodLabel,
     this.onOpenDetails,
   });
 
   final TrendSummary trend;
   final String title;
   final String periodDescription;
-  final String periodLabel;
+
+  /// The figure in the card header, or `null` when the screen reports it
+  /// itself below the chart.
+  final String? periodLabel;
   final String detailsLabel;
   final String emptyLabel;
   final String semanticsLabel;
@@ -37,6 +40,13 @@ class SpendingChart extends StatelessWidget {
     final colors = context.appColors;
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     final dates = _axisDates(context);
+    final actions = periodLabel == null && onOpenDetails == null
+        ? null
+        : _Actions(
+            periodLabel: periodLabel,
+            detailsLabel: detailsLabel,
+            onOpenDetails: onOpenDetails,
+          );
 
     return Card(
       key: const Key('spending-chart'),
@@ -45,17 +55,15 @@ class SpendingChart extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (textScale > 1.35)
+            if (actions == null)
+              _Title(title: title, description: periodDescription)
+            else if (textScale > 1.35)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _Title(title: title, description: periodDescription),
                   const SizedBox(height: AppSpacing.xs),
-                  _Actions(
-                    periodLabel: periodLabel,
-                    detailsLabel: detailsLabel,
-                    onOpenDetails: onOpenDetails,
-                  ),
+                  actions,
                 ],
               )
             else
@@ -66,11 +74,7 @@ class SpendingChart extends StatelessWidget {
                     child: _Title(title: title, description: periodDescription),
                   ),
                   const SizedBox(width: AppSpacing.xs),
-                  _Actions(
-                    periodLabel: periodLabel,
-                    detailsLabel: detailsLabel,
-                    onOpenDetails: onOpenDetails,
-                  ),
+                  actions,
                 ],
               ),
             const SizedBox(height: AppSpacing.xs),
@@ -106,9 +110,16 @@ class SpendingChart extends StatelessWidget {
                   ),
                   (false, false) => Column(
                     children: [
+                      // The canvas needs a width as much as a height. A
+                      // `CustomPaint` with neither a child nor a size prefers
+                      // `Size.zero`, the column above it constrains only the
+                      // height, and the painter then returns on an empty
+                      // canvas -- which is why this line never appeared.
                       SizedBox(
+                        width: double.infinity,
                         height: 100,
                         child: CustomPaint(
+                          key: const Key('spending-chart-canvas'),
                           painter: _TrendPainter(
                             amounts: trend.points
                                 .map((point) => point.amount.amount)
@@ -182,32 +193,34 @@ class _Actions extends StatelessWidget {
     required this.onOpenDetails,
   });
 
-  final String periodLabel;
+  final String? periodLabel;
   final String detailsLabel;
   final VoidCallback? onOpenDetails;
 
   @override
   Widget build(BuildContext context) {
+    final label = periodLabel;
     return Wrap(
       spacing: AppSpacing.xs,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: context.appColors.surfaceSecondary,
-            borderRadius: BorderRadius.circular(AppRadius.pill),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            child: Text(
-              periodLabel,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w600,
+        if (label != null)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: context.appColors.surfaceSecondary,
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
-        ),
         if (onOpenDetails != null)
           TextButton(
             key: const Key('open-trend-details'),

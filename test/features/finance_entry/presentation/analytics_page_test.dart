@@ -93,6 +93,31 @@ void main() {
     expect(find.text('•••••• €'), findsWidgets);
   });
 
+  testWidgets('the window result reads under the chart, above the categories', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeRepository());
+
+    final change = find.byKey(const Key('analytics-balance-change'));
+    expect(change, findsOneWidget);
+    expect(find.text('за период +2 200,00 €'), findsOneWidget);
+    // Under the line that draws it and above the table that explains it.
+    expect(
+      tester.getTopLeft(change).dy,
+      greaterThan(
+        tester.getTopLeft(find.byKey(const Key('spending-chart-canvas'))).dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(change).dy,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const Key('analytics-expense-changes')))
+            .dy,
+      ),
+    );
+  });
+
   testWidgets('a failed read offers a retry', (tester) async {
     await _pump(
       tester,
