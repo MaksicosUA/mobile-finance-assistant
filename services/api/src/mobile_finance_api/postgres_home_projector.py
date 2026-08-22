@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, union
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import AsyncSessionFactory
 from .db_models import (
@@ -33,6 +34,7 @@ from .db_models import (
     PlannedCostOutboxEventRow,
     PlannedCostRow,
     UserRow,
+    operation_counts,
 )
 from .home_projection import (
     HomeProjectionInvariantError,
@@ -554,7 +556,14 @@ class PostgresHomeProjector:
                 (
                     await database.scalars(
                         select(FinanceOperationRow)
-                        .where(FinanceOperationRow.user_id == user_id)
+                        # Reversed operations are excluded from the rebuild,
+                        # never from the event resolution above: an
+                        # invalidation must still find its user, or the very
+                        # correction that withdrew the money would never be
+                        # projected (ADR 0023).
+                        .where(
+                            FinanceOperationRow.user_id == user_id, operation_counts()
+                        )
                         .order_by(
                             FinanceOperationRow.created_at.asc(),
                             FinanceOperationRow.id.asc(),
@@ -721,7 +730,16 @@ class PostgresHomeProjector:
                 return False
 
             _validate_profile(user=user, account=account)
-            operations_by_id = {operation.id: operation for operation in operations}
+            # Read separately from the operations above, and deliberately
+            # unfiltered: an event about a withdrawn operation still has to
+            # validate, or the very correction that withdrew it could never be
+            # projected (ADR 0023). The rebuild reads what counts; this reads
+            # what the events are about.
+            operations_by_id = await _operations_named_by(
+                database,
+                user_id=user_id,
+                events=operation_events,
+            )
             _validate_account_events(account_events, account=account)
             _validate_operation_events(
                 operation_events,
@@ -1058,6 +1076,26 @@ def _validate_account_events(
             raise _OutboxContractError(kind="account", event_id=event.id)
 
 
+async def _operations_named_by(
+    database: AsyncSession,
+    *,
+    user_id: UUID,
+    events: Sequence[FinanceOutboxEventRow],
+) -> dict[UUID, FinanceOperationRow]:
+    aggregate_ids = {event.aggregate_id for event in events}
+    if not aggregate_ids:
+        return {}
+    rows = (
+        await database.scalars(
+            select(FinanceOperationRow).where(
+                FinanceOperationRow.user_id == user_id,
+                FinanceOperationRow.id.in_(aggregate_ids),
+            )
+        )
+    ).all()
+    return {row.id: row for row in rows}
+
+
 def _validate_operation_events(
     events: Sequence[FinanceOutboxEventRow],
     *,
@@ -1075,7 +1113,13 @@ def _validate_operation_events(
         }
         if (
             event.aggregate_type != "finance_operation"
-            or event.event_type != "finance.operation.accepted.v1"
+            or event.event_type
+            not in {
+                "finance.operation.accepted.v1",
+                # An operation withdrawn from the ledger invalidates exactly
+                # the same projection its acceptance did (ADR 0023).
+                "finance.operation.reversed.v1",
+            }
             or event.payload != expected_payload
         ):
             raise _OutboxContractError(kind="operation", event_id=event.id)

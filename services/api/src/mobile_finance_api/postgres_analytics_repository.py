@@ -33,7 +33,12 @@ from .analytics_contracts import (
     AnalyticsV2Response,
 )
 from .database import AsyncSessionFactory
-from .db_models import FinanceAccountRow, FinanceCategoryRow, FinanceOperationRow
+from .db_models import (
+    FinanceAccountRow,
+    FinanceCategoryRow,
+    FinanceOperationRow,
+    operation_counts,
+)
 from .home_projection import (
     ProjectionAccount,
     ReportingPeriod,
@@ -113,6 +118,10 @@ class PostgresAnalyticsRepository:
                     .where(
                         FinanceOperationRow.user_id == user_id,
                         FinanceOperationRow.status == "confirmed",
+                        # The same definition of "counts" the projection uses,
+                        # so one screen cannot report a corrected operation
+                        # the other has already dropped (ADR 0023).
+                        operation_counts(),
                     )
                 )
             ).all()

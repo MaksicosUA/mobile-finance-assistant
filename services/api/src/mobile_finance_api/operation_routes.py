@@ -20,12 +20,16 @@ from .finance_core import (
     ConfirmationMismatch,
     FinanceCore,
     FinancePersistenceUnavailable,
+    OperationAlreadyReversed,
     OperationCommandConflict,
+    OperationNotFound,
     OperationRejected,
 )
 from .operation_contracts import (
     CommitOperationRequest,
     CommitOperationResponse,
+    CorrectOperationRequest,
+    CorrectOperationResponse,
     EvaluateOperationRequest,
     EvaluateOperationResponse,
     ListOperationsResponse,
@@ -33,6 +37,8 @@ from .operation_contracts import (
     OperationErrorDetail,
     OperationErrorResponse,
     OperationIssue,
+    RemoveOperationRequest,
+    RemoveOperationResponse,
 )
 from .postgres_finance_repository import (
     MAXIMUM_HISTORY_PAGE,
@@ -173,6 +179,104 @@ async def commit_operation(
     raise public_error
 
 
+_REVERSAL_RESPONSES: dict[int | str, dict[str, object]] = {
+    200: {"description": "Idempotent replay of an accepted command"},
+    401: {"description": "Authentication is required"},
+    404: {
+        "model": OperationErrorResponse,
+        "description": "No such operation for this user",
+    },
+    409: {
+        "model": OperationErrorResponse,
+        "description": "Confirmation, command, or reversal conflict",
+    },
+    422: {
+        "model": OperationErrorResponse,
+        "description": "Malformed or deterministically rejected command",
+    },
+    503: {
+        "model": OperationErrorResponse,
+        "description": "Finance Core persistence is unavailable",
+    },
+}
+
+
+@router.post(
+    "/correction",
+    response_model=CorrectOperationResponse,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+    responses=_REVERSAL_RESPONSES,
+)
+async def correct_operation(
+    body: CorrectOperationRequest,
+    response: Response,
+    core: FinanceCoreDependency,
+    user: CurrentUserDependency,
+) -> CorrectOperationResponse:
+    """Replace a confirmed operation with a reviewed draft (ADR 0023).
+
+    The original is withdrawn and its replacement written in one transaction,
+    so there is no moment where the money is gone and nothing replaced it.
+    """
+
+    try:
+        user_id = UUID(user.subject)
+    except ValueError:
+        raise _unavailable() from None
+
+    try:
+        result = await core.correct(user_id=user_id, request=body)
+    except Exception as error:
+        public_error = _reversal_error(error)
+    else:
+        if result.replacement is None:
+            # Unreachable through Finance Core; a correction always writes one.
+            raise _unavailable()
+        if result.idempotent_replay:
+            response.status_code = status.HTTP_200_OK
+        return CorrectOperationResponse(
+            idempotent_replay=result.idempotent_replay,
+            reversal=result.reversal,
+            operation=result.replacement,
+        )
+    raise public_error
+
+
+@router.post(
+    "/removal",
+    response_model=RemoveOperationResponse,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+    responses=_REVERSAL_RESPONSES,
+)
+async def remove_operation(
+    body: RemoveOperationRequest,
+    response: Response,
+    core: FinanceCoreDependency,
+    user: CurrentUserDependency,
+) -> RemoveOperationResponse:
+    """Withdraw a confirmed operation without replacing it (ADR 0023)."""
+
+    try:
+        user_id = UUID(user.subject)
+    except ValueError:
+        raise _unavailable() from None
+
+    try:
+        result = await core.remove(user_id=user_id, request=body)
+    except Exception as error:
+        public_error = _reversal_error(error)
+    else:
+        if result.idempotent_replay:
+            response.status_code = status.HTTP_200_OK
+        return RemoveOperationResponse(
+            idempotent_replay=result.idempotent_replay,
+            reversal=result.reversal,
+        )
+    raise public_error
+
+
 @router.get(
     "",
     response_model=ListOperationsResponse,
@@ -224,6 +328,45 @@ async def list_operations(
     except Exception:
         public_error = _unavailable()
     raise public_error
+
+
+def _reversal_error(error: Exception) -> HTTPException:
+    """Map a correction failure to its public status, losing every detail.
+
+    A missing operation and another user's operation answer the same 404, so
+    the API never confirms that an identifier exists outside the caller's own
+    ledger.
+    """
+
+    match error:
+        case ConfirmationMismatch():
+            return _operation_error(
+                status_code=status.HTTP_409_CONFLICT,
+                code="CONFIRMATION_MISMATCH",
+            )
+        case OperationCommandConflict():
+            return _operation_error(
+                status_code=status.HTTP_409_CONFLICT,
+                code="COMMAND_CONFLICT",
+            )
+        case OperationAlreadyReversed():
+            return _operation_error(
+                status_code=status.HTTP_409_CONFLICT,
+                code="OPERATION_ALREADY_REVERSED",
+            )
+        case OperationNotFound():
+            return _operation_error(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="OPERATION_NOT_FOUND",
+            )
+        case OperationRejected(issues=issues):
+            return _operation_error(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="OPERATION_REJECTED",
+                issues=issues,
+            )
+        case _:
+            return _unavailable()
 
 
 def _unavailable() -> HTTPException:

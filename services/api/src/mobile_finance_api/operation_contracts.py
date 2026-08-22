@@ -178,6 +178,10 @@ OperationErrorCode = Literal[
     "OPERATION_REJECTED",
     "AUTHENTICATION_UNAVAILABLE",
     "FINANCE_PERSISTENCE_UNAVAILABLE",
+    # Correcting or removing an operation (ADR 0023). "Not found" also covers
+    # another user's operation, so the API never confirms one exists.
+    "OPERATION_NOT_FOUND",
+    "OPERATION_ALREADY_REVERSED",
 ]
 
 
@@ -302,6 +306,75 @@ class CommitOperationResponse(OperationApiModel):
     operation: CommittedOperation
 
 
+class CorrectOperationRequest(OperationApiModel):
+    """Replace one confirmed operation with a reviewed draft (ADR 0023).
+
+    The target travels inside the command rather than only in the path, so the
+    confirmation hash covers it: a correction reviewed for one operation can
+    never be committed against another.
+    """
+
+    schema_version: Literal["1"] = Field(alias="schemaVersion")
+    target_operation_id: UUID = Field(alias="targetOperationId")
+    draft: OperationDraft
+    draft_hash: DraftHash = Field(alias="draftHash")
+    confirmed_at: UtcTimestamp = Field(alias="confirmedAt")
+
+
+class RemoveOperationRequest(OperationApiModel):
+    """Withdraw one confirmed operation without replacing it.
+
+    There is no draft to review, so there is no draft hash. The command id is
+    what makes a retry land on the same reversal instead of a second one.
+    """
+
+    schema_version: Literal["1"] = Field(alias="schemaVersion")
+    target_operation_id: UUID = Field(alias="targetOperationId")
+    command_id: UUID = Field(alias="commandId")
+    confirmed_at: UtcTimestamp = Field(alias="confirmedAt")
+
+
+class OperationReversal(OperationApiModel):
+    """The receipt for an operation that stopped counting."""
+
+    reversal_id: UUID = Field(alias="reversalId")
+    operation_id: UUID = Field(alias="operationId")
+
+    # Null when the operation was removed rather than corrected. The
+    # distinction is derived from this field and never stored twice.
+    replacement_operation_id: UUID | None = Field(alias="replacementOperationId")
+    command_id: UUID = Field(alias="commandId")
+    confirmed_at: UtcTimestamp = Field(alias="confirmedAt")
+    created_at: UtcTimestamp = Field(alias="createdAt")
+
+
+class CorrectOperationResponse(OperationApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    decision: Literal["ACCEPT"] = "ACCEPT"
+    idempotent_replay: bool = Field(alias="idempotentReplay")
+    reversal: OperationReversal
+    operation: CommittedOperation
+
+    @model_validator(mode="after")
+    def replacement_is_the_returned_operation(self) -> Self:
+        if self.reversal.replacement_operation_id != self.operation.operation_id:
+            raise ValueError("a correction must return the replacement it wrote")
+        return self
+
+
+class RemoveOperationResponse(OperationApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    decision: Literal["ACCEPT"] = "ACCEPT"
+    idempotent_replay: bool = Field(alias="idempotentReplay")
+    reversal: OperationReversal
+
+    @model_validator(mode="after")
+    def removal_has_no_replacement(self) -> Self:
+        if self.reversal.replacement_operation_id is not None:
+            raise ValueError("a removal must not carry a replacement")
+        return self
+
+
 class OperationHistoryItem(OperationApiModel):
     """One confirmed operation as the history screen reads it.
 
@@ -368,6 +441,10 @@ type OperationMessage = (
     | EvaluateOperationResponse
     | CommitOperationRequest
     | CommitOperationResponse
+    | CorrectOperationRequest
+    | RemoveOperationRequest
+    | CorrectOperationResponse
+    | RemoveOperationResponse
     | OperationErrorResponse
 )
 
