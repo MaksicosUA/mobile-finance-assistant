@@ -2564,6 +2564,78 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не удалось сохранить слово'**
   String get categoryKeywordsSaveError;
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'7 дней'**
+  String get analyticsPeriod7Days;
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'Месяц'**
+  String get analyticsPeriodMonth;
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'Квартал'**
+  String get analyticsPeriodQuarter;
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'Год'**
+  String get analyticsPeriodYear;
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'Период'**
+  String get analyticsPeriodLabel;
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'Баланс'**
+  String get analyticsBalanceTitle;
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'{opening} → {closing}'**
+  String analyticsBalanceFromTo(String opening, String closing);
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'за период {change}'**
+  String analyticsBalanceChange(String change);
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'За этот период трат не было'**
+  String get analyticsNoSpending;
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'было {amount}'**
+  String analyticsPreviousAmount(String amount);
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'{from} — {to}'**
+  String analyticsWindowRange(String from, String to);
+
+  /// Analytics periods (balance line and comparison).
+  ///
+  /// In ru, this message translates to:
+  /// **'в сравнении с {from} — {to}'**
+  String analyticsComparedWith(String from, String to);
 }
 
 class _AppLocalizationsDelegate

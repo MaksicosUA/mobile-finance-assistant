@@ -633,6 +633,13 @@ class _ListApi implements FinanceEntryApiClient {
     required String accessToken,
   }) => throw UnimplementedError();
   @override
+  Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
+    required String accessToken,
+    required AnalyticsPeriodKind period,
+    String? from,
+    String? to,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<UserProfile>> readProfile({
     required String accessToken,
   }) => throw UnimplementedError();

@@ -47,6 +47,12 @@ abstract interface class FinanceEntryRepositoryClient {
 
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics();
 
+  Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
+    required AnalyticsPeriodKind period,
+    String? from,
+    String? to,
+  });
+
   Future<FinanceEntryResult<UserProfile>> readProfile();
 
   Future<FinanceEntryResult<OperationProposal>> parseOperationText({
@@ -263,6 +269,22 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         accessToken: accessToken,
         categoryId: categoryId,
         keywords: keywords,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
+    required AnalyticsPeriodKind period,
+    String? from,
+    String? to,
+  }) {
+    return _authorized(
+      (accessToken) => _api.readAnalyticsWindow(
+        accessToken: accessToken,
+        period: period,
+        from: from,
+        to: to,
       ),
     );
   }

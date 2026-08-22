@@ -26,11 +26,11 @@ final class AnalyticsLoading extends AnalyticsState {
 @immutable
 final class AnalyticsReady extends AnalyticsState {
   AnalyticsReady({
-    required this.summary,
+    required this.window,
     required List<OperationHistoryItem> recent,
   }) : recent = List<OperationHistoryItem>.unmodifiable(recent);
 
-  final AnalyticsSummary summary;
+  final AnalyticsWindow window;
 
   /// The newest operations, moved here from Home. Failing to read them must
   /// not hide the totals, so this is empty rather than fatal.
@@ -56,6 +56,11 @@ final class AnalyticsFailure extends AnalyticsState {
 class AnalyticsController extends Notifier<AnalyticsState> {
   bool _requestInFlight = false;
   int _requestGeneration = 0;
+  AnalyticsPeriodKind _period = AnalyticsPeriodKind.month;
+
+  /// The window currently reported. Kept here rather than in the state so a
+  /// failed load still knows which one to retry.
+  AnalyticsPeriodKind get period => _period;
 
   FinanceEntryRepositoryClient get _repository =>
       ref.read(financeEntryRepositoryProvider);
@@ -68,15 +73,24 @@ class AnalyticsController extends Notifier<AnalyticsState> {
     return const AnalyticsLoading();
   }
 
+  /// Reports a different window. The screen shows its loading state again
+  /// because every figure on it changes, not just the chart.
+  Future<void> selectPeriod(AnalyticsPeriodKind period) async {
+    if (period == _period) return;
+    _period = period;
+    await load();
+  }
+
   Future<void> load() async {
     if (_requestInFlight) return;
     final requestGeneration = _beginRequest();
+    state = const AnalyticsLoading();
     try {
-      final result = await _repository.readAnalytics();
+      final result = await _repository.readAnalyticsWindow(period: _period);
       if (!_isCurrentRequest(requestGeneration)) return;
       switch (result) {
         case FinanceEntrySuccess(:final value):
-          state = AnalyticsReady(summary: value, recent: const []);
+          state = AnalyticsReady(window: value, recent: const []);
           await _loadRecent(requestGeneration);
         case FinanceEntryFailureResult(:final failure):
           state = _requiresAuthentication(failure)
@@ -106,7 +120,7 @@ class AnalyticsController extends Notifier<AnalyticsState> {
       if (current is! AnalyticsReady) return;
       if (result case FinanceEntrySuccess(:final value)) {
         state = AnalyticsReady(
-          summary: current.summary,
+          window: current.window,
           recent: value.operations,
         );
       }

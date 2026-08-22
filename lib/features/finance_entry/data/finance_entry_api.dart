@@ -71,6 +71,13 @@ abstract interface class FinanceEntryApiClient {
     required String accessToken,
   });
 
+  Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
+    required String accessToken,
+    required AnalyticsPeriodKind period,
+    String? from,
+    String? to,
+  });
+
   Future<FinanceEntryResult<OperationProposal>> parseOperationText({
     required String accessToken,
     required String text,
@@ -507,6 +514,39 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       acceptedStatuses: const {200},
       contract: _ContractKind.profile,
       parse: (json, statusCode) => _parseProfile(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
+    required String accessToken,
+    required AnalyticsPeriodKind period,
+    String? from,
+    String? to,
+  }) {
+    final custom = period == AnalyticsPeriodKind.custom;
+    if (custom != (from != null && to != null)) {
+      // Bounds belong to a custom window and only to it; sending them with a
+      // named one asks for a window the user did not choose.
+      return Future<FinanceEntryResult<AnalyticsWindow>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    final query = StringBuffer('period=${period.wire}');
+    if (custom) {
+      query.write('&from=${Uri.encodeQueryComponent(from!)}');
+      query.write('&to=${Uri.encodeQueryComponent(to!)}');
+    }
+    return _request(
+      method: 'GET',
+      path: '/api/v1/analytics/v2?$query',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.analytics,
+      parse: (json, statusCode) => _parseAnalyticsWindow(json, statusCode),
     );
   }
 
@@ -952,6 +992,11 @@ UserProfile _parseProfile(Map<String, Object?> json, int status) {
 CategoryKeywords _parseCategoryKeywords(Map<String, Object?> json, int status) {
   if (status != 200) throw const FormatException('Invalid status.');
   return CategoryKeywords.fromJson(json);
+}
+
+AnalyticsWindow _parseAnalyticsWindow(Map<String, Object?> json, int status) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  return AnalyticsWindow.fromJson(json);
 }
 
 OperationProposal _parseProposal(Map<String, Object?> json, int status) {
@@ -1689,6 +1734,7 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
     }.contains(code),
     _ContractKind.analytics => const {
       FinanceEntryErrorCode.analyticsUnavailable,
+      FinanceEntryErrorCode.malformedAnalyticsQuery,
     }.contains(code),
     _ContractKind.profile => const {
       FinanceEntryErrorCode.profileUnavailable,

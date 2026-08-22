@@ -1417,4 +1417,50 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get categoryKeywordsSaveError => 'Не удалось сохранить слово';
+
+  @override
+  String get analyticsPeriod7Days => '7 дней';
+
+  @override
+  String get analyticsPeriodMonth => 'Месяц';
+
+  @override
+  String get analyticsPeriodQuarter => 'Квартал';
+
+  @override
+  String get analyticsPeriodYear => 'Год';
+
+  @override
+  String get analyticsPeriodLabel => 'Период';
+
+  @override
+  String get analyticsBalanceTitle => 'Баланс';
+
+  @override
+  String analyticsBalanceFromTo(String opening, String closing) {
+    return '$opening → $closing';
+  }
+
+  @override
+  String analyticsBalanceChange(String change) {
+    return 'за период $change';
+  }
+
+  @override
+  String get analyticsNoSpending => 'За этот период трат не было';
+
+  @override
+  String analyticsPreviousAmount(String amount) {
+    return 'было $amount';
+  }
+
+  @override
+  String analyticsWindowRange(String from, String to) {
+    return '$from — $to';
+  }
+
+  @override
+  String analyticsComparedWith(String from, String to) {
+    return 'в сравнении с $from — $to';
+  }
 }
