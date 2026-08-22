@@ -6,20 +6,25 @@ client parses the analytics response with a closed set of keys.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from mobile_finance_api.analytics import (
     AnalyticsOperation,
     build_analytics,
 )
+from mobile_finance_api.auth import AuthenticatedUser
 from mobile_finance_api.home_projection import (
     HomeProjectionInvariantError,
     ProjectionAccount,
 )
+from mobile_finance_api.main import create_app
+from mobile_finance_api.postgres_analytics_repository import _to_v2_contract
 
 _USER_ID = UUID("11111111-1111-4111-8111-111111111111")
 _ACCOUNT_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -293,3 +298,128 @@ def test_a_custom_window_is_bucketed_by_its_own_length() -> None:
 
     assert short.series_bucket == "day"
     assert long.series_bucket == "month"
+
+
+# --- transport ----------------------------------------------------------------
+
+
+def test_reading_a_window_requires_authentication() -> None:
+    async def scenario() -> None:
+        app = create_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/api/v1/analytics/v2")
+        assert response.status_code == 401
+
+    asyncio.run(scenario())
+
+
+def test_the_default_window_is_the_month_home_projects() -> None:
+    async def scenario() -> None:
+        repository = _FakeAnalytics()
+        response = await _get(repository)
+        assert response.status_code == 200, response.text
+        assert repository.asked == [("month", None, None)]
+        assert response.json()["kind"] == "month"
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # A custom window without both bounds cannot be resolved.
+        "?period=custom",
+        "?period=custom&from=2026-08-01",
+        "?period=custom&to=2026-08-01",
+        "?period=custom&from=2026-08-20&to=2026-08-01",
+        # Longer than the cap.
+        "?period=custom&from=2000-01-01&to=2026-08-01",
+        # Bounds with a named window: honouring them would report a window the
+        # caller never asked for.
+        "?period=month&from=2026-08-01&to=2026-08-20",
+    ],
+)
+def test_an_unhonourable_window_is_refused_before_the_database(query: str) -> None:
+    async def scenario() -> None:
+        repository = _FakeAnalytics()
+        response = await _get(repository, query)
+        assert response.status_code == 422, response.text
+        assert response.json()["detail"]["code"] == "MALFORMED_ANALYTICS_QUERY"
+        assert repository.asked == []
+
+    asyncio.run(scenario())
+
+
+def test_a_window_before_the_account_is_a_bad_request_not_a_broken_service() -> None:
+    async def scenario() -> None:
+        repository = _FakeAnalytics(failure=HomeProjectionInvariantError("before"))
+        response = await _get(
+            repository, "?period=custom&from=2024-01-01&to=2024-01-31"
+        )
+        assert response.status_code == 422, response.text
+
+    asyncio.run(scenario())
+
+
+def test_an_unavailable_store_still_fails_closed() -> None:
+    async def scenario() -> None:
+        repository = _FakeAnalytics(failure=RuntimeError("no database"))
+        response = await _get(repository)
+        assert response.status_code == 503, response.text
+        assert response.json()["detail"]["code"] == "ANALYTICS_UNAVAILABLE"
+
+    asyncio.run(scenario())
+
+
+async def _get(repository: _FakeAnalytics, query: str = ""):  # type: ignore[no-untyped-def]
+    app = create_app(
+        current_user_authenticator=_StaticAuthenticator(),
+        analytics_repository=repository,
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        return await client.get(
+            f"/api/v1/analytics/v2{query}",
+            headers={"Authorization": "Bearer synthetic-token"},
+        )
+
+
+class _StaticAuthenticator:
+    async def authenticate(self, access_token: str) -> AuthenticatedUser:
+        del access_token
+        return AuthenticatedUser(subject=str(_USER_ID), display_name="Synthetic")
+
+
+class _FakeAnalytics:
+    def __init__(self, *, failure: Exception | None = None) -> None:
+        self.failure = failure
+        self.asked: list[tuple[str, date | None, date | None]] = []
+
+    async def analyse_period(
+        self,
+        *,
+        user_id: UUID,
+        kind: str,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ):  # type: ignore[no-untyped-def]
+        del user_id
+        if self.failure is not None:
+            raise self.failure
+        self.asked.append((kind, from_date, to_date))
+        return _to_v2_contract(
+            build_analytics(
+                account=_account(),
+                operations=(
+                    _operation(1, amount="10.00", occurred_on=date(2026, 8, 5)),
+                ),
+                generated_at=_NOW,
+                kind=kind,  # type: ignore[arg-type]
+                from_date=from_date,
+                to_date=to_date,
+            ),
+            kind=kind,  # type: ignore[arg-type]
+        )

@@ -9,7 +9,7 @@ right direction for a read that changes nothing.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -17,20 +17,29 @@ from sqlalchemy import select
 from .analytics import (
     AnalyticsOperation,
     AnalyticsView,
+    CategoryChange,
     CategoryTotal,
     build_analytics,
 )
 from .analytics_contracts import (
+    AnalyticsBalanceLine,
+    AnalyticsCategoryChange,
     AnalyticsCategoryTotal,
     AnalyticsPeriod,
     AnalyticsResponse,
     AnalyticsTotals,
     AnalyticsTrend,
     AnalyticsTrendPoint,
+    AnalyticsV2Response,
 )
 from .database import AsyncSessionFactory
 from .db_models import FinanceAccountRow, FinanceCategoryRow, FinanceOperationRow
-from .home_projection import ProjectionAccount
+from .home_projection import (
+    ProjectionAccount,
+    ReportingPeriod,
+    ReportingPeriodKind,
+    preceding_period,
+)
 
 
 class AnalyticsUnavailable(Exception):
@@ -48,6 +57,39 @@ class PostgresAnalyticsRepository:
         self._clock = clock or _utc_now
 
     async def analyse_current_month(self, *, user_id: UUID) -> AnalyticsResponse:
+        account, operations = await self._read(user_id=user_id)
+        return _to_contract(
+            build_analytics(
+                account=account,
+                operations=operations,
+                generated_at=_aware_utc(self._clock()),
+            )
+        )
+
+    async def analyse_period(
+        self,
+        *,
+        user_id: UUID,
+        kind: ReportingPeriodKind,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> AnalyticsV2Response:
+        account, operations = await self._read(user_id=user_id)
+        return _to_v2_contract(
+            build_analytics(
+                account=account,
+                operations=operations,
+                generated_at=_aware_utc(self._clock()),
+                kind=kind,
+                from_date=from_date,
+                to_date=to_date,
+            ),
+            kind=kind,
+        )
+
+    async def _read(
+        self, *, user_id: UUID
+    ) -> tuple[ProjectionAccount, tuple[AnalyticsOperation, ...]]:
         async with self._session_factory() as database:
             account = await database.scalar(
                 select(FinanceAccountRow).where(
@@ -75,24 +117,19 @@ class PostgresAnalyticsRepository:
                 )
             ).all()
 
-        view = build_analytics(
-            account=_projection_account(account),
-            operations=tuple(
-                AnalyticsOperation(
-                    operation_id=row.id,
-                    account_id=row.account_id,
-                    operation_type=row.operation_type,
-                    amount=row.amount,
-                    occurred_on=row.occurred_on,
-                    created_at=row.created_at,
-                    category_id=row.category_id,
-                    category_name=name,
-                )
-                for row, name in rows
-            ),
-            generated_at=_aware_utc(self._clock()),
+        return _projection_account(account), tuple(
+            AnalyticsOperation(
+                operation_id=row.id,
+                account_id=row.account_id,
+                operation_type=row.operation_type,
+                amount=row.amount,
+                occurred_on=row.occurred_on,
+                created_at=row.created_at,
+                category_id=row.category_id,
+                category_name=name,
+            )
+            for row, name in rows
         )
-        return _to_contract(view)
 
 
 def _projection_account(row: FinanceAccountRow) -> ProjectionAccount:
@@ -135,6 +172,64 @@ def _to_contract(view: AnalyticsView) -> AnalyticsResponse:
     )
 
 
+def _to_v2_contract(
+    view: AnalyticsView, *, kind: ReportingPeriodKind
+) -> AnalyticsV2Response:
+    previous = preceding_period(
+        ReportingPeriod(
+            timezone_name=view.timezone_name,
+            cutoff_local_date=view.period_end,
+            period_start=view.period_start,
+            period_end=view.period_end,
+        ),
+        kind=kind,
+    )
+    return AnalyticsV2Response(
+        generated_at=view.generated_at,
+        base_currency=view.base_currency,
+        kind=kind,
+        period=AnalyticsPeriod(start=view.period_start, end=view.period_end),
+        previous_period=AnalyticsPeriod(
+            start=previous.period_start, end=previous.period_end
+        ),
+        totals=AnalyticsTotals(
+            income=view.income, expense=view.expense, net_flow=view.net_flow
+        ),
+        previous_totals=AnalyticsTotals(
+            income=view.previous_income,
+            expense=view.previous_expense,
+            net_flow=view.previous_net_flow,
+        ),
+        expense_by_category=tuple(
+            _category_total(item) for item in view.expense_by_category
+        ),
+        income_by_category=tuple(
+            _category_total(item) for item in view.income_by_category
+        ),
+        expense_changes=tuple(_category_change(row) for row in view.expense_changes),
+        income_changes=tuple(_category_change(row) for row in view.income_changes),
+        balance=AnalyticsBalanceLine(
+            bucket=view.series_bucket,
+            opening=view.balance_opening,
+            closing=view.balance_closing,
+            change=view.balance_change,
+            points=tuple(
+                AnalyticsTrendPoint(date=point.point_date, amount=point.amount)
+                for point in view.balance_points
+            ),
+        ),
+    )
+
+
+def _category_change(row: CategoryChange) -> AnalyticsCategoryChange:
+    return AnalyticsCategoryChange(
+        category_id=row.category_id,
+        name=row.name,
+        amount=row.amount,
+        previous_amount=row.previous_amount,
+    )
+
+
 def _category_total(item: CategoryTotal) -> AnalyticsCategoryTotal:
     return AnalyticsCategoryTotal(
         category_id=item.category_id,
@@ -145,6 +240,17 @@ def _category_total(item: CategoryTotal) -> AnalyticsCategoryTotal:
 
 
 class UnavailableAnalyticsRepository:
+    async def analyse_period(
+        self,
+        *,
+        user_id: UUID,
+        kind: ReportingPeriodKind,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> AnalyticsV2Response:
+        del user_id, kind, from_date, to_date
+        raise AnalyticsUnavailable
+
     async def analyse_current_month(self, *, user_id: UUID) -> AnalyticsResponse:
         del user_id
         raise AnalyticsUnavailable
