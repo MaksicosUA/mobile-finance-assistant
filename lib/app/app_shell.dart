@@ -41,7 +41,9 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell>
     with WidgetsBindingObserver {
   AppSection _section = AppSection.home;
-  bool _voiceEntryRequested = false;
+
+  /// A one-shot request from Home to land in the sentence field.
+  bool _quickEntryRequested = false;
 
   @override
   void initState() {
@@ -81,21 +83,26 @@ class _AppShellState extends ConsumerState<AppShell>
   void _selectSection(AppSection section) {
     setState(() {
       _section = section;
-      _voiceEntryRequested = false;
+      _quickEntryRequested = false;
     });
   }
 
-  void _openVoiceEntry() {
+  /// Home's entry action: the same screen, with the sentence field ready.
+  ///
+  /// It used to open a stub promising voice. The sentence path exists and
+  /// writes real operations, so it is what the button opens; voice will feed
+  /// the same field rather than a second screen.
+  void _openQuickEntry() {
     setState(() {
       _section = AppSection.chat;
-      _voiceEntryRequested = true;
+      _quickEntryRequested = true;
     });
   }
 
   void _openManualEntry() {
     setState(() {
       _section = AppSection.chat;
-      _voiceEntryRequested = false;
+      _quickEntryRequested = false;
     });
   }
 
@@ -187,7 +194,7 @@ class _AppShellState extends ConsumerState<AppShell>
         children: [
           HomePage(
             onNotificationsPressed: _openNotifications,
-            onVoicePressed: _openVoiceEntry,
+            onEntryPressed: _openQuickEntry,
             onManualEntryPressed: isNetworkBackendConfigured
                 ? _openManualEntry
                 : null,
@@ -207,21 +214,18 @@ class _AppShellState extends ConsumerState<AppShell>
                     onSignIn: _openSessionExpired,
                   ),
           ),
-          if (isNetworkBackendConfigured &&
-              _section == AppSection.chat &&
-              !_voiceEntryRequested)
+          if (isNetworkBackendConfigured && _section == AppSection.chat)
             FinanceEntryPage(
               onBackHome: () => _selectSection(AppSection.home),
               onSignInRequested: _openSessionExpired,
+              focusSentence: _quickEntryRequested,
               deliveryLocked:
                   operationSyncState?.phase == OperationSyncPhase.locked,
             )
           else
             StubPage(
-              title: _voiceEntryRequested ? l10n.voiceStubTitle : l10n.chatTab,
-              description: _voiceEntryRequested
-                  ? l10n.voiceStubDescription
-                  : l10n.stubDescription,
+              title: l10n.chatTab,
+              description: l10n.stubDescription,
               onBackHome: () => _selectSection(AppSection.home),
             ),
           // Analytics needs the authenticated backend: it groups committed

@@ -39,7 +39,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('renders populated Home and launches the voice route stub', (
+  testWidgets('renders populated Home and opens the entry route', (
     tester,
   ) async {
     await _pumpApp(
@@ -64,14 +64,16 @@ void main() {
     expect(find.byKey(const Key('primary-goal')), findsNothing);
     expect(find.byKey(const Key('recent-transactions')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('voice-cta')));
+    // The button says what it does: it opens entry, not a promise of voice.
+    expect(find.text('Записать фразой'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('quick-entry-cta')));
     await tester.pump();
 
-    expect(find.text('Голосовой ввод'), findsOneWidget);
-    expect(
-      find.textContaining('Микрофон и распознавание речи'),
-      findsOneWidget,
-    );
+    // This is the fixture build, which has no authenticated backend behind
+    // the entry screen, so the route it leaves Home for is the stub. What
+    // matters here is that Home no longer stops at a voice placeholder.
+    expect(find.text('Голосовой ввод'), findsNothing);
+    expect(find.byKey(const Key('home-populated')), findsNothing);
   });
 
   testWidgets(
@@ -122,7 +124,7 @@ void main() {
 
     expect(find.byKey(const Key('home-empty')), findsOneWidget);
     expect(find.byKey(const Key('balance-card')), findsNothing);
-    expect(find.byKey(const Key('voice-cta')), findsOneWidget);
+    expect(find.byKey(const Key('quick-entry-cta')), findsOneWidget);
   });
 
   testWidgets('first-use Home exposes a distinct manual account action', (
@@ -138,7 +140,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const Key('voice-cta')), findsOneWidget);
+    expect(find.byKey(const Key('quick-entry-cta')), findsOneWidget);
     expect(find.byKey(const Key('home-empty-manual-entry')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('home-empty-manual-entry')));
@@ -284,7 +286,7 @@ void main() {
     // has nothing to replace and keeps all three of its own.
     expect(find.byKey(const Key('partial-banner')), findsOneWidget);
     expect(find.byKey(const Key('balance-card')), findsOneWidget);
-    expect(find.byKey(const Key('voice-cta')), findsOneWidget);
+    expect(find.byKey(const Key('quick-entry-cta')), findsOneWidget);
     expect(find.byKey(const Key('upcoming-payments')), findsOneWidget);
     expect(find.byKey(const Key('goal-unavailable')), findsNothing);
   });
@@ -364,7 +366,7 @@ void main() {
 
       expect(find.byKey(partialCase.$2), findsOneWidget);
       expect(find.byKey(const Key('partial-banner')), findsOneWidget);
-      expect(find.byKey(const Key('voice-cta')), findsOneWidget);
+      expect(find.byKey(const Key('quick-entry-cta')), findsOneWidget);
       expect(find.byKey(const Key('home-populated')), findsOneWidget);
     });
   }
@@ -398,7 +400,7 @@ void main() {
       // problem. Home keeps its own three and says nothing about it.
       expect(find.byKey(const Key('home-populated')), findsOneWidget);
       expect(find.byKey(const Key('balance-card')), findsOneWidget);
-      expect(find.byKey(const Key('voice-cta')), findsOneWidget);
+      expect(find.byKey(const Key('quick-entry-cta')), findsOneWidget);
       expect(find.byKey(const Key('upcoming-payments')), findsOneWidget);
     });
   }
@@ -581,7 +583,7 @@ Future<void> _pumpHomePage(
           body: HomePage(
             localClock: _fixedLocalClock,
             onNotificationsPressed: _ignore,
-            onVoicePressed: _ignore,
+            onEntryPressed: _ignore,
             onAnalyticsPressed: _ignore,
             onGoalPressed: _ignore,
             onSignOutRequested: onSignOutRequested,

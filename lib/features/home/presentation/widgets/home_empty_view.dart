@@ -2,25 +2,25 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_tokens.dart';
-import 'voice_cta.dart';
+import 'quick_entry_cta.dart';
 
 class HomeEmptyView extends StatelessWidget {
   const HomeEmptyView({
     super.key,
     required this.title,
     required this.description,
-    required this.voiceLabel,
-    required this.voiceSemanticsLabel,
-    required this.onVoicePressed,
+    required this.entryLabel,
+    required this.entrySemanticsLabel,
+    required this.onEntryPressed,
     required this.manualLabel,
     required this.onManualPressed,
   });
 
   final String title;
   final String description;
-  final String voiceLabel;
-  final String voiceSemanticsLabel;
-  final VoidCallback? onVoicePressed;
+  final String entryLabel;
+  final String entrySemanticsLabel;
+  final VoidCallback? onEntryPressed;
   final String manualLabel;
   final VoidCallback? onManualPressed;
 
@@ -65,10 +65,10 @@ class HomeEmptyView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
-          VoiceCta(
-            label: voiceLabel,
-            semanticsLabel: voiceSemanticsLabel,
-            onPressed: onVoicePressed,
+          QuickEntryCta(
+            label: entryLabel,
+            semanticsLabel: entrySemanticsLabel,
+            onPressed: onEntryPressed,
           ),
           if (onManualPressed != null) ...[
             const SizedBox(height: AppSpacing.sm),

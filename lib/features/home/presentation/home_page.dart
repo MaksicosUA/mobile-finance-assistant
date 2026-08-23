@@ -18,13 +18,13 @@ import 'widgets/home_failure_view.dart';
 import 'widgets/home_loading_view.dart';
 import 'widgets/home_status_banner.dart';
 import 'widgets/upcoming_payments_list.dart';
-import 'widgets/voice_cta.dart';
+import 'widgets/quick_entry_cta.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({
     super.key,
     required this.onNotificationsPressed,
-    required this.onVoicePressed,
+    required this.onEntryPressed,
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
     required this.onSignOutRequested,
@@ -34,7 +34,7 @@ class HomePage extends ConsumerStatefulWidget {
   });
 
   final VoidCallback onNotificationsPressed;
-  final VoidCallback onVoicePressed;
+  final VoidCallback onEntryPressed;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
   final VoidCallback onSignOutRequested;
@@ -152,7 +152,7 @@ class _HomePageState extends ConsumerState<HomePage>
                   onTogglePrivacy: ref
                       .read(appSettingsControllerProvider.notifier)
                       .togglePrivacyMode,
-                  onVoicePressed: widget.onVoicePressed,
+                  onEntryPressed: widget.onEntryPressed,
                   onManualEntryPressed: widget.onManualEntryPressed,
                   onAnalyticsPressed: widget.onAnalyticsPressed,
                   onGoalPressed: widget.onGoalPressed,
@@ -173,7 +173,7 @@ class _HomeStateBody extends StatelessWidget {
     required this.state,
     required this.privacyEnabled,
     required this.onTogglePrivacy,
-    required this.onVoicePressed,
+    required this.onEntryPressed,
     required this.onManualEntryPressed,
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
@@ -184,7 +184,7 @@ class _HomeStateBody extends StatelessWidget {
   final HomeState state;
   final bool privacyEnabled;
   final VoidCallback onTogglePrivacy;
-  final VoidCallback onVoicePressed;
+  final VoidCallback onEntryPressed;
   final VoidCallback? onManualEntryPressed;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
@@ -202,12 +202,12 @@ class _HomeStateBody extends StatelessWidget {
       return HomeEmptyView(
         title: l10n.emptyTitle,
         description: l10n.emptyDescription,
-        voiceLabel: l10n.addByVoice,
-        voiceSemanticsLabel: l10n.voiceEntryLabel,
+        entryLabel: l10n.addBySentence,
+        entrySemanticsLabel: l10n.sentenceEntryLabel,
         manualLabel: l10n.setupAccountAction,
         onManualPressed: onManualEntryPressed,
-        onVoicePressed: data.availableActions.contains(HomeAction.voiceEntry)
-            ? onVoicePressed
+        onEntryPressed: data.availableActions.contains(HomeAction.voiceEntry)
+            ? onEntryPressed
             : null,
       );
     }
@@ -252,7 +252,7 @@ class _HomeStateBody extends StatelessWidget {
           failedBlocks: failedBlocks,
           privacyEnabled: privacyEnabled,
           onTogglePrivacy: onTogglePrivacy,
-          onVoicePressed: onVoicePressed,
+          onEntryPressed: onEntryPressed,
           onAnalyticsPressed: onAnalyticsPressed,
           onGoalPressed: onGoalPressed,
         ),
@@ -324,7 +324,7 @@ class _PopulatedHome extends StatelessWidget {
     required this.snapshot,
     required this.privacyEnabled,
     required this.onTogglePrivacy,
-    required this.onVoicePressed,
+    required this.onEntryPressed,
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
     this.failedBlocks = const <HomeBlock>{},
@@ -333,7 +333,7 @@ class _PopulatedHome extends StatelessWidget {
   final HomeSnapshot snapshot;
   final bool privacyEnabled;
   final VoidCallback onTogglePrivacy;
-  final VoidCallback onVoicePressed;
+  final VoidCallback onEntryPressed;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
   final Set<HomeBlock> failedBlocks;
@@ -426,10 +426,10 @@ class _PopulatedHome extends StatelessWidget {
             onTogglePrivacy: onTogglePrivacy,
           ),
         const SizedBox(height: AppSpacing.lg),
-        VoiceCta(
-          label: l10n.addByVoice,
-          semanticsLabel: l10n.voiceEntryLabel,
-          onPressed: voiceAvailable ? onVoicePressed : null,
+        QuickEntryCta(
+          label: l10n.addBySentence,
+          semanticsLabel: l10n.sentenceEntryLabel,
+          onPressed: voiceAvailable ? onEntryPressed : null,
         ),
         const SizedBox(height: AppSpacing.lg),
         if (blockFailed(HomeBlock.upcomingPayments))

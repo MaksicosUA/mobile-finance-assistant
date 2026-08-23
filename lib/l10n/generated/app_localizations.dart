@@ -208,6 +208,18 @@ abstract class AppLocalizations {
   /// **'Все активные счета'**
   String get activeAccounts;
 
+  /// Home's one-tap entry. It opens the sentence field, not a microphone: voice will feed the same path once it exists.
+  ///
+  /// In ru, this message translates to:
+  /// **'Записать фразой'**
+  String get addBySentence;
+
+  /// Screen-reader label for the Home entry action.
+  ///
+  /// In ru, this message translates to:
+  /// **'Записать операцию одной фразой'**
+  String get sentenceEntryLabel;
+
   /// No description provided for @addByVoice.
   ///
   /// In ru, this message translates to:

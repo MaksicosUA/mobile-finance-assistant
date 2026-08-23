@@ -47,6 +47,14 @@
   "monthDelta": "за месяц",
   "balanceDeltaUnavailable": "Динамика за месяц недоступна",
   "activeAccounts": "Все активные счета",
+  "addBySentence": "Записать фразой",
+  "@addBySentence": {
+    "description": "Home's one-tap entry. It opens the sentence field, not a microphone: voice will feed the same path once it exists."
+  },
+  "sentenceEntryLabel": "Записать операцию одной фразой",
+  "@sentenceEntryLabel": {
+    "description": "Screen-reader label for the Home entry action."
+  },
   "addByVoice": "Добавить голосом",
   "voiceEntryLabel": "Добавить операцию голосом",
   "setupAccountAction": "Настроить счёт",

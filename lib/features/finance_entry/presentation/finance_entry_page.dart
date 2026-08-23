@@ -21,11 +21,16 @@ class FinanceEntryPage extends ConsumerStatefulWidget {
     required this.onBackHome,
     required this.onSignInRequested,
     this.deliveryLocked = false,
+    this.focusSentence = false,
   });
 
   final VoidCallback onBackHome;
   final VoidCallback onSignInRequested;
   final bool deliveryLocked;
+
+  /// Opened from Home's entry action: land in the sentence field with the
+  /// keyboard up, so recording something takes one tap and one line.
+  final bool focusSentence;
 
   @override
   ConsumerState<FinanceEntryPage> createState() => _FinanceEntryPageState();
@@ -96,6 +101,7 @@ class _FinanceEntryPageState extends ConsumerState<FinanceEntryPage> {
                   child: _FinanceEntryBody(
                     state: state,
                     privacyEnabled: privacy,
+                    focusSentence: widget.focusSentence,
                     deliveryLocked: widget.deliveryLocked,
                     onBackHome: widget.onBackHome,
                     onSignInRequested: widget.onSignInRequested,
@@ -114,6 +120,7 @@ class _FinanceEntryBody extends ConsumerWidget {
   const _FinanceEntryBody({
     required this.state,
     required this.privacyEnabled,
+    required this.focusSentence,
     required this.deliveryLocked,
     required this.onBackHome,
     required this.onSignInRequested,
@@ -121,6 +128,7 @@ class _FinanceEntryBody extends ConsumerWidget {
 
   final FinanceEntryState state;
   final bool privacyEnabled;
+  final bool focusSentence;
   final bool deliveryLocked;
   final VoidCallback onBackHome;
   final VoidCallback onSignInRequested;
@@ -166,6 +174,7 @@ class _FinanceEntryBody extends ConsumerWidget {
         key: const ValueKey('operation-form'),
         state: state as FinanceOperationEditing,
         privacyEnabled: privacyEnabled,
+        focusSentence: focusSentence,
         onSubmit: controller.evaluateOperation,
       ),
       FinanceOperationReviewing() => _OperationReview(
@@ -377,11 +386,13 @@ class _OperationForm extends ConsumerStatefulWidget {
     super.key,
     required this.state,
     required this.privacyEnabled,
+    required this.focusSentence,
     required this.onSubmit,
   });
 
   final FinanceOperationEditing state;
   final bool privacyEnabled;
+  final bool focusSentence;
   final ValueChanged<OperationEntryInput> onSubmit;
 
   @override
@@ -394,6 +405,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   late final TextEditingController _categoryController;
   late final TextEditingController _merchantController;
   late final TextEditingController _sentenceController;
+  final FocusNode _sentenceFocus = FocusNode();
   late FinanceOperationType _type;
   late DateTime _occurredOn;
   CategoryChoice _categoryChoice = const CategoryUnset();
@@ -415,6 +427,9 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(categoryCatalogueProvider.notifier).load();
+      // Opened from Home's entry action: the keyboard belongs on the sentence,
+      // not on the amount, because writing the sentence is the short way.
+      if (widget.focusSentence) _sentenceFocus.requestFocus();
     });
   }
 
@@ -424,6 +439,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     _categoryController.dispose();
     _merchantController.dispose();
     _sentenceController.dispose();
+    _sentenceFocus.dispose();
     super.dispose();
   }
 
@@ -482,6 +498,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
           const SizedBox(height: AppSpacing.md),
           _SentenceField(
             controller: _sentenceController,
+            focusNode: _sentenceFocus,
             state: textEntry,
             enabled: !widget.state.isSubmitting,
             onParse: () => ref
@@ -1211,12 +1228,14 @@ class _Intro extends StatelessWidget {
 class _SentenceField extends StatelessWidget {
   const _SentenceField({
     required this.controller,
+    required this.focusNode,
     required this.state,
     required this.enabled,
     required this.onParse,
   });
 
   final TextEditingController controller;
+  final FocusNode focusNode;
   final TextEntryState state;
   final bool enabled;
   final VoidCallback onParse;
@@ -1231,6 +1250,7 @@ class _SentenceField extends StatelessWidget {
         TextField(
           key: const Key('operation-sentence'),
           controller: controller,
+          focusNode: focusNode,
           enabled: enabled && !parsing,
           maxLength: maximumEntryTextLength,
           maxLines: 2,
