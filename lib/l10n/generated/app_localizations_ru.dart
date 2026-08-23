@@ -75,6 +75,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get activeAccounts => 'Все активные счета';
 
   @override
+  String get addBySentence => 'Записать фразой';
+
+  @override
+  String get sentenceEntryLabel => 'Записать операцию одной фразой';
+
+  @override
   String get addByVoice => 'Добавить голосом';
 
   @override

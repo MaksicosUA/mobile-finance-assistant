@@ -139,6 +139,28 @@ void main() {
     expect(find.byKey(const Key('operation-evaluate')), findsOneWidget);
   });
 
+  testWidgets('opened from Home, the keyboard lands on the sentence', (
+    tester,
+  ) async {
+    await _pumpPage(tester, repository: _FakeRepository(), focusSentence: true);
+
+    // Home's entry action exists to make recording one line quick, so the
+    // field that reads a line is the one that has focus.
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('operation-sentence')),
+    );
+    expect(field.focusNode?.hasFocus, isTrue);
+  });
+
+  testWidgets('opened as a tab, nothing steals the keyboard', (tester) async {
+    await _pumpPage(tester, repository: _FakeRepository());
+
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('operation-sentence')),
+    );
+    expect(field.focusNode?.hasFocus, isFalse);
+  });
+
   testWidgets('an empty sentence is refused without a request', (tester) async {
     final repository = _FakeRepository();
     await _pumpPage(tester, repository: repository);
@@ -194,6 +216,7 @@ void main() {
 Future<void> _pumpPage(
   WidgetTester tester, {
   required _FakeRepository repository,
+  bool focusSentence = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(390, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -224,6 +247,7 @@ Future<void> _pumpPage(
           body: FinanceEntryPage(
             onBackHome: _ignore,
             onSignInRequested: _ignore,
+            focusSentence: focusSentence,
           ),
         ),
       ),
