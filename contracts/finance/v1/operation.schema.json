@@ -269,6 +269,83 @@
       "title": "CommittedOperation",
       "type": "object"
     },
+    "CorrectOperationRequest": {
+      "additionalProperties": false,
+      "description": "Replace one confirmed operation with a reviewed draft (ADR 0023).\n\nThe target travels inside the command rather than only in the path, so the\nconfirmation hash covers it: a correction reviewed for one operation can\nnever be committed against another.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "targetOperationId": {
+          "format": "uuid",
+          "title": "Targetoperationid",
+          "type": "string"
+        },
+        "draft": {
+          "$ref": "#/$defs/OperationDraft"
+        },
+        "draftHash": {
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Drafthash",
+          "type": "string"
+        },
+        "confirmedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Confirmedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "targetOperationId",
+        "draft",
+        "draftHash",
+        "confirmedAt"
+      ],
+      "title": "CorrectOperationRequest",
+      "type": "object"
+    },
+    "CorrectOperationResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "decision": {
+          "const": "ACCEPT",
+          "default": "ACCEPT",
+          "title": "Decision",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "reversal": {
+          "$ref": "#/$defs/OperationReversal"
+        },
+        "operation": {
+          "$ref": "#/$defs/CommittedOperation"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "reversal",
+        "operation"
+      ],
+      "title": "CorrectOperationResponse",
+      "type": "object"
+    },
     "EvaluateOperationRequest": {
       "additionalProperties": false,
       "properties": {
@@ -512,7 +589,9 @@
             "COMMAND_CONFLICT",
             "OPERATION_REJECTED",
             "AUTHENTICATION_UNAVAILABLE",
-            "FINANCE_PERSISTENCE_UNAVAILABLE"
+            "FINANCE_PERSISTENCE_UNAVAILABLE",
+            "OPERATION_NOT_FOUND",
+            "OPERATION_ALREADY_REVERSED"
           ],
           "title": "Code",
           "type": "string"
@@ -586,6 +665,132 @@
       ],
       "title": "OperationIssue",
       "type": "object"
+    },
+    "OperationReversal": {
+      "additionalProperties": false,
+      "description": "The receipt for an operation that stopped counting.",
+      "properties": {
+        "reversalId": {
+          "format": "uuid",
+          "title": "Reversalid",
+          "type": "string"
+        },
+        "operationId": {
+          "format": "uuid",
+          "title": "Operationid",
+          "type": "string"
+        },
+        "replacementOperationId": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Replacementoperationid"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "confirmedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Confirmedat",
+          "type": "string"
+        },
+        "createdAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Createdat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reversalId",
+        "operationId",
+        "replacementOperationId",
+        "commandId",
+        "confirmedAt",
+        "createdAt"
+      ],
+      "title": "OperationReversal",
+      "type": "object"
+    },
+    "RemoveOperationRequest": {
+      "additionalProperties": false,
+      "description": "Withdraw one confirmed operation without replacing it.\n\nThere is no draft to review, so there is no draft hash. The command id is\nwhat makes a retry land on the same reversal instead of a second one.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "targetOperationId": {
+          "format": "uuid",
+          "title": "Targetoperationid",
+          "type": "string"
+        },
+        "commandId": {
+          "format": "uuid",
+          "title": "Commandid",
+          "type": "string"
+        },
+        "confirmedAt": {
+          "description": "Timezone-aware instant normalized to UTC.",
+          "format": "date-time",
+          "formatMaximum": "2100-12-31T23:59:59.999999Z",
+          "formatMinimum": "1900-01-01T00:00:00Z",
+          "title": "Confirmedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "targetOperationId",
+        "commandId",
+        "confirmedAt"
+      ],
+      "title": "RemoveOperationRequest",
+      "type": "object"
+    },
+    "RemoveOperationResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "1",
+          "default": "1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "decision": {
+          "const": "ACCEPT",
+          "default": "ACCEPT",
+          "title": "Decision",
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "title": "Idempotentreplay",
+          "type": "boolean"
+        },
+        "reversal": {
+          "$ref": "#/$defs/OperationReversal"
+        }
+      },
+      "required": [
+        "idempotentReplay",
+        "reversal"
+      ],
+      "title": "RemoveOperationResponse",
+      "type": "object"
     }
   },
   "anyOf": [
@@ -600,6 +805,18 @@
     },
     {
       "$ref": "#/$defs/CommitOperationResponse"
+    },
+    {
+      "$ref": "#/$defs/CorrectOperationRequest"
+    },
+    {
+      "$ref": "#/$defs/RemoveOperationRequest"
+    },
+    {
+      "$ref": "#/$defs/CorrectOperationResponse"
+    },
+    {
+      "$ref": "#/$defs/RemoveOperationResponse"
     },
     {
       "$ref": "#/$defs/OperationErrorResponse"

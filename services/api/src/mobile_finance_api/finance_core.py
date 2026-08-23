@@ -14,10 +14,13 @@ from .account_core import FinanceAccountDirectory, FinanceAccountSnapshot
 from .operation_contracts import (
     CommitOperationRequest,
     CommittedOperation,
+    CorrectOperationRequest,
     EvaluateOperationResponse,
     ListOperationsResponse,
     OperationDraft,
     OperationIssue,
+    OperationReversal,
+    RemoveOperationRequest,
 )
 
 
@@ -47,9 +50,30 @@ class OperationBeforeAccountBaseline(Exception):
     """The operation precedes the immutable account opening baseline."""
 
 
+class OperationNotFound(Exception):
+    """No such operation for this user.
+
+    Another user's operation raises this too, so the API never confirms that
+    an identifier exists outside the caller's own ledger.
+    """
+
+
+class OperationAlreadyReversed(Exception):
+    """The operation was already corrected or removed (ADR 0023)."""
+
+
 @dataclass(frozen=True, slots=True)
 class OperationWriteResult:
     operation: CommittedOperation
+    idempotent_replay: bool
+
+
+@dataclass(frozen=True, slots=True)
+class OperationReversalResult:
+    """One withdrawn operation, and the one that replaced it if any."""
+
+    reversal: OperationReversal
+    replacement: CommittedOperation | None
     idempotent_replay: bool
 
 
@@ -104,6 +128,25 @@ class FinanceOperationRepository(Protocol):
         confirmed_at: datetime,
     ) -> OperationWriteResult: ...
 
+    async def replay_reversal(
+        self,
+        *,
+        user_id: UUID,
+        command_id: UUID,
+        payload_hash: bytes,
+    ) -> OperationReversalResult | None: ...
+
+    async def reverse(
+        self,
+        *,
+        user_id: UUID,
+        target_operation_id: UUID,
+        command_id: UUID,
+        replacement: OperationDraft | None,
+        payload_hash: bytes,
+        confirmed_at: datetime,
+    ) -> OperationReversalResult: ...
+
 
 class UnavailableFinanceOperationRepository:
     async def replay_existing(
@@ -135,6 +178,30 @@ class UnavailableFinanceOperationRepository:
         cursor: str | None,
     ) -> ListOperationsResponse:
         del user_id, limit, cursor
+        raise FinancePersistenceUnavailable
+
+    async def replay_reversal(
+        self,
+        *,
+        user_id: UUID,
+        command_id: UUID,
+        payload_hash: bytes,
+    ) -> OperationReversalResult | None:
+        del user_id, command_id, payload_hash
+        raise FinancePersistenceUnavailable
+
+    async def reverse(
+        self,
+        *,
+        user_id: UUID,
+        target_operation_id: UUID,
+        command_id: UUID,
+        replacement: OperationDraft | None,
+        payload_hash: bytes,
+        confirmed_at: datetime,
+    ) -> OperationReversalResult:
+        del user_id, target_operation_id, command_id, replacement
+        del payload_hash, confirmed_at
         raise FinancePersistenceUnavailable
 
 
@@ -256,6 +323,127 @@ class FinanceCore:
                 )
             ) from None
 
+    async def correct(
+        self,
+        *,
+        user_id: UUID,
+        request: CorrectOperationRequest,
+    ) -> OperationReversalResult:
+        """Replace one confirmed operation with a reviewed draft (ADR 0023).
+
+        The replacement is validated exactly like any new operation, so a
+        correction can never write something the ordinary path would refuse.
+        """
+
+        draft = request.draft
+        if draft_hash(draft) != request.draft_hash:
+            raise ConfirmationMismatch
+        payload_hash = bytes.fromhex(correction_command_hash(request))
+        replay = await self._replay_reversal(
+            user_id=user_id,
+            command_id=draft.command_id,
+            payload_hash=payload_hash,
+        )
+        if replay is not None:
+            return replay
+
+        if request.confirmed_at < draft.captured_at:
+            raise OperationRejected(
+                (
+                    OperationIssue(
+                        code="CONFIRMATION_BEFORE_CAPTURE",
+                        field="confirmedAt",
+                    ),
+                )
+            )
+        evaluation = await self.evaluate(user_id=user_id, draft=draft)
+        if evaluation.decision == "REJECT":
+            raise OperationRejected(evaluation.issues)
+        return await self._reverse(
+            user_id=user_id,
+            target_operation_id=request.target_operation_id,
+            command_id=draft.command_id,
+            replacement=draft,
+            payload_hash=payload_hash,
+            confirmed_at=request.confirmed_at,
+        )
+
+    async def remove(
+        self,
+        *,
+        user_id: UUID,
+        request: RemoveOperationRequest,
+    ) -> OperationReversalResult:
+        """Withdraw one confirmed operation without replacing it."""
+
+        payload_hash = bytes.fromhex(removal_command_hash(request))
+        replay = await self._replay_reversal(
+            user_id=user_id,
+            command_id=request.command_id,
+            payload_hash=payload_hash,
+        )
+        if replay is not None:
+            return replay
+        return await self._reverse(
+            user_id=user_id,
+            target_operation_id=request.target_operation_id,
+            command_id=request.command_id,
+            replacement=None,
+            payload_hash=payload_hash,
+            confirmed_at=request.confirmed_at,
+        )
+
+    async def _replay_reversal(
+        self,
+        *,
+        user_id: UUID,
+        command_id: UUID,
+        payload_hash: bytes,
+    ) -> OperationReversalResult | None:
+        try:
+            return await self._repository.replay_reversal(
+                user_id=user_id,
+                command_id=command_id,
+                payload_hash=payload_hash,
+            )
+        except (OperationCommandConflict, FinancePersistenceUnavailable):
+            raise
+        except Exception as error:
+            raise FinancePersistenceUnavailable from error
+
+    async def _reverse(
+        self,
+        *,
+        user_id: UUID,
+        target_operation_id: UUID,
+        command_id: UUID,
+        replacement: OperationDraft | None,
+        payload_hash: bytes,
+        confirmed_at: datetime,
+    ) -> OperationReversalResult:
+        try:
+            return await self._repository.reverse(
+                user_id=user_id,
+                target_operation_id=target_operation_id,
+                command_id=command_id,
+                replacement=replacement,
+                payload_hash=payload_hash,
+                confirmed_at=confirmed_at,
+            )
+        except OperationAccountUnavailable:
+            raise OperationRejected(
+                (OperationIssue(code="ACCOUNT_UNAVAILABLE", field="accountId"),)
+            ) from None
+        except OperationBeforeAccountBaseline:
+            raise OperationRejected(
+                (
+                    OperationIssue(
+                        code="OPERATION_BEFORE_ACCOUNT_BASELINE",
+                        field="occurredOn",
+                    ),
+                )
+            ) from None
+
     async def _account_for_draft(
         self,
         *,
@@ -291,6 +479,20 @@ class FinanceCore:
 
 def draft_hash(draft: OperationDraft) -> str:
     return _canonical_hash(draft.model_dump(mode="json", by_alias=True))
+
+
+def correction_command_hash(request: CorrectOperationRequest) -> str:
+    """Hash the whole correction, target included.
+
+    Hashing only the replacement draft would let a confirmation reviewed for
+    one operation be committed against another.
+    """
+
+    return _canonical_hash(request.model_dump(mode="json", by_alias=True))
+
+
+def removal_command_hash(request: RemoveOperationRequest) -> str:
+    return _canonical_hash(request.model_dump(mode="json", by_alias=True))
 
 
 def confirmed_command_hash(

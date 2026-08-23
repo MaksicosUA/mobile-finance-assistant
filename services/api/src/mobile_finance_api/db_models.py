@@ -21,10 +21,12 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql.elements import ColumnElement
 
 
 class Base(DeclarativeBase):
@@ -622,7 +624,8 @@ class FinanceOperationAuditRow(Base):
     __tablename__ = "finance_operation_audit_events"
     __table_args__ = (
         CheckConstraint(
-            "event_type = 'operation_accepted' AND actor_type = 'user'",
+            "event_type IN ('operation_accepted', 'operation_reversed') "
+            "AND actor_type = 'user'",
             name="ck_finance_operation_audit_accept_event",
         ),
         CheckConstraint(
@@ -657,6 +660,86 @@ class FinanceOperationAuditRow(Base):
     )
 
 
+class FinanceOperationReversalRow(Base):
+    """One operation withdrawn from the ledger, and what replaced it.
+
+    The reversed operation itself is never touched: it stays exactly as it was
+    confirmed, and this row is the only statement that it stopped counting
+    (ADR 0023). A removal is a reversal with no replacement; a correction is a
+    reversal whose replacement is written in the same transaction.
+    """
+
+    __tablename__ = "finance_operation_reversals"
+    __table_args__ = (
+        CheckConstraint(
+            "replacement_operation_id IS NULL "
+            "OR replacement_operation_id <> operation_id",
+            name="ck_finance_operation_reversals_distinct_replacement",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_finance_operation_reversals_hash_length",
+        ),
+        # An operation is reversed once. A double tap, a retried request, and a
+        # replayed command all land on the same row instead of withdrawing the
+        # same money twice.
+        UniqueConstraint(
+            "operation_id",
+            name="uq_finance_operation_reversals_operation",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "command_id",
+            name="uq_finance_operation_reversals_user_command",
+        ),
+        # A replacement replaces one original, so a correction cannot be made
+        # to stand in for two different operations.
+        UniqueConstraint(
+            "replacement_operation_id",
+            name="uq_finance_operation_reversals_replacement",
+        ),
+        # Composite keys: a reversal that reaches across users is
+        # unrepresentable rather than merely validated.
+        ForeignKeyConstraint(
+            ["operation_id", "user_id"],
+            ["finance_operations.id", "finance_operations.user_id"],
+            name="fk_finance_operation_reversals_owned_operation",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["replacement_operation_id", "user_id"],
+            ["finance_operations.id", "finance_operations.user_id"],
+            name="fk_finance_operation_reversals_owned_replacement",
+        ),
+        Index(
+            "ix_finance_operation_reversals_user_created",
+            "user_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    operation_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Null means the user removed the operation rather than correcting it.
+    # The distinction is derived from this column and never stored twice.
+    replacement_operation_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
 class FinanceOutboxEventRow(Base):
     __tablename__ = "finance_outbox_events"
     __table_args__ = (
@@ -665,7 +748,8 @@ class FinanceOutboxEventRow(Base):
             name="ck_finance_outbox_aggregate_type",
         ),
         CheckConstraint(
-            "event_type = 'finance.operation.accepted.v1'",
+            "event_type IN ('finance.operation.accepted.v1', "
+            "'finance.operation.reversed.v1')",
             name="ck_finance_outbox_event_type",
         ),
         CheckConstraint(
@@ -2296,3 +2380,21 @@ class HomeProjectionWarningRow(Base):
     position: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     block: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+def operation_counts() -> ColumnElement[bool]:
+    """The single definition of "this operation still counts" (ADR 0023).
+
+    Every read path uses it — the Home projection rebuild, Analytics, and the
+    operation history — because two definitions of what counts is how two
+    screens start disagreeing about the same money.
+    """
+
+    return ~(
+        select(FinanceOperationReversalRow.id)
+        .where(FinanceOperationReversalRow.operation_id == FinanceOperationRow.id)
+        # Explicit: an uncorrelated subquery would silently become a cross
+        # join and report every operation as reversed.
+        .correlate(FinanceOperationRow)
+        .exists()
+    )
