@@ -782,6 +782,122 @@ final class FinanceOperationCommit {
   final CommittedFinanceOperation operation;
 }
 
+/// One confirmed operation withdrawn from the ledger (ADR 0023).
+///
+/// The operation it names is never modified. This is the separate statement
+/// that it stopped counting, and what replaced it if anything did.
+@immutable
+final class OperationReversal {
+  const OperationReversal({
+    required this.reversalId,
+    required this.operationId,
+    required this.replacementOperationId,
+    required this.commandId,
+    required this.confirmedAt,
+    required this.createdAt,
+  });
+
+  final String reversalId;
+  final String operationId;
+
+  /// Null when the operation was removed rather than corrected.
+  final String? replacementOperationId;
+  final String commandId;
+  final String confirmedAt;
+  final String createdAt;
+
+  factory OperationReversal.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'reversalId',
+      'operationId',
+      'replacementOperationId',
+      'commandId',
+      'confirmedAt',
+      'createdAt',
+    });
+    return OperationReversal(
+      reversalId: _requiredUuid(json, 'reversalId'),
+      operationId: _requiredUuid(json, 'operationId'),
+      replacementOperationId: json['replacementOperationId'] == null
+          ? null
+          : _requiredUuid(json, 'replacementOperationId'),
+      commandId: _requiredUuid(json, 'commandId'),
+      confirmedAt: _timestamp(json, 'confirmedAt'),
+      createdAt: _timestamp(json, 'createdAt'),
+    );
+  }
+}
+
+/// Replace one confirmed operation with a reviewed draft (ADR 0023).
+///
+/// The target travels inside the command, so the identity of what is being
+/// corrected is part of what a retry replays.
+@immutable
+final class OperationCorrectionCommand {
+  const OperationCorrectionCommand({
+    required this.targetOperationId,
+    required this.review,
+    required this.confirmedAt,
+  });
+
+  final String targetOperationId;
+  final FinanceOperationNeedsConfirmation review;
+  final String confirmedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'targetOperationId': targetOperationId,
+    'draft': review.draft.toJson(),
+    'draftHash': review.draftHash,
+    'confirmedAt': confirmedAt,
+  };
+}
+
+/// Withdraw one confirmed operation without replacing it (ADR 0023).
+@immutable
+final class OperationRemovalCommand {
+  const OperationRemovalCommand({
+    required this.targetOperationId,
+    required this.commandId,
+    required this.confirmedAt,
+  });
+
+  final String targetOperationId;
+  final String commandId;
+  final String confirmedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'targetOperationId': targetOperationId,
+    'commandId': commandId,
+    'confirmedAt': confirmedAt,
+  };
+}
+
+@immutable
+final class OperationCorrected {
+  const OperationCorrected({
+    required this.idempotentReplay,
+    required this.reversal,
+    required this.operation,
+  });
+
+  final bool idempotentReplay;
+  final OperationReversal reversal;
+  final CommittedFinanceOperation operation;
+}
+
+@immutable
+final class OperationRemoved {
+  const OperationRemoved({
+    required this.idempotentReplay,
+    required this.reversal,
+  });
+
+  final bool idempotentReplay;
+  final OperationReversal reversal;
+}
+
 /// Codes a planned-cost write may be refused with (ADR 0018).
 enum PlannedCostIssueCode {
   accountUnavailable,

@@ -1244,6 +1244,42 @@ class AppLocalizationsRu extends AppLocalizations {
   String get categoryLoadError => 'Не удалось загрузить категории';
 
   @override
+  String get operationCorrectAction => 'Изменить';
+
+  @override
+  String get operationRemoveAction => 'Удалить';
+
+  @override
+  String get operationCorrectTitle => 'Исправить операцию';
+
+  @override
+  String get operationCorrectSave => 'Сохранить';
+
+  @override
+  String get operationCorrectedMessage => 'Операция исправлена';
+
+  @override
+  String get operationRemovedMessage => 'Операция удалена';
+
+  @override
+  String get operationRemoveDialogTitle => 'Удалить операцию?';
+
+  @override
+  String get operationRemoveDialogBody =>
+      'Она перестанет учитываться в балансе и отчётах. Сама запись сохранится в истории изменений.';
+
+  @override
+  String get operationCorrectionFailed =>
+      'Не удалось сохранить изменение. Попробуйте ещё раз.';
+
+  @override
+  String get operationAlreadyReversedMessage =>
+      'Эту операцию уже исправили. Обновите список.';
+
+  @override
+  String get operationNotFoundMessage => 'Такой операции больше нет.';
+
+  @override
   String get operationHistoryTitle => 'Все операции';
 
   @override

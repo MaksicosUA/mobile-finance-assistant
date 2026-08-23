@@ -2277,6 +2277,72 @@ abstract class AppLocalizations {
   /// **'Не удалось загрузить категории'**
   String get categoryLoadError;
 
+  /// Opens the correction sheet for one confirmed operation.
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменить'**
+  String get operationCorrectAction;
+
+  /// Withdraws one confirmed operation without replacing it.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get operationRemoveAction;
+
+  /// Title of the correction sheet.
+  ///
+  /// In ru, this message translates to:
+  /// **'Исправить операцию'**
+  String get operationCorrectTitle;
+
+  /// Confirms the correction.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get operationCorrectSave;
+
+  /// Shown after a correction is accepted.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция исправлена'**
+  String get operationCorrectedMessage;
+
+  /// Shown after a removal is accepted.
+  ///
+  /// In ru, this message translates to:
+  /// **'Операция удалена'**
+  String get operationRemovedMessage;
+
+  /// Confirmation dialog title before withdrawing an operation.
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить операцию?'**
+  String get operationRemoveDialogTitle;
+
+  /// Explains that a removal withdraws rather than erases.
+  ///
+  /// In ru, this message translates to:
+  /// **'Она перестанет учитываться в балансе и отчётах. Сама запись сохранится в истории изменений.'**
+  String get operationRemoveDialogBody;
+
+  /// Generic correction failure.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось сохранить изменение. Попробуйте ещё раз.'**
+  String get operationCorrectionFailed;
+
+  /// The operation was already corrected or removed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Эту операцию уже исправили. Обновите список.'**
+  String get operationAlreadyReversedMessage;
+
+  /// The operation is gone or belongs to someone else.
+  ///
+  /// In ru, this message translates to:
+  /// **'Такой операции больше нет.'**
+  String get operationNotFoundMessage;
+
   /// Operation history (ADR 0020, step 4).
   ///
   /// In ru, this message translates to:

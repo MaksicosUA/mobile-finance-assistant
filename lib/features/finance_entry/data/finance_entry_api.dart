@@ -63,6 +63,16 @@ abstract interface class FinanceEntryApiClient {
     String? cursor,
   });
 
+  Future<FinanceEntryResult<OperationCorrected>> correctOperation({
+    required String accessToken,
+    required OperationCorrectionCommand command,
+  });
+
+  Future<FinanceEntryResult<OperationRemoved>> removeOperation({
+    required String accessToken,
+    required OperationRemovalCommand command,
+  });
+
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics({
     required String accessToken,
   });
@@ -305,6 +315,47 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       contract: _ContractKind.operation,
       parse: (json, statusCode) =>
           _parseOperationCommit(json, statusCode: statusCode, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<OperationCorrected>> correctOperation({
+    required String accessToken,
+    required OperationCorrectionCommand command,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/v1/operations/correction',
+      accessToken: accessToken,
+      body: command.toJson(),
+      // 201 on the first accepted command, 200 on an idempotent replay.
+      acceptedStatuses: const {200, 201},
+      contract: _ContractKind.operationReversal,
+      parse: (json, statusCode) => _parseOperationCorrected(
+        json,
+        statusCode: statusCode,
+        command: command,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<OperationRemoved>> removeOperation({
+    required String accessToken,
+    required OperationRemovalCommand command,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/v1/operations/removal',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200, 201},
+      contract: _ContractKind.operationReversal,
+      parse: (json, statusCode) => _parseOperationRemoved(
+        json,
+        statusCode: statusCode,
+        command: command,
+      ),
     );
   }
 
@@ -1416,6 +1467,78 @@ FinanceOperationCommit _parseOperationCommit(
   return FinanceOperationCommit(idempotentReplay: replay, operation: operation);
 }
 
+OperationCorrected _parseOperationCorrected(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required OperationCorrectionCommand command,
+}) {
+  _expectKeys(json, const {
+    'schemaVersion',
+    'decision',
+    'idempotentReplay',
+    'reversal',
+    'operation',
+  });
+  _requireSchema(json);
+  if (json['decision'] != 'ACCEPT') {
+    throw const FormatException('Invalid operation correction.');
+  }
+  final replay = json['idempotentReplay'];
+  if (replay is! bool || (statusCode == 200) != replay) {
+    throw const FormatException('Invalid operation correction status.');
+  }
+  final reversal = OperationReversal.fromJson(_object(json['reversal']));
+  final operation = CommittedFinanceOperation.fromJson(
+    _object(json['operation']),
+  );
+  final draft = command.review.draft;
+  if (reversal.operationId != command.targetOperationId ||
+      reversal.replacementOperationId != operation.operationId ||
+      operation.commandId != draft.commandId ||
+      operation.amount != draft.amount ||
+      operation.type != draft.type ||
+      operation.occurredOn != draft.occurredOn ||
+      operation.categoryId != draft.categoryId) {
+    // The receipt has to describe the correction that was asked for. A
+    // mismatch means something else was withdrawn or written.
+    throw const FormatException('Correction does not match the command.');
+  }
+  return OperationCorrected(
+    idempotentReplay: replay,
+    reversal: reversal,
+    operation: operation,
+  );
+}
+
+OperationRemoved _parseOperationRemoved(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required OperationRemovalCommand command,
+}) {
+  _expectKeys(json, const {
+    'schemaVersion',
+    'decision',
+    'idempotentReplay',
+    'reversal',
+  });
+  _requireSchema(json);
+  if (json['decision'] != 'ACCEPT') {
+    throw const FormatException('Invalid operation removal.');
+  }
+  final replay = json['idempotentReplay'];
+  if (replay is! bool || (statusCode == 200) != replay) {
+    throw const FormatException('Invalid operation removal status.');
+  }
+  final reversal = OperationReversal.fromJson(_object(json['reversal']));
+  if (reversal.operationId != command.targetOperationId ||
+      reversal.commandId != command.commandId ||
+      // A removal that came back carrying a replacement removed nothing.
+      reversal.replacementOperationId != null) {
+    throw const FormatException('Removal does not match the command.');
+  }
+  return OperationRemoved(idempotentReplay: replay, reversal: reversal);
+}
+
 FinanceEntryResult<T> _httpFailure<T>({
   required int statusCode,
   required List<int>? bytes,
@@ -1676,7 +1799,9 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     _ContractKind.plannedCost => false,
     _ContractKind.goal => false,
     _ContractKind.category => false,
-    _ContractKind.operation => const {
+    // A correction is validated exactly like a new operation, so it can be
+    // refused for exactly the same reasons.
+    _ContractKind.operation || _ContractKind.operationReversal => const {
       FinanceIssueCode.accountRequired,
       FinanceIssueCode.accountUnavailable,
       FinanceIssueCode.accountCurrencyMismatch,
@@ -1719,6 +1844,12 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
     _ContractKind.operation => const {
       FinanceEntryErrorCode.malformedOperation,
       FinanceEntryErrorCode.operationRejected,
+    }.contains(code),
+    _ContractKind.operationReversal => const {
+      FinanceEntryErrorCode.malformedOperation,
+      FinanceEntryErrorCode.operationRejected,
+      FinanceEntryErrorCode.operationNotFound,
+      FinanceEntryErrorCode.operationAlreadyReversed,
     }.contains(code),
     _ContractKind.plannedCost => const {
       FinanceEntryErrorCode.malformedPlannedCost,
@@ -1782,6 +1913,9 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'ACCOUNT_UNAVAILABLE' => FinanceEntryErrorCode.accountUnavailable,
   'BASELINE_REJECTED' => FinanceEntryErrorCode.baselineRejected,
   'OPERATION_REJECTED' => FinanceEntryErrorCode.operationRejected,
+  'OPERATION_NOT_FOUND' => FinanceEntryErrorCode.operationNotFound,
+  'OPERATION_ALREADY_REVERSED' =>
+    FinanceEntryErrorCode.operationAlreadyReversed,
   'MALFORMED_GOAL_COMMAND' => FinanceEntryErrorCode.malformedGoalCommand,
   'GOAL_REJECTED' => FinanceEntryErrorCode.goalRejected,
   'GOAL_NOT_FOUND' => FinanceEntryErrorCode.goalNotFound,
@@ -1996,6 +2130,7 @@ enum _ContractKind {
   account,
   baseline,
   operation,
+  operationReversal,
   plannedCost,
   goal,
   category,

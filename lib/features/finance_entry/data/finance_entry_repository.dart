@@ -45,6 +45,14 @@ abstract interface class FinanceEntryRepositoryClient {
     String? cursor,
   });
 
+  Future<FinanceEntryResult<OperationCorrected>> correctOperation(
+    OperationCorrectionCommand command,
+  );
+
+  Future<FinanceEntryResult<OperationRemoved>> removeOperation(
+    OperationRemovalCommand command,
+  );
+
   Future<FinanceEntryResult<AnalyticsSummary>> readAnalytics();
 
   Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
@@ -236,6 +244,26 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         limit: limit,
         cursor: cursor,
       ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<OperationCorrected>> correctOperation(
+    OperationCorrectionCommand command,
+  ) {
+    return _authorized(
+      (accessToken) =>
+          _api.correctOperation(accessToken: accessToken, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<OperationRemoved>> removeOperation(
+    OperationRemovalCommand command,
+  ) {
+    return _authorized(
+      (accessToken) =>
+          _api.removeOperation(accessToken: accessToken, command: command),
     );
   }
 
