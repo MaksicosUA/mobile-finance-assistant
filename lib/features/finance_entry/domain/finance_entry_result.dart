@@ -43,6 +43,11 @@ enum FinanceEntryErrorCode {
   categoryArchived,
   categoryKeywordTaken,
   categoryPersistenceUnavailable,
+  // Correcting or removing a confirmed operation (ADR 0023). "Not found"
+  // also covers another user's operation, so the API never confirms one
+  // exists outside the caller's own ledger.
+  operationNotFound,
+  operationAlreadyReversed,
   analyticsUnavailable,
   malformedAnalyticsQuery,
   profileUnavailable,

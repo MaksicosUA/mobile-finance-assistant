@@ -886,6 +886,50 @@
   "@categoryLoadError": {
     "description": "Category management (ADR 0020, step 2b)."
   },
+  "operationCorrectAction": "Изменить",
+  "@operationCorrectAction": {
+    "description": "Opens the correction sheet for one confirmed operation."
+  },
+  "operationRemoveAction": "Удалить",
+  "@operationRemoveAction": {
+    "description": "Withdraws one confirmed operation without replacing it."
+  },
+  "operationCorrectTitle": "Исправить операцию",
+  "@operationCorrectTitle": {
+    "description": "Title of the correction sheet."
+  },
+  "operationCorrectSave": "Сохранить",
+  "@operationCorrectSave": {
+    "description": "Confirms the correction."
+  },
+  "operationCorrectedMessage": "Операция исправлена",
+  "@operationCorrectedMessage": {
+    "description": "Shown after a correction is accepted."
+  },
+  "operationRemovedMessage": "Операция удалена",
+  "@operationRemovedMessage": {
+    "description": "Shown after a removal is accepted."
+  },
+  "operationRemoveDialogTitle": "Удалить операцию?",
+  "@operationRemoveDialogTitle": {
+    "description": "Confirmation dialog title before withdrawing an operation."
+  },
+  "operationRemoveDialogBody": "Она перестанет учитываться в балансе и отчётах. Сама запись сохранится в истории изменений.",
+  "@operationRemoveDialogBody": {
+    "description": "Explains that a removal withdraws rather than erases."
+  },
+  "operationCorrectionFailed": "Не удалось сохранить изменение. Попробуйте ещё раз.",
+  "@operationCorrectionFailed": {
+    "description": "Generic correction failure."
+  },
+  "operationAlreadyReversedMessage": "Эту операцию уже исправили. Обновите список.",
+  "@operationAlreadyReversedMessage": {
+    "description": "The operation was already corrected or removed."
+  },
+  "operationNotFoundMessage": "Такой операции больше нет.",
+  "@operationNotFoundMessage": {
+    "description": "The operation is gone or belongs to someone else."
+  },
   "operationHistoryTitle": "Все операции",
   "@operationHistoryTitle": {
     "description": "Operation history (ADR 0020, step 4)."

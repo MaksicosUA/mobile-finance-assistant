@@ -621,6 +621,18 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<OperationCorrected>> correctOperation({
+    required String accessToken,
+    required OperationCorrectionCommand command,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<OperationRemoved>> removeOperation({
+    required String accessToken,
+    required OperationRemovalCommand command,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories({
     required String accessToken,
   }) => throw UnimplementedError();

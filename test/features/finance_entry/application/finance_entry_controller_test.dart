@@ -1288,6 +1288,16 @@ final class _FakeOperationDeliveryCoordinator
 final class _FakeFinanceEntryRepository
     implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<OperationCorrected>> correctOperation(
+    OperationCorrectionCommand command,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<OperationRemoved>> removeOperation(
+    OperationRemovalCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories() =>
       throw UnimplementedError();
   @override

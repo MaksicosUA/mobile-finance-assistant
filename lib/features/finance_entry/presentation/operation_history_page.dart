@@ -7,6 +7,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../home/domain/home_snapshot.dart';
 import '../../home/presentation/money_formatter.dart';
 import '../application/operation_history_controller.dart';
+import 'operation_correction_sheet.dart';
 import '../domain/finance_entry_models.dart';
 
 /// Every confirmed operation, newest first (ADR 0020, step 4).
@@ -151,13 +152,45 @@ class _OperationHistoryPageState extends ConsumerState<OperationHistoryPage> {
     AppLocalizations l10n,
     OperationHistoryItem operation,
     bool privacy,
-  ) {
-    return showModalBottomSheet<void>(
+  ) async {
+    final correct = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) =>
-          _OperationDetail(operation: operation, privacy: privacy),
+      builder: (sheetContext) => _OperationDetail(
+        operation: operation,
+        privacy: privacy,
+        onCorrect: () => Navigator.of(sheetContext).pop(true),
+      ),
+    );
+    if (correct != true || !mounted) return;
+    await _openCorrection(l10n, operation);
+  }
+
+  /// Corrects the operation, then re-reads the list it came from.
+  ///
+  /// A correction changes the ledger, so the page it was launched from is
+  /// stale the moment it succeeds.
+  Future<void> _openCorrection(
+    AppLocalizations l10n,
+    OperationHistoryItem operation,
+  ) async {
+    final outcome = await showOperationCorrectionSheet(
+      context,
+      operation: operation,
+      onSignInRequested: widget.onSignInRequested,
+    );
+    if (outcome == null || !mounted) return;
+    await ref.read(operationHistoryControllerProvider.notifier).refresh();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          outcome == OperationCorrectionOutcome.removed
+              ? l10n.operationRemovedMessage
+              : l10n.operationCorrectedMessage,
+        ),
+      ),
     );
   }
 }
@@ -201,10 +234,15 @@ class _OperationRow extends StatelessWidget {
 }
 
 class _OperationDetail extends StatelessWidget {
-  const _OperationDetail({required this.operation, required this.privacy});
+  const _OperationDetail({
+    required this.operation,
+    required this.privacy,
+    required this.onCorrect,
+  });
 
   final OperationHistoryItem operation;
   final bool privacy;
+  final VoidCallback onCorrect;
 
   @override
   Widget build(BuildContext context) {
@@ -254,6 +292,19 @@ class _OperationDetail extends StatelessWidget {
                   label: l10n.operationDetailMerchant,
                   value: operation.merchant!,
                 ),
+              const SizedBox(height: 16),
+              // Correcting and removing live behind one door: both withdraw
+              // this operation, and only one of them writes a replacement
+              // (ADR 0023).
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.tonalIcon(
+                  key: const Key('history-detail-correct'),
+                  onPressed: onCorrect,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: Text(l10n.operationCorrectAction),
+                ),
+              ),
             ],
           ),
         ),
