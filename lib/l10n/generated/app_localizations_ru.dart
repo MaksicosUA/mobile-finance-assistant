@@ -1473,6 +1473,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get analyticsPeriodYear => 'Год';
 
   @override
+  String get analyticsPeriodCustom => 'Свой период';
+
+  @override
   String get analyticsPeriodLabel => 'Период';
 
   @override

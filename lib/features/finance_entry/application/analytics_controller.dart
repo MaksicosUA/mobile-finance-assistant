@@ -57,10 +57,21 @@ class AnalyticsController extends Notifier<AnalyticsState> {
   bool _requestInFlight = false;
   int _requestGeneration = 0;
   AnalyticsPeriodKind _period = AnalyticsPeriodKind.month;
+  DateTime? _customFrom;
+  DateTime? _customTo;
 
   /// The window currently reported. Kept here rather than in the state so a
   /// failed load still knows which one to retry.
   AnalyticsPeriodKind get period => _period;
+
+  /// The chosen window when [period] is custom, so the screen can show which
+  /// dates it is reporting rather than re-deriving them from the response.
+  ({DateTime from, DateTime to})? get customWindow {
+    final from = _customFrom;
+    final to = _customTo;
+    if (from == null || to == null) return null;
+    return (from: from, to: to);
+  }
 
   FinanceEntryRepositoryClient get _repository =>
       ref.read(financeEntryRepositoryProvider);
@@ -77,7 +88,27 @@ class AnalyticsController extends Notifier<AnalyticsState> {
   /// because every figure on it changes, not just the chart.
   Future<void> selectPeriod(AnalyticsPeriodKind period) async {
     if (period == _period) return;
+    if (period == AnalyticsPeriodKind.custom) {
+      // A custom window without both bounds is not a window. The screen asks
+      // for the dates first and comes back through [selectCustomWindow].
+      return;
+    }
     _period = period;
+    _customFrom = null;
+    _customTo = null;
+    await load();
+  }
+
+  /// Reports an arbitrary window the user picked.
+  ///
+  /// The bounds are ordered here rather than trusted from the picker, because
+  /// a reversed window is refused by the server as a bad request and there is
+  /// nothing to learn from that round trip.
+  Future<void> selectCustomWindow(DateTime from, DateTime to) async {
+    final ordered = from.isAfter(to) ? (to, from) : (from, to);
+    _period = AnalyticsPeriodKind.custom;
+    _customFrom = _dateOnly(ordered.$1);
+    _customTo = _dateOnly(ordered.$2);
     await load();
   }
 
@@ -96,7 +127,11 @@ class AnalyticsController extends Notifier<AnalyticsState> {
     final retained = keepVisible && state is AnalyticsReady;
     if (!retained) state = const AnalyticsLoading();
     try {
-      final result = await _repository.readAnalyticsWindow(period: _period);
+      final result = await _repository.readAnalyticsWindow(
+        period: _period,
+        from: _customFrom == null ? null : _dateWire(_customFrom!),
+        to: _customTo == null ? null : _dateWire(_customTo!),
+      );
       if (!_isCurrentRequest(requestGeneration)) return false;
       switch (result) {
         case FinanceEntrySuccess(:final value):
@@ -156,6 +191,15 @@ class AnalyticsController extends Notifier<AnalyticsState> {
   void _endRequest(int requestGeneration) {
     if (_isCurrentRequest(requestGeneration)) _requestInFlight = false;
   }
+}
+
+DateTime _dateOnly(DateTime value) =>
+    DateTime.utc(value.year, value.month, value.day);
+
+String _dateWire(DateTime value) {
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  return '${value.year.toString().padLeft(4, '0')}-$month-$day';
 }
 
 bool _requiresAuthentication(FinanceEntryFailure failure) =>

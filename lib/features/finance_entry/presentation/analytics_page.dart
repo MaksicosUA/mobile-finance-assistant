@@ -127,9 +127,16 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
       children: [
         _PeriodSelector(
           selected: window.kind,
+          customLabel: window.kind == AnalyticsPeriodKind.custom
+              ? l10n.analyticsWindowRange(
+                  _day(context, window.periodStart),
+                  _day(context, window.periodEnd),
+                )
+              : null,
           onSelected: (period) => ref
               .read(analyticsControllerProvider.notifier)
               .selectPeriod(period),
+          onPickCustom: _pickCustomWindow,
         ),
         const SizedBox(height: 8),
         Text(
@@ -204,6 +211,31 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
     );
   }
 
+  /// Asks for an arbitrary window and reports it.
+  ///
+  /// The picker is bounded to what the server will accept — never the future,
+  /// never wider than five years — so an impossible window cannot be chosen
+  /// and then refused.
+  Future<void> _pickCustomWindow() async {
+    final controller = ref.read(analyticsControllerProvider.notifier);
+    final today = DateTime.now();
+    final lastDate = DateTime(today.year, today.month, today.day);
+    final chosen = await showDateRangePicker(
+      context: context,
+      firstDate: lastDate.subtract(const Duration(days: 1826)),
+      lastDate: lastDate,
+      initialDateRange: switch (controller.customWindow) {
+        final window? => DateTimeRange(start: window.from, end: window.to),
+        null => DateTimeRange(
+          start: lastDate.subtract(const Duration(days: 29)),
+          end: lastDate,
+        ),
+      },
+    );
+    if (chosen == null) return;
+    await controller.selectCustomWindow(chosen.start, chosen.end);
+  }
+
   String _day(BuildContext context, String isoDate) {
     final parsed = DateTime.tryParse(isoDate);
     if (parsed == null) return isoDate;
@@ -236,10 +268,19 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
 }
 
 class _PeriodSelector extends StatelessWidget {
-  const _PeriodSelector({required this.selected, required this.onSelected});
+  const _PeriodSelector({
+    required this.selected,
+    required this.customLabel,
+    required this.onSelected,
+    required this.onPickCustom,
+  });
 
   final AnalyticsPeriodKind selected;
+
+  /// The dates of the chosen window, or null while a named period is shown.
+  final String? customLabel;
   final ValueChanged<AnalyticsPeriodKind> onSelected;
+  final Future<void> Function() onPickCustom;
 
   @override
   Widget build(BuildContext context) {
@@ -263,6 +304,15 @@ class _PeriodSelector extends StatelessWidget {
             ),
             const SizedBox(width: 8),
           ],
+          // Its own chip rather than a fifth named period: choosing it asks
+          // for two dates, and until they are given there is no window.
+          ChoiceChip(
+            key: const Key('analytics-period-custom'),
+            avatar: const Icon(Icons.date_range_outlined, size: 18),
+            label: Text(customLabel ?? l10n.analyticsPeriodCustom),
+            selected: selected == AnalyticsPeriodKind.custom,
+            onSelected: (_) => onPickCustom(),
+          ),
         ],
       ),
     );
