@@ -344,26 +344,211 @@ _AMOUNT = re.compile(
 )
 
 
+# --- numerals written as words -----------------------------------------------
+
+# Speech does not carry digits. A person typing writes "20", the same person
+# speaking says "двадцать", and a transcript reports whichever the recogniser
+# felt like. Reading both is what makes one parser serve a keyboard and a
+# microphone.
+#
+# Whole words, not stems: "два" is a prefix of "двадцать", and matching from a
+# word start would read "двадцать пять" as two. The cost is that a case this
+# table does not list becomes a gap -- which is the parser's rule everywhere
+# else, and cheaper than a confidently wrong amount.
+_SPOKEN_UNITS: dict[str, int] = {
+    "ноль": 0,
+    "один": 1,
+    "одна": 1,
+    "одно": 1,
+    "одну": 1,
+    "два": 2,
+    "две": 2,
+    "двух": 2,
+    "три": 3,
+    "трёх": 3,
+    "трех": 3,
+    "четыре": 4,
+    "четырёх": 4,
+    "четырех": 4,
+    "пять": 5,
+    "пяти": 5,
+    "шесть": 6,
+    "шести": 6,
+    "семь": 7,
+    "семи": 7,
+    "восемь": 8,
+    "восьми": 8,
+    "девять": 9,
+    "девяти": 9,
+    "десять": 10,
+    "десяти": 10,
+    "одиннадцать": 11,
+    "двенадцать": 12,
+    "тринадцать": 13,
+    "четырнадцать": 14,
+    "пятнадцать": 15,
+    "шестнадцать": 16,
+    "семнадцать": 17,
+    "восемнадцать": 18,
+    "девятнадцать": 19,
+    "двадцать": 20,
+    "двадцати": 20,
+    "тридцать": 30,
+    "тридцати": 30,
+    "сорок": 40,
+    "сорока": 40,
+    "пятьдесят": 50,
+    "пятидесяти": 50,
+    "шестьдесят": 60,
+    "шестидесяти": 60,
+    "семьдесят": 70,
+    "семидесяти": 70,
+    "восемьдесят": 80,
+    "восьмидесяти": 80,
+    "девяносто": 90,
+    "девяноста": 90,
+    "сто": 100,
+    "ста": 100,
+    "двести": 200,
+    "двухсот": 200,
+    "триста": 300,
+    "трёхсот": 300,
+    "трехсот": 300,
+    "четыреста": 400,
+    "четырёхсот": 400,
+    "четырехсот": 400,
+    "пятьсот": 500,
+    "пятисот": 500,
+    "шестьсот": 600,
+    "шестисот": 600,
+    "семьсот": 700,
+    "семисот": 700,
+    "восемьсот": 800,
+    "восьмисот": 800,
+    "девятьсот": 900,
+    "девятисот": 900,
+}
+
+#: A word that multiplies everything gathered before it.
+_SPOKEN_MULTIPLIERS: dict[str, int] = {
+    "тысяча": 1000,
+    "тысячи": 1000,
+    "тысяч": 1000,
+    "тысячу": 1000,
+    "тысячей": 1000,
+    "миллион": 1_000_000,
+    "миллиона": 1_000_000,
+    "миллионов": 1_000_000,
+    "миллиону": 1_000_000,
+}
+
+#: "полторы тысячи" is 1500, and people say it constantly.
+_SPOKEN_HALVES: dict[str, Decimal] = {
+    "полтора": Decimal("1.5"),
+    "полторы": Decimal("1.5"),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class _AmountCandidate:
+    """One thing in the sentence that could be the amount, and where it is."""
+
+    start: int
+    end: int
+    value: Decimal
+
+
+def _spoken_amounts(haystack: str) -> list[_AmountCandidate]:
+    """Every maximal run of numeral words, read into a number.
+
+    A run ends at the first word that is not a numeral, so "двадцать евро
+    тридцать" is two candidates rather than one impossible number, and the
+    ordinary currency tie-break decides between them.
+    """
+
+    candidates: list[_AmountCandidate] = []
+    total = Decimal(0)
+    current = Decimal(0)
+    started = False
+    start = 0
+    end = 0
+
+    def flush() -> None:
+        nonlocal total, current, started
+        if started:
+            value = total + current
+            # "полторы тысячи" arrives as 1500.0; a whole number should read
+            # as a whole number in the field the user is about to confirm.
+            if value == value.to_integral_value():
+                value = value.to_integral_value()
+            candidates.append(_AmountCandidate(start=start, end=end, value=value))
+        total = Decimal(0)
+        current = Decimal(0)
+        started = False
+
+    for match in _WORD.finditer(haystack):
+        word = match.group()
+        if word in _SPOKEN_UNITS:
+            value = Decimal(_SPOKEN_UNITS[word])
+        elif word in _SPOKEN_HALVES:
+            value = _SPOKEN_HALVES[word]
+        elif word in _SPOKEN_MULTIPLIERS:
+            multiplier = Decimal(_SPOKEN_MULTIPLIERS[word])
+            if not started:
+                start = match.start()
+                started = True
+            # "тысяча" on its own is one thousand, not zero thousands.
+            total += (current if current > 0 else Decimal(1)) * multiplier
+            current = Decimal(0)
+            end = match.end()
+            continue
+        else:
+            flush()
+            continue
+
+        if not started:
+            start = match.start()
+            started = True
+        current += value
+        end = match.end()
+
+    flush()
+    return [candidate for candidate in candidates if candidate.value > 0]
+
+
 def _find_amount(
     haystack: str,
 ) -> tuple[Decimal | None, str, ParseGapCode | None]:
     currency, currency_span = _find_currency(haystack)
-    matches = list(_AMOUNT.finditer(haystack))
-    if not matches:
+    candidates = _digit_amounts(haystack)
+    # Digits win outright. A written number is unambiguous evidence, and
+    # reading "купил два кофе за 300" as two candidates would turn a sentence
+    # that works today into a gap.
+    if not candidates:
+        candidates = _spoken_amounts(haystack)
+    if not candidates:
         return None, currency, "AMOUNT_NOT_FOUND"
 
-    chosen = matches[0] if len(matches) == 1 else None
+    chosen = candidates[0] if len(candidates) == 1 else None
     if chosen is None and currency_span is not None:
-        chosen = _nearest_to_currency(matches, currency_span)
+        chosen = _nearest_to_currency(candidates, currency_span)
     if chosen is None:
         # Several numbers and nothing to tell them apart. Guessing here writes
         # the wrong amount confidently; a gap costs one correction.
         return None, currency, "AMBIGUOUS_AMOUNT"
+    return chosen.value, currency, None
 
-    amount = _decimal(chosen.group(1))
-    if amount is None:
-        return None, currency, "AMOUNT_NOT_FOUND"
-    return amount, currency, None
+
+def _digit_amounts(haystack: str) -> list[_AmountCandidate]:
+    candidates: list[_AmountCandidate] = []
+    for match in _AMOUNT.finditer(haystack):
+        value = _decimal(match.group(1))
+        if value is None:
+            continue
+        candidates.append(
+            _AmountCandidate(start=match.start(), end=match.end(), value=value)
+        )
+    return candidates
 
 
 def _find_currency(haystack: str) -> tuple[str, tuple[int, int] | None]:
@@ -380,20 +565,20 @@ def _find_currency(haystack: str) -> tuple[str, tuple[int, int] | None]:
 
 
 def _nearest_to_currency(
-    matches: list[re.Match[str]], currency_span: tuple[int, int]
-) -> re.Match[str] | None:
+    matches: list[_AmountCandidate], currency_span: tuple[int, int]
+) -> _AmountCandidate | None:
     start, end = currency_span
     scored = sorted(
         matches,
         key=lambda match: min(
-            abs(match.start() - end),
-            abs(start - match.end()),
+            abs(match.start - end),
+            abs(start - match.end),
         ),
     )
     closest = scored[0]
     if len(scored) > 1:
-        first = min(abs(closest.start() - end), abs(start - closest.end()))
-        second = min(abs(scored[1].start() - end), abs(start - scored[1].end()))
+        first = min(abs(closest.start - end), abs(start - closest.end))
+        second = min(abs(scored[1].start - end), abs(start - scored[1].end))
         if first == second:
             return None
     return closest

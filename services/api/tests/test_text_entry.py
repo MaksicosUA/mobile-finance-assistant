@@ -122,6 +122,67 @@ def test_amount_shapes(text: str, expected: Decimal) -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # Speech carries no digits: a transcript says "двадцать", and the same
+        # sentence typed says "20". One parser has to read both.
+        ("Потратил двадцать евро на продукты", Decimal("20")),
+        ("Потратил сто двадцать пять на продукты", Decimal("125")),
+        ("Потратил тысячу на продукты", Decimal("1000")),
+        ("Потратил две тысячи триста на продукты", Decimal("2300")),
+        ("Потратил полторы тысячи на продукты", Decimal("1500")),
+        ("Потратил полтора евро на продукты", Decimal("1.5")),
+        ("Потратил девятьсот девяносто девять на продукты", Decimal("999")),
+        # Oblique forms people actually say.
+        ("Потратил около двадцати евро на продукты", Decimal("20")),
+        ("Потратил пятьдесят евро на продукты", Decimal("50")),
+    ],
+)
+def test_amounts_spoken_as_words(text: str, expected: Decimal) -> None:
+    assert _parse(text).amount == expected
+
+
+def test_a_whole_spoken_amount_is_not_written_with_a_fraction() -> None:
+    """1500, not 1500.0, in the field the user is about to confirm."""
+
+    parsed = _parse("Потратил полторы тысячи на продукты")
+    assert str(parsed.amount) == "1500"
+
+
+def test_digits_win_over_words() -> None:
+    """Otherwise a sentence that works today becomes a gap.
+
+    "два кофе" is a count, not money. A written number is unambiguous
+    evidence, so words are only read when there are no digits at all.
+    """
+
+    parsed = _parse("Купил два кофе за 300 в кафе")
+    assert parsed.amount == Decimal("300")
+    assert parsed.gaps == ()
+
+
+def test_two_spoken_numbers_are_ambiguous_like_two_written_ones() -> None:
+    parsed = _parse("Потратил двадцать на продукты тридцать")
+    assert parsed.amount is None
+    assert "AMBIGUOUS_AMOUNT" in parsed.gaps
+
+
+def test_a_currency_marker_breaks_a_tie_between_spoken_numbers() -> None:
+    """The same tie-break digits already get, on the same spans."""
+
+    parsed = _parse("Заказал двадцать штук за сорок евро в кафе")
+    assert parsed.amount == Decimal("40")
+
+
+def test_a_numeral_case_the_table_does_not_list_is_a_gap() -> None:
+    """A gap costs one correction; a wrong amount costs trust."""
+
+    parsed = _parse("Потратил осьмнадцать на продукты")
+    assert parsed.amount is None
+    assert "AMOUNT_NOT_FOUND" in parsed.gaps
+
+
+@pytest.mark.parametrize(
     ("text", "code"),
     [
         ("Потратил 500 евро", "EUR"),
