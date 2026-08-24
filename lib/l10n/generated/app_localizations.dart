@@ -2667,6 +2667,12 @@ abstract class AppLocalizations {
   /// **'Год'**
   String get analyticsPeriodYear;
 
+  /// Opens a date range picker for an arbitrary analytics window.
+  ///
+  /// In ru, this message translates to:
+  /// **'Свой период'**
+  String get analyticsPeriodCustom;
+
   /// Analytics periods (balance line and comparison).
   ///
   /// In ru, this message translates to:

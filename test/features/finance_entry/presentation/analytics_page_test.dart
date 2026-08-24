@@ -153,6 +153,30 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget);
   });
 
+  testWidgets('an arbitrary window is asked for with both of its bounds', (
+    tester,
+  ) async {
+    final repository = _FakeRepository();
+    await _pump(tester, repository);
+
+    final custom = find.byKey(const Key('analytics-period-custom'));
+    await tester.ensureVisible(custom);
+    await tester.pumpAndSettle();
+    await tester.tap(custom);
+    await tester.pumpAndSettle();
+
+    // The picker opens on the last 30 days rather than on nothing.
+    expect(find.byType(DateRangePickerDialog), findsOneWidget);
+    await tester.tap(find.text('Сохранить'));
+    await tester.pumpAndSettle();
+
+    expect(repository.asked.last, AnalyticsPeriodKind.custom);
+    // A window without both bounds is not a window, and the server refuses it
+    // as a bad request rather than guessing.
+    expect(repository.customBounds.last.from, isNotNull);
+    expect(repository.customBounds.last.to, isNotNull);
+  });
+
   testWidgets('a failed read offers a retry', (tester) async {
     await _pump(
       tester,
@@ -264,6 +288,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
   /// Answers the first read and refuses every one after it.
   final bool failRefresh;
   final List<AnalyticsPeriodKind> asked = [];
+  final List<({String? from, String? to})> customBounds = [];
 
   @override
   Future<FinanceEntryResult<AnalyticsWindow>> readAnalyticsWindow({
@@ -281,6 +306,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
       );
     }
     asked.add(period);
+    customBounds.add((from: from, to: to));
     return FinanceEntrySuccess<AnalyticsWindow>(
       requestId: 'req_synthetic',
       value: _window(empty: empty),
