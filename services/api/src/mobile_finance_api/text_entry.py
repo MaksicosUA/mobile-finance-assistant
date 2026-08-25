@@ -246,9 +246,11 @@ _RELATIVE_DAYS: tuple[tuple[str, int, SupportedDateExpression | None], ...] = (
     ("сегодня", 0, "сегодня"),
 )
 
-# 03.08, 3.8.2026, 03/08 — a day and a month, optionally a year.
+# 03.08, 3.8.2026, 03/08 — a day and a month, optionally a year. The
+# separator is captured because a dotted pair without a year is also how money
+# is written: 12.50 is both "12 May" and twelve fifty.
 _NUMERIC_DATE = re.compile(
-    r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{4}|\d{2}))?\b",
+    r"\b(\d{1,2})([./])(\d{1,2})(?:\2(\d{4}|\d{2}))?\b",
 )
 # 3 августа, 3 августа 2026
 _NAMED_DATE = re.compile(
@@ -281,11 +283,21 @@ def _find_date(
             return today, None, match.span(), False
         return resolved, None, match.span(), True
 
-    match = _NUMERIC_DATE.search(haystack)
-    if match is not None:
+    for match in _NUMERIC_DATE.finditer(haystack):
+        raw_year = match.group(4)
+        if (
+            match.group(2) == "."
+            and raw_year is None
+            and not _leaves_an_amount(haystack, match.span())
+        ):
+            # "Потратил 12.50" is twelve fifty, not the twelfth of May. Reading
+            # it as a date ate the only number in the sentence and dated the
+            # operation months back without saying so -- a wrong value nobody
+            # was shown. When taking the token as a date would leave nothing
+            # that could be the amount, it is money.
+            continue
         day = int(match.group(1))
-        month = int(match.group(2))
-        raw_year = match.group(3)
+        month = int(match.group(3))
         year = None
         if raw_year is not None:
             year = int(raw_year) if len(raw_year) == 4 else 2000 + int(raw_year)
@@ -295,6 +307,14 @@ def _find_date(
         return resolved, None, match.span(), True
 
     return today, None, None, True
+
+
+def _leaves_an_amount(haystack: str, span: tuple[int, int]) -> bool:
+    """Would anything still read as the amount without this token?"""
+
+    start, end = span
+    remainder = haystack[:start] + " " * (end - start) + haystack[end:]
+    return bool(_digit_amounts(remainder) or _spoken_amounts(remainder))
 
 
 def _calendar_date(
