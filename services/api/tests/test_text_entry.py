@@ -218,6 +218,44 @@ def test_dates(text: str, expected: date, expression: str | None) -> None:
     assert parsed.source_expression == expression
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Потратил 12.50 на продукты", Decimal("12.50")),
+        # The dangerous one: 12.05 is a valid day and month, so this used to
+        # date the operation to 12 May without saying anything, and lose the
+        # amount on top.
+        ("Потратил 12.05 на продукты", Decimal("12.05")),
+        ("Потратил 25.12 на подарок", Decimal("25.12")),
+        ("Потратил 3.08 на кофе", Decimal("3.08")),
+    ],
+)
+def test_a_dotted_pair_that_is_the_only_number_is_money(
+    text: str, expected: Decimal
+) -> None:
+    """Twelve fifty, not the twelfth of May.
+
+    Both readings are grammatical. The one that silently dates an operation
+    months back and drops the amount is the one that must not win.
+    """
+
+    parsed = _parse(text)
+
+    assert parsed.amount == expected
+    assert parsed.occurred_on == _TODAY
+    assert "AMOUNT_NOT_FOUND" not in parsed.gaps
+    assert "DATE_NOT_UNDERSTOOD" not in parsed.gaps
+
+
+def test_a_dotted_date_still_reads_when_the_amount_is_elsewhere() -> None:
+    """The discriminator is whether anything else could be the amount."""
+
+    assert _parse("Потратил 20 03.08").occurred_on == date(2026, 8, 3)
+    assert _parse("Потратил двадцать 03.08").occurred_on == date(2026, 8, 3)
+    # A year settles it outright, whatever else is in the sentence.
+    assert _parse("Потратил 03.08.2025").occurred_on == date(2025, 8, 3)
+
+
 def test_a_day_without_a_year_takes_the_most_recent_one() -> None:
     """An entry in January about 31 декабря means the year that just ended."""
 
