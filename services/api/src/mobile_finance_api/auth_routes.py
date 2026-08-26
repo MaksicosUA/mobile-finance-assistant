@@ -42,9 +42,18 @@ AuthServiceDependency = Annotated[
     status_code=status.HTTP_201_CREATED,
 )
 async def register(
+    request: Request,
     body: RegisterRequest,
     service: AuthServiceDependency,
 ) -> AuthTokenResponse:
+    allowlist = getattr(request.app.state, "registration_allowlist", None)
+    if allowlist is not None and body.email.strip().casefold() not in allowlist:
+        # Deliberately the same refusal a taken address gets. Telling the two
+        # apart would turn this endpoint into an oracle for who is invited.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Account could not be created",
+        )
     try:
         grant = await service.register(
             email=body.email,

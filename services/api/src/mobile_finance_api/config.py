@@ -25,6 +25,29 @@ def require_database_url() -> str:
     return database_url
 
 
+def load_registration_allowlist() -> frozenset[str] | None:
+    """Who may create an account, read from the environment.
+
+    Three states, and the middle one is deliberate:
+
+    * unset — registration is open, which is what a local run and every test
+      expect;
+    * set and empty — registration is closed to everyone, an explicit decision
+      rather than an accident;
+    * set with addresses — only those may register.
+
+    Addresses are compared case-insensitively and trimmed, because an invite
+    typed with a capital letter is the same invite.
+    """
+
+    raw = os.environ.get("MFA_AUTH_REGISTRATION_ALLOWLIST")
+    if raw is None:
+        return None
+    return frozenset(
+        entry.strip().casefold() for entry in raw.split(",") if entry.strip()
+    )
+
+
 def load_runtime_settings() -> RuntimeSettings | None:
     """Load production adapters, or keep the module app deliberately unavailable.
 

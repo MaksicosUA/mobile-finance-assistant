@@ -268,6 +268,7 @@ def create_app(
     analytics_repository: object | None = None,
     profile_repository: object | None = None,
     database_engine: AsyncEngine | None = None,
+    registration_allowlist: frozenset[str] | None = None,
 ) -> FastAPI:
     """Build the API with explicit replaceable data and auth adapters."""
 
@@ -292,6 +293,9 @@ def create_app(
         if current_user_authenticator is not None
         else DenyAllCurrentUserAuthenticator()
     )
+    # Absent means open registration, which is what a local run expects; a
+    # public deployment sets it and only invited addresses get through.
+    application.state.registration_allowlist = registration_allowlist
     application.state.authentication_service = (
         authentication_service
         if authentication_service is not None
