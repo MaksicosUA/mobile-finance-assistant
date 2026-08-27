@@ -9,7 +9,7 @@ from __future__ import annotations
 from .account_core import AccountCore
 from .auth import PostgresCurrentUserAuthenticator
 from .auth_service import PostgresAuthenticationService
-from .config import require_runtime_settings
+from .config import load_registration_allowlist, require_runtime_settings
 from .database import create_database
 from .finance_core import FinanceCore
 from .goal_core import GoalCore
@@ -39,6 +39,7 @@ finance_accounts = PostgresFinanceAccountRepository(
 finance_categories = PostgresCategoryRepository(session_factory=session_factory)
 
 app = create_app(
+    registration_allowlist=load_registration_allowlist(),
     home_repository=PostgresHomeRepository(
         session_factory=session_factory,
     ),
