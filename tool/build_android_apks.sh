@@ -8,11 +8,13 @@ adb_bin="${ADB_BIN:-adb}"
 api_base_url="${API_BASE_URL:-http://127.0.0.1:8000}"
 home_timezone="${HOME_API_TIMEZONE:-Europe/Berlin}"
 network_only=false
+fixture_only=false
 install_network=false
 github_output=""
 
 usage() {
-  echo "Usage: $0 [--network-only] [--install-network] [--github-output PATH]" >&2
+  echo "Usage: $0 [--network-only|--fixture-only] [--install-network]" \
+    "[--github-output PATH]" >&2
   exit 64
 }
 
@@ -20,6 +22,13 @@ while (($# > 0)); do
   case "$1" in
     --network-only)
       network_only=true
+      shift
+      ;;
+    # Builds the fixture APK alone, which needs no signing key. CI uses it to
+    # prove the Android build still compiles; the deliverable is signed and
+    # published from where the key actually lives.
+    --fixture-only)
+      fixture_only=true
       shift
       ;;
     --install-network)
@@ -36,6 +45,16 @@ while (($# > 0)); do
       ;;
   esac
 done
+
+if $network_only && $fixture_only; then
+  echo "--network-only and --fixture-only are mutually exclusive." >&2
+  exit 64
+fi
+
+if $fixture_only && $install_network; then
+  echo "--fixture-only builds nothing installable on a registered account." >&2
+  exit 64
+fi
 
 if [[ $api_base_url =~ [[:space:]@?#] ]]; then
   echo "API_BASE_URL must not contain whitespace, userinfo, query, or fragment." >&2
@@ -84,9 +103,13 @@ if [[ ! $build_name =~ ^[0-9]+(\.[0-9]+){3}$ ]] ||
 fi
 
 output_dir="build/app/outputs/flutter-apk"
-source_apk="$output_dir/app-debug.apk"
+debug_source_apk="$output_dir/app-debug.apk"
+release_source_apk="$output_dir/app-release.apk"
 fixture_apk="$output_dir/mobile-finance-assistant-fixture-debug.apk"
-network_apk="$output_dir/mobile-finance-assistant-network-debug.apk"
+# The delivered artifact is a release build signed with the stable key
+# (issue 0005). A debug build hands anyone with USB debugging the app's own
+# storage through `run-as`, which is not something to give a person to install.
+network_apk="$output_dir/mobile-finance-assistant-network-release.apk"
 
 apkanalyzer_bin="${APKANALYZER_BIN:-}"
 if [[ -z $apkanalyzer_bin ]]; then
@@ -124,20 +147,27 @@ if ! $network_only; then
     "--build-name=$build_name" \
     "--build-number=$build_number" \
     "--dart-define=APP_VERSION=$build_name"
-  replace_apk "$source_apk" "$fixture_apk"
+  replace_apk "$debug_source_apk" "$fixture_apk"
 fi
 
+if ! $fixture_only; then
 if [[ -e $network_apk ]]; then
   unlink -- "$network_apk"
 fi
+if [[ -z ${MFA_ANDROID_KEY_PROPERTIES:-} ]]; then
+  echo "MFA_ANDROID_KEY_PROPERTIES must point at the signing properties." >&2
+  echo "They are kept outside every repository and never committed." >&2
+  exit 64
+fi
 "$flutter_bin" build apk \
-  --debug \
+  --release \
   "--build-name=$build_name" \
   "--build-number=$build_number" \
   "--dart-define=APP_VERSION=$build_name" \
   "--dart-define=API_BASE_URL=$api_base_url" \
   "--dart-define=HOME_API_TIMEZONE=$home_timezone"
-replace_apk "$source_apk" "$network_apk"
+replace_apk "$release_source_apk" "$network_apk"
+fi
 
 verify_apk_version() {
   local apk="$1"
@@ -154,7 +184,9 @@ verify_apk_version() {
 if ! $network_only; then
   verify_apk_version "$fixture_apk"
 fi
-verify_apk_version "$network_apk"
+if ! $fixture_only; then
+  verify_apk_version "$network_apk"
+fi
 
 if ! final_revision="$(git rev-parse --verify 'HEAD^{commit}')"; then
   echo "The committed source revision could not be re-read after the build." >&2
@@ -193,5 +225,7 @@ fi
 if ! $network_only; then
   echo "Fixture APK: $fixture_apk"
 fi
-echo "Authenticated network APK: $network_apk"
+if ! $fixture_only; then
+  echo "Authenticated network APK: $network_apk"
+fi
 echo "Android version: $build_name ($build_number), revision $revision"

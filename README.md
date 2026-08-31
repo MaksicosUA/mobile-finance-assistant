@@ -266,14 +266,19 @@ loopback through ADB. Release builds still require HTTPS.
 
 ```bash
 adb reverse tcp:8000 tcp:8000
-tool/build_android_network_debug.sh --install
+MFA_ANDROID_KEY_PROPERTIES=<path outside this repository> \
+  tool/build_android_network_release.sh --install
 ```
 
 The script requires a clean, non-shallow Git worktree, always supplies the
 authenticated API defines, and writes the distinct artifact
-`build/app/outputs/flutter-apk/mobile-finance-assistant-network-debug.apk`.
+`build/app/outputs/flutter-apk/mobile-finance-assistant-network-release.apk`.
 Running a plain `flutter build apk` intentionally creates the fixture build and
 must not be installed over an account-testing build.
+
+The deliverable is a **release** build signed with the stable key. A debug build
+hands anyone with USB debugging the app's own storage through `run-as`, which is
+not something to give a person to install.
 
 To reproduce both deliverable variants from one committed revision, run:
 
@@ -324,13 +329,13 @@ cannot be installed over a locally built one without an uninstall that clears
 the session and the encrypted operation outbox. Building it on every push
 therefore paid for an artifact nobody could use.
 
-When it does run, the build produces both variants and verifies both manifests:
-`fixture-debug` uses synthetic Home data, `network-debug` enables authentication
-and the real API. Checkout uses full Git history and the version is resolved
-once, so both variants of a revision share one version. Only `network-debug` is
-published, with a SHA-256 checksum, `android-build-version.txt`, and 7-day
-retention; a tag build keeps the plain artifact name, anything else is prefixed
-`preview-`.
+When it does run, the build produces the **fixture APK only** and verifies its
+manifest, and publishes nothing. The artifact this workflow used to upload was
+signed with an ephemeral CI key, so it could never update an installed copy: it
+was undeliverable by construction. The signing key lives outside every
+repository and deliberately not in GitHub secrets, where anyone with repository
+administration could sign as us. CI proves the Android build still compiles;
+delivery happens where the key is.
 
 Because dispatch and tag builds have no push predecessor, the ADR 0013
 descendant check is skipped in CI and monotonic delivery versions are enforced
@@ -339,10 +344,10 @@ by passing the previous delivered revision to
 rejection — dirty or shallow checkout, malformed or regressing epoch, overflow —
 still applies.
 
-For day-to-day device testing use `tool/build_android_network_debug.sh`, which
-signs with the stable local debug keystore and upgrades in place. Note that
-`flutter build apk --release` is **not** production-ready: the release config
-still signs with the debug key (issue 0005).
+For device testing and for delivery use `tool/build_android_network_release.sh`,
+which signs with the stable key and upgrades in place. A release build without
+`MFA_ANDROID_KEY_PROPERTIES` is refused rather than falling back to the debug
+key — falling back is exactly what issue 0005 was.
 
 The network build reads the non-secret repository variables
 `ANDROID_DEBUG_API_BASE_URL` and `HOME_API_TIMEZONE`. Without them it uses
