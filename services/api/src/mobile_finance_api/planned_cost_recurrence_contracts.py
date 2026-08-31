@@ -154,9 +154,33 @@ class EndPlannedCostRecurrenceResponse(RecurrenceApiModel):
     cancelled_occurrences: int = Field(alias="cancelledOccurrences")
 
 
+class RecurrenceInstance(RecurrenceApiModel):
+    """One outstanding instance a rule has already written.
+
+    Carried here rather than added to the planned-cost contract, which an
+    installed client parses with a closed key set: a new key there would stop
+    it loading rather than degrade it (ADR 0020's picker trap).
+    """
+
+    planned_cost_id: UUID = Field(alias="plannedCostId")
+    planned_on: OperationDate = Field(alias="plannedOn")
+
+
+class PlannedCostRecurrenceListItem(RecurrenceApiModel):
+    """A rule with the outstanding instances it owns.
+
+    The interface needs the link to offer «skip this one» on an instance of a
+    series and not on a one-off plan, where skipping and cancelling would mean
+    exactly the same thing.
+    """
+
+    recurrence: PlannedCostRecurrence
+    upcoming: tuple[RecurrenceInstance, ...]
+
+
 class ListPlannedCostRecurrencesResponse(RecurrenceApiModel):
     schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
-    recurrences: tuple[PlannedCostRecurrence, ...]
+    recurrences: tuple[PlannedCostRecurrenceListItem, ...]
 
 
 class RecurrenceErrorDetail(RecurrenceApiModel):
@@ -257,6 +281,8 @@ __all__ = [
     "EndPlannedCostRecurrenceResponse",
     "ListPlannedCostRecurrencesResponse",
     "PlannedCostRecurrence",
+    "PlannedCostRecurrenceListItem",
+    "RecurrenceInstance",
     "RecurrenceErrorCode",
     "RecurrenceErrorDetail",
     "RecurrenceErrorResponse",

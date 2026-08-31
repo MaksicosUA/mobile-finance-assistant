@@ -373,6 +373,23 @@ async def _scenario(
         assert Decimal(snapshot["monthSummary"]["netFlow"]) == Decimal("0")
         assert snapshot["upcomingPayments"], snapshot
 
+        # --- the listing links a rule to the instances it owns -----------------
+        # Without that link the interface cannot tell an instance of a series
+        # from a one-off plan, and «skip this one» would be indistinguishable
+        # from «cancel».
+        mine = await client.get(
+            "/api/v1/planned-cost-recurrences",
+            headers=identity.headers,
+        )
+        assert mine.status_code == 200, mine.text
+        listed_rules = mine.json()["recurrences"]
+        assert len(listed_rules) == 1, listed_rules
+        upcoming = listed_rules[0]["upcoming"]
+        assert len(upcoming) == len(occurrences), upcoming
+        assert [
+            datetime.fromisoformat(item["plannedOn"]).date() for item in upcoming
+        ] == occurrences
+
         # --- skipping one instance, at last -----------------------------------
         # `skipped` has existed in the schema since ADR 0018 and has never been
         # reachable: without recurrence it means the same as `cancelled`.

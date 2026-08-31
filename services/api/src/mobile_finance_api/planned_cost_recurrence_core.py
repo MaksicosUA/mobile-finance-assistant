@@ -27,6 +27,8 @@ from .planned_cost_recurrence_contracts import (
     EndPlannedCostRecurrenceResponse,
     ListPlannedCostRecurrencesResponse,
     PlannedCostRecurrence,
+    PlannedCostRecurrenceListItem,
+    RecurrenceInstance,
     RecurrenceIssue,
     create_recurrence_command_hash,
     end_recurrence_command_hash,
@@ -108,6 +110,20 @@ class RecurrenceWriteResult:
 
 
 @dataclass(frozen=True, slots=True)
+class StoredRecurrenceInstance:
+    """One outstanding instance, as the list needs it."""
+
+    planned_cost_id: UUID
+    planned_on: date
+
+
+@dataclass(frozen=True, slots=True)
+class RecurrenceListing:
+    recurrence: StoredRecurrence
+    upcoming: tuple[StoredRecurrenceInstance, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class RecurrenceEndResult:
     recurrence: StoredRecurrence
     #: Future instances nobody had acted on, withdrawn along with the rule.
@@ -175,8 +191,8 @@ class PlannedCostRecurrenceRepository(Protocol):
         self,
         *,
         user_id: UUID,
-    ) -> tuple[StoredRecurrence, ...]:
-        """Return the user's rules in a stable order."""
+    ) -> tuple[RecurrenceListing, ...]:
+        """Return the user's rules, each with its outstanding instances."""
 
 
 class UnavailablePlannedCostRecurrenceRepository:
@@ -245,7 +261,7 @@ class UnavailablePlannedCostRecurrenceRepository:
         self,
         *,
         user_id: UUID,
-    ) -> tuple[StoredRecurrence, ...]:
+    ) -> tuple[RecurrenceListing, ...]:
         del user_id
         raise RecurrencePersistenceUnavailable
 
@@ -390,10 +406,22 @@ class PlannedCostRecurrenceCore:
         user_id: UUID,
     ) -> ListPlannedCostRecurrencesResponse:
         stored = await self._repository.list_recurrences(user_id=user_id)
-        if any(rule.user_id != user_id for rule in stored):
+        if any(listing.recurrence.user_id != user_id for listing in stored):
             raise RecurrencePersistenceUnavailable
         return ListPlannedCostRecurrencesResponse(
-            recurrences=tuple(_to_contract(rule) for rule in stored),
+            recurrences=tuple(
+                PlannedCostRecurrenceListItem(
+                    recurrence=_to_contract(listing.recurrence),
+                    upcoming=tuple(
+                        RecurrenceInstance(
+                            planned_cost_id=instance.planned_cost_id,
+                            planned_on=instance.planned_on,
+                        )
+                        for instance in listing.upcoming
+                    ),
+                )
+                for listing in stored
+            ),
         )
 
 

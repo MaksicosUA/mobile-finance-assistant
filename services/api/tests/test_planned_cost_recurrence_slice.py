@@ -32,6 +32,7 @@ from mobile_finance_api.planned_cost_recurrence_core import (
     RecurrenceAlreadyEnded,
     RecurrenceCommandConflict,
     RecurrenceEndResult,
+    RecurrenceListing,
     RecurrenceNotFound,
     RecurrencePersistenceUnavailable,
     RecurrenceRejected,
@@ -139,7 +140,7 @@ class _Repository:
         raises: Exception | None = None,
         end_raises: Exception | None = None,
         stored: StoredRecurrence | None = None,
-        listing: tuple[StoredRecurrence, ...] = (),
+        listing: tuple[RecurrenceListing, ...] = (),
     ) -> None:
         self._context = context
         self._category_direction = category_direction
@@ -240,7 +241,7 @@ class _Repository:
         self,
         *,
         user_id: UUID,
-    ) -> tuple[StoredRecurrence, ...]:
+    ) -> tuple[RecurrenceListing, ...]:
         del user_id
         return self._listing
 
@@ -449,7 +450,14 @@ def test_replaying_an_ending_returns_the_original_count() -> None:
 
 
 def test_listing_refuses_a_row_belonging_to_someone_else() -> None:
-    repository = _Repository(listing=(_stored(user_id=_OTHER_USER_ID),))
+    repository = _Repository(
+        listing=(
+            RecurrenceListing(
+                recurrence=_stored(user_id=_OTHER_USER_ID),
+                upcoming=(),
+            ),
+        )
+    )
     with pytest.raises(RecurrencePersistenceUnavailable):
         asyncio.run(_core(repository).list_recurrences(user_id=_USER_ID))
 

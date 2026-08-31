@@ -41,9 +41,11 @@ from .planned_cost_recurrence_core import (
     RecurrenceBeforeAccountBaseline,
     RecurrenceCommandConflict,
     RecurrenceEndResult,
+    RecurrenceListing,
     RecurrenceNotFound,
     RecurrenceWriteResult,
     StoredRecurrence,
+    StoredRecurrenceInstance,
 )
 
 #: The index materialisation leans on. Naming it here keeps the ON CONFLICT
@@ -109,7 +111,7 @@ class PostgresPlannedCostRecurrenceRepository:
         self,
         *,
         user_id: UUID,
-    ) -> tuple[StoredRecurrence, ...]:
+    ) -> tuple[RecurrenceListing, ...]:
         async with self._session_factory() as database:
             rows = (
                 await database.scalars(
@@ -121,7 +123,38 @@ class PostgresPlannedCostRecurrenceRepository:
                     )
                 )
             ).all()
-        return tuple(_to_stored(row) for row in rows)
+            # Outstanding only. A settled instance is no longer an obligation,
+            # and the list exists so the interface can offer to skip one.
+            instances = (
+                await database.execute(
+                    select(
+                        PlannedCostRow.recurrence_id,
+                        PlannedCostRow.id,
+                        PlannedCostRow.planned_on,
+                    )
+                    .where(
+                        PlannedCostRow.user_id == user_id,
+                        PlannedCostRow.recurrence_id.is_not(None),
+                        PlannedCostRow.status == "planned",
+                    )
+                    .order_by(PlannedCostRow.planned_on.asc())
+                )
+            ).all()
+        owned: dict[UUID, list[StoredRecurrenceInstance]] = {}
+        for recurrence_id, planned_cost_id, planned_on in instances:
+            owned.setdefault(recurrence_id, []).append(
+                StoredRecurrenceInstance(
+                    planned_cost_id=planned_cost_id,
+                    planned_on=planned_on,
+                )
+            )
+        return tuple(
+            RecurrenceListing(
+                recurrence=_to_stored(row),
+                upcoming=tuple(owned.get(row.id, ())),
+            )
+            for row in rows
+        )
 
     # --- creation -------------------------------------------------------------
 
