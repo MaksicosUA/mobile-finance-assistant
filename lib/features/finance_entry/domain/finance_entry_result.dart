@@ -58,6 +58,9 @@ enum FinanceEntryErrorCode {
   malformedAnalyticsQuery,
   profileUnavailable,
   textEntryUnavailable,
+  // Asking about an installable update (ADR 0026).
+  appReleaseUnavailable,
+  appReleaseNotFound,
   authenticationUnavailable,
   financePersistenceUnavailable,
 }

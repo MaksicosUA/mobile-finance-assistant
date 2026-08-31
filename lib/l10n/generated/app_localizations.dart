@@ -2834,6 +2834,114 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не удалось изменить повторяющуюся трату.'**
   String get plannedCostRecurrenceFailure;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверить обновления'**
+  String get appUpdateCheckAction;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Спросить сервер, вышла ли новая версия'**
+  String get appUpdateCheckDescription;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Проверяем…'**
+  String get appUpdateChecking;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'У вас последняя версия.'**
+  String get appUpdateUpToDate;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Доступна версия {version}, {size}'**
+  String appUpdateAvailable(String version, String size);
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Что нового'**
+  String get appUpdateNotesLabel;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скачать и установить'**
+  String get appUpdateDownloadAction;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скачиваем… {percent}%'**
+  String appUpdateDownloading(int percent);
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Файл скачан и проверен. Подтвердите установку в системном окне.'**
+  String get appUpdateHandedToInstaller;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Android просит разрешить установку из этого приложения. Это делается один раз.'**
+  String get appUpdateNeedsPermission;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть настройки'**
+  String get appUpdatePermissionAction;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер недоступен. Попробуйте позже.'**
+  String get appUpdateFailedUnreachable;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер не смог ответить про обновления.'**
+  String get appUpdateFailedServer;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Файл скачался повреждённым и удалён. Попробуйте ещё раз.'**
+  String get appUpdateFailedCorrupted;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось открыть установщик Android.'**
+  String get appUpdateFailedInstaller;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Нужно войти заново.'**
+  String get appUpdateFailedAuth;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторить'**
+  String get appUpdateRetryAction;
+
+  /// In-app update (ADR 0026).
+  ///
+  /// In ru, this message translates to:
+  /// **'{megabytes} МБ'**
+  String appUpdateMegabytes(String megabytes);
 }
 
 class _AppLocalizationsDelegate

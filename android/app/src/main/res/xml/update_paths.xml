@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the directory downloads land in. A path any wider would let the
+     channel be told to share something else. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

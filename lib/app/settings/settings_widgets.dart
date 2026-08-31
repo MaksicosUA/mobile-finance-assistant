@@ -168,7 +168,11 @@ class SettingsActionRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String description;
-  final VoidCallback onPressed;
+
+  /// Nullable so a row can be disabled while its action is in flight. A
+  /// row that stays tappable during its own work invites a second tap
+  /// that does nothing.
+  final VoidCallback? onPressed;
   final String? value;
 
   @override
@@ -179,7 +183,7 @@ class SettingsActionRow extends StatelessWidget {
         : '$label. $value. $description';
     return Semantics(
       button: true,
-      enabled: true,
+      enabled: onPressed != null,
       excludeSemantics: true,
       label: semanticsLabel,
       onTap: onPressed,

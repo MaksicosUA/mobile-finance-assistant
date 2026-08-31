@@ -3024,3 +3024,90 @@ PlannedCostRecurrenceStatus _recurrenceStatus(String value) => switch (value) {
   'ended' => PlannedCostRecurrenceStatus.ended,
   _ => throw FormatException('Unsupported recurrence status: $value'),
 };
+
+// --- the update a device may install (ADR 0026) -------------------------------
+
+/// One published Android build, as the server describes it.
+///
+/// Nothing here is financial data. It describes a file: which version, how big,
+/// and what it hashes to.
+@immutable
+final class AppRelease {
+  const AppRelease({
+    required this.versionCode,
+    required this.versionName,
+    required this.sizeBytes,
+    required this.sha256,
+    required this.publishedAt,
+    this.notes,
+  });
+
+  factory AppRelease.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'versionCode',
+      'versionName',
+      'sizeBytes',
+      'sha256',
+      'notes',
+      'publishedAt',
+    });
+    final versionCode = json['versionCode'];
+    if (versionCode is! int || versionCode < 1) {
+      throw const FormatException('Invalid versionCode.');
+    }
+    final sizeBytes = json['sizeBytes'];
+    // Bounded so a manifest cannot describe a download that would never end.
+    if (sizeBytes is! int || sizeBytes < 1 || sizeBytes > 512 * 1024 * 1024) {
+      throw const FormatException('Invalid sizeBytes.');
+    }
+    final versionName = _requiredString(json, 'versionName');
+    if (!RegExp(r'^\d+(\.\d+){3}$').hasMatch(versionName)) {
+      throw const FormatException('Invalid versionName.');
+    }
+    final digest = _requiredString(json, 'sha256');
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(digest)) {
+      throw const FormatException('Invalid sha256.');
+    }
+    return AppRelease(
+      versionCode: versionCode,
+      versionName: versionName,
+      sizeBytes: sizeBytes,
+      sha256: digest,
+      notes: _optionalBoundedText(json, 'notes', maximumLength: 500),
+      publishedAt: _timestamp(json, 'publishedAt'),
+    );
+  }
+
+  final int versionCode;
+  final String versionName;
+  final int sizeBytes;
+  final String sha256;
+  final String? notes;
+  final String publishedAt;
+
+  /// Whether a device on [installedVersionCode] has something to install.
+  ///
+  /// Equal is not newer, and older is refused outright: Android rejects a
+  /// downgrade anyway, and offering one produces a failure to read.
+  bool isNewerThan(int installedVersionCode) =>
+      versionCode > installedVersionCode;
+}
+
+/// What the server answered when asked about updates.
+@immutable
+final class AppUpdateManifest {
+  const AppUpdateManifest({required this.release});
+
+  factory AppUpdateManifest.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'release'});
+    _requiredLiteral(json, 'schemaVersion', '1');
+    final release = json['release'];
+    return AppUpdateManifest(
+      release: release == null ? null : AppRelease.fromJson(_asObject(release)),
+    );
+  }
+
+  /// Null when the deployment has published nothing, which is a normal answer
+  /// rather than a failure.
+  final AppRelease? release;
+}

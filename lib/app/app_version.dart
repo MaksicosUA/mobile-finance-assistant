@@ -12,9 +12,23 @@
 library;
 
 /// The `version:` field of `pubspec.yaml`, without its build metadata.
-const String appVersionFallback = '0.1.15';
+const String appVersionFallback = '0.1.16';
 
 const String appVersion = String.fromEnvironment(
   'APP_VERSION',
   defaultValue: appVersionFallback,
 );
+
+/// The Android `versionCode` of the running build, or null outside one.
+///
+/// The delivery script resolves one number and writes it into both the version
+/// name's fourth part and the Android manifest (ADR 0013), so reading it back
+/// out is not a second source of truth — it is the same one. A development run
+/// has no define and no version code, and an update check treats that as
+/// "nothing to compare against" rather than guessing.
+int? get installedVersionCode {
+  final parts = appVersion.split('.');
+  if (parts.length != 4) return null;
+  final code = int.tryParse(parts[3]);
+  return code != null && code > 0 ? code : null;
+}

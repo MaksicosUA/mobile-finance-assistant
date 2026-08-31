@@ -93,6 +93,20 @@ abstract interface class FinanceEntryApiClient {
     required String accessToken,
   });
 
+  Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate({
+    required String accessToken,
+  });
+
+  /// Downloads the published build to [savePath], reporting progress.
+  ///
+  /// Separate from every other call because it is the one response measured in
+  /// tens of megabytes: it is streamed to a file rather than decoded.
+  Future<FinanceEntryResult<void>> downloadAppRelease({
+    required String accessToken,
+    required String savePath,
+    required void Function(int received, int total) onProgress,
+  });
+
   Future<FinanceEntryResult<UserProfile>> readProfile({
     required String accessToken,
   });
@@ -641,6 +655,84 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       contract: _ContractKind.category,
       parse: (json, statusCode) => _parseCategoryKeywords(json, statusCode),
     );
+  }
+
+  @override
+  Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate({
+    required String accessToken,
+  }) {
+    return _request(
+      method: 'GET',
+      path: '/api/v1/app/update',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.appRelease,
+      parse: (json, statusCode) {
+        if (statusCode != 200) throw const FormatException('Invalid status.');
+        return AppUpdateManifest.fromJson(json);
+      },
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<void>> downloadAppRelease({
+    required String accessToken,
+    required String savePath,
+    required void Function(int received, int total) onProgress,
+  }) async {
+    final requestId = _safeRequestId(_requestIdFactory);
+    final token = _safeAccessToken(accessToken);
+    if (token == null) {
+      return _failure(
+        kind: FinanceEntryFailureKind.unauthenticated,
+        requestId: requestId,
+      );
+    }
+    try {
+      await _dio.download(
+        _baseUri.resolve('/api/v1/app/download').toString(),
+        savePath,
+        onReceiveProgress: onProgress,
+        options: Options(
+          headers: <String, Object>{
+            'Authorization': 'Bearer $token',
+            'X-Correlation-ID': requestId,
+          },
+          followRedirects: false,
+          maxRedirects: 0,
+          // Anything but 200 is a failure here: there is no partial answer to
+          // interpret, only a file that did or did not arrive.
+          validateStatus: (status) => status == 200,
+        ),
+      );
+      return FinanceEntrySuccess<void>(requestId: requestId, value: null);
+    } on DioException catch (error) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 401 || statusCode == 403) {
+        return _failure(
+          kind: FinanceEntryFailureKind.unauthenticated,
+          requestId: requestId,
+        );
+      }
+      return _failure(
+        kind: switch (error.type) {
+          DioExceptionType.connectionTimeout ||
+          DioExceptionType.receiveTimeout ||
+          DioExceptionType.sendTimeout => FinanceEntryFailureKind.timeout,
+          DioExceptionType.connectionError => FinanceEntryFailureKind.offline,
+          _ =>
+            statusCode == null
+                ? FinanceEntryFailureKind.offline
+                : FinanceEntryFailureKind.serviceUnavailable,
+        },
+        requestId: requestId,
+      );
+    } on Object {
+      return _failure(
+        kind: FinanceEntryFailureKind.unknown,
+        requestId: requestId,
+      );
+    }
   }
 
   @override
@@ -1992,6 +2084,8 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     // FinanceIssue.
     _ContractKind.plannedCost => false,
     _ContractKind.plannedCostRecurrence => false,
+    // Asking about an update submits nothing, so nothing is rejected.
+    _ContractKind.appRelease => false,
     _ContractKind.goal => false,
     _ContractKind.category => false,
     // A correction is validated exactly like a new operation, so it can be
@@ -2074,6 +2168,10 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
     _ContractKind.textEntry => const {
       FinanceEntryErrorCode.textEntryUnavailable,
     }.contains(code),
+    _ContractKind.appRelease => const {
+      FinanceEntryErrorCode.appReleaseUnavailable,
+      FinanceEntryErrorCode.appReleaseNotFound,
+    }.contains(code),
     _ContractKind.category => const {
       FinanceEntryErrorCode.malformedCategoryCommand,
       FinanceEntryErrorCode.categoryNotFound,
@@ -2144,6 +2242,8 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'RECURRENCE_NOT_FOUND' => FinanceEntryErrorCode.recurrenceNotFound,
   'RECURRENCE_PERSISTENCE_UNAVAILABLE' =>
     FinanceEntryErrorCode.recurrencePersistenceUnavailable,
+  'APP_RELEASE_UNAVAILABLE' => FinanceEntryErrorCode.appReleaseUnavailable,
+  'APP_RELEASE_NOT_FOUND' => FinanceEntryErrorCode.appReleaseNotFound,
   'AUTHENTICATION_UNAVAILABLE' =>
     FinanceEntryErrorCode.authenticationUnavailable,
   'FINANCE_PERSISTENCE_UNAVAILABLE' =>
@@ -2344,6 +2444,7 @@ enum _ContractKind {
   analytics,
   profile,
   textEntry,
+  appRelease,
 }
 
 final class _ErrorDetail {

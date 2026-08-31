@@ -1377,6 +1377,16 @@ typedef _CommitHandler =
 final class _FakeFinanceEntryRepository
     implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate() =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<void>> downloadAppRelease({
+    required String savePath,
+    required void Function(int received, int total) onProgress,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
   createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft) =>
       throw UnimplementedError();

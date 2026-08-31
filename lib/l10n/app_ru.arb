@@ -1334,5 +1334,95 @@
   "plannedCostRecurrenceFailure": "Не удалось изменить повторяющуюся трату.",
   "@plannedCostRecurrenceFailure": {
     "description": "Repeating planned cost (ADR 0025)."
+  },
+  "appUpdateCheckAction": "Проверить обновления",
+  "@appUpdateCheckAction": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateCheckDescription": "Спросить сервер, вышла ли новая версия",
+  "@appUpdateCheckDescription": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateChecking": "Проверяем…",
+  "@appUpdateChecking": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateUpToDate": "У вас последняя версия.",
+  "@appUpdateUpToDate": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateAvailable": "Доступна версия {version}, {size}",
+  "@appUpdateAvailable": {
+    "description": "In-app update (ADR 0026).",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "appUpdateNotesLabel": "Что нового",
+  "@appUpdateNotesLabel": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateDownloadAction": "Скачать и установить",
+  "@appUpdateDownloadAction": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateDownloading": "Скачиваем… {percent}%",
+  "@appUpdateDownloading": {
+    "description": "In-app update (ADR 0026).",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "appUpdateHandedToInstaller": "Файл скачан и проверен. Подтвердите установку в системном окне.",
+  "@appUpdateHandedToInstaller": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateNeedsPermission": "Android просит разрешить установку из этого приложения. Это делается один раз.",
+  "@appUpdateNeedsPermission": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdatePermissionAction": "Открыть настройки",
+  "@appUpdatePermissionAction": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateFailedUnreachable": "Сервер недоступен. Попробуйте позже.",
+  "@appUpdateFailedUnreachable": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateFailedServer": "Сервер не смог ответить про обновления.",
+  "@appUpdateFailedServer": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateFailedCorrupted": "Файл скачался повреждённым и удалён. Попробуйте ещё раз.",
+  "@appUpdateFailedCorrupted": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateFailedInstaller": "Не удалось открыть установщик Android.",
+  "@appUpdateFailedInstaller": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateFailedAuth": "Нужно войти заново.",
+  "@appUpdateFailedAuth": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateRetryAction": "Повторить",
+  "@appUpdateRetryAction": {
+    "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateMegabytes": "{megabytes} МБ",
+  "@appUpdateMegabytes": {
+    "description": "In-app update (ADR 0026).",
+    "placeholders": {
+      "megabytes": {
+        "type": "String"
+      }
+    }
   }
 }

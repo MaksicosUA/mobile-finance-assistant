@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/app_version.dart';
 import '../../../app/settings/settings_widgets.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_tokens.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../app_update/presentation/app_update_section.dart';
 import '../../finance_entry/domain/finance_entry_models.dart';
 import '../application/profile_controller.dart';
 
@@ -151,12 +151,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                Text(
-                  l10n.profileVersion(appVersion),
-                  key: const Key('profile-version'),
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                const AppUpdateSection(),
               ],
             ),
           ),

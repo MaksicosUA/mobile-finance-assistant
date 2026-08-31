@@ -73,6 +73,13 @@ abstract interface class FinanceEntryRepositoryClient {
     String? to,
   });
 
+  Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate();
+
+  Future<FinanceEntryResult<void>> downloadAppRelease({
+    required String savePath,
+    required void Function(int received, int total) onProgress,
+  });
+
   Future<FinanceEntryResult<UserProfile>> readProfile();
 
   Future<FinanceEntryResult<OperationProposal>> parseOperationText({
@@ -362,6 +369,27 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         period: period,
         from: from,
         to: to,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate() {
+    return _authorized(
+      (accessToken) => _api.readAppUpdate(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<void>> downloadAppRelease({
+    required String savePath,
+    required void Function(int received, int total) onProgress,
+  }) {
+    return _authorized(
+      (accessToken) => _api.downloadAppRelease(
+        accessToken: accessToken,
+        savePath: savePath,
+        onProgress: onProgress,
       ),
     );
   }

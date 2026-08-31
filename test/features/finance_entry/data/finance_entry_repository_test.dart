@@ -621,6 +621,18 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate({
+    required String accessToken,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<void>> downloadAppRelease({
+    required String accessToken,
+    required String savePath,
+    required void Function(int received, int total) onProgress,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
   createPlannedCostRecurrence({
     required String accessToken,

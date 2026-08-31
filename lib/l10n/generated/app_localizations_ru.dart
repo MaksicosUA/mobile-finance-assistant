@@ -1577,4 +1577,70 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get plannedCostRecurrenceFailure =>
       'Не удалось изменить повторяющуюся трату.';
+
+  @override
+  String get appUpdateCheckAction => 'Проверить обновления';
+
+  @override
+  String get appUpdateCheckDescription =>
+      'Спросить сервер, вышла ли новая версия';
+
+  @override
+  String get appUpdateChecking => 'Проверяем…';
+
+  @override
+  String get appUpdateUpToDate => 'У вас последняя версия.';
+
+  @override
+  String appUpdateAvailable(String version, String size) {
+    return 'Доступна версия $version, $size';
+  }
+
+  @override
+  String get appUpdateNotesLabel => 'Что нового';
+
+  @override
+  String get appUpdateDownloadAction => 'Скачать и установить';
+
+  @override
+  String appUpdateDownloading(int percent) {
+    return 'Скачиваем… $percent%';
+  }
+
+  @override
+  String get appUpdateHandedToInstaller =>
+      'Файл скачан и проверен. Подтвердите установку в системном окне.';
+
+  @override
+  String get appUpdateNeedsPermission =>
+      'Android просит разрешить установку из этого приложения. Это делается один раз.';
+
+  @override
+  String get appUpdatePermissionAction => 'Открыть настройки';
+
+  @override
+  String get appUpdateFailedUnreachable =>
+      'Сервер недоступен. Попробуйте позже.';
+
+  @override
+  String get appUpdateFailedServer => 'Сервер не смог ответить про обновления.';
+
+  @override
+  String get appUpdateFailedCorrupted =>
+      'Файл скачался повреждённым и удалён. Попробуйте ещё раз.';
+
+  @override
+  String get appUpdateFailedInstaller =>
+      'Не удалось открыть установщик Android.';
+
+  @override
+  String get appUpdateFailedAuth => 'Нужно войти заново.';
+
+  @override
+  String get appUpdateRetryAction => 'Повторить';
+
+  @override
+  String appUpdateMegabytes(String megabytes) {
+    return '$megabytes МБ';
+  }
 }
