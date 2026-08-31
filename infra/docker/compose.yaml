@@ -1,0 +1,87 @@
+# The deployed system: PostgreSQL, the API, the projector, and TLS in front.
+#
+# Everything except Caddy is bound to the internal network only. The database
+# is never published to a port on the host, because a financial store that
+# listens on the internet is one firewall mistake away from being read.
+name: mfa
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      # Deterministic collation, so an index built here sorts the way the
+      # application expects wherever it is restored.
+      LANG: C.UTF-8
+    volumes:
+      - ${MFA_DATA_ROOT:?}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # A one-shot that must finish before the API serves anything: the schema is
+  # part of the deployment, not something the first request discovers missing.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    image: mfa-api:local
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MFA_DATABASE_URL: ${MFA_DATABASE_URL:?}
+    # The migration environment reads MFA_DATABASE_URL itself and refuses
+    # anything that is not asyncpg, so there is nothing to pass on the command
+    # line and no second place a URL could disagree.
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+
+  api:
+    image: mfa-api:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      MFA_DATABASE_URL: ${MFA_DATABASE_URL:?}
+      MFA_AUTH_JWT_SECRET: ${MFA_AUTH_JWT_SECRET:?}
+      MFA_AUTH_REGISTRATION_ALLOWLIST: ${MFA_AUTH_REGISTRATION_ALLOWLIST-}
+    expose:
+      - "8000"
+
+  # Its own process by design (ADR 0012): a projector that shares the API's
+  # lifetime cannot be restarted, scaled, or paused without taking reads down.
+  projector:
+    image: mfa-api:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      MFA_DATABASE_URL: ${MFA_DATABASE_URL:?}
+    command: ["python", "-m", "mobile_finance_api.projector_runtime"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MFA_DOMAIN: ${MFA_DOMAIN:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${MFA_DATA_ROOT:?}/caddy/data:/data
+      - ${MFA_DATA_ROOT:?}/caddy/config:/config

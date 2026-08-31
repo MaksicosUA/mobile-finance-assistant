@@ -1,0 +1,23 @@
+# TLS is automatic: Caddy obtains and renews the certificate itself, which is
+# why port 80 stays open alongside 443.
+{$MFA_DOMAIN} {
+	encode zstd gzip
+
+	# The API is the only thing behind this name. There is no static site to
+	# serve and no directory to browse.
+	reverse_proxy api:8000
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Financial requests carry account data; the paths and statuses are enough
+	# to debug a deployment, and the bodies are nobody's business.
+	log {
+		output stdout
+		format console
+	}
+}

@@ -64,3 +64,6 @@ app.*.map.json
 # Golden-test diff artifacts. Written only when a golden fails, and
 # regenerated every run; committing them once put 30 stale PNGs in the tree.
 **/test/**/failures/
+
+# Deployment secrets live on the host, never here.
+infra/docker/.env
