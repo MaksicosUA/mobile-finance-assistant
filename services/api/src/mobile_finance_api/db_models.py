@@ -1224,7 +1224,11 @@ class PlannedCostAuditRow(Base):
         CheckConstraint(
             "event_type IN ('planned_cost_created', 'planned_cost_confirmed', "
             "'planned_cost_skipped', 'planned_cost_cancelled') "
-            "AND actor_type = 'user'",
+            # 'recurrence' only ever creates. Every transition is still someone
+            # deciding something, and the trail must not claim a user typed a
+            # row a rule generated on its own (ADR 0025).
+            "AND ((actor_type = 'user') OR "
+            "(actor_type = 'recurrence' AND event_type = 'planned_cost_created'))",
             name="ck_planned_cost_audit_event_type",
         ),
         # Creation has no predecessor; every transition starts from 'planned'

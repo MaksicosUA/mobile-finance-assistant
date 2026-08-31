@@ -41,6 +41,21 @@ class _FailingHeartbeatLease:
             self.active_calls -= 1
 
 
+class _StubRecurrences:
+    """Stands in for the materialiser the projector leader now also runs.
+
+    Recurrence has its own tests; here it only has to be present and quiet, so
+    a cycle's shape can still be asserted without a database.
+    """
+
+    def __init__(self, **kwargs: object) -> None:
+        del kwargs
+
+    async def materialise_active_rules(self, **kwargs: object) -> int:
+        del kwargs
+        return 0
+
+
 class _HealthyBlockingLease:
     def __init__(self) -> None:
         self.calls = 0
@@ -160,6 +175,11 @@ def test_successful_one_shot_cooperatively_stops_heartbeat_before_lease_cleanup(
     )
     monkeypatch.setattr(projector_runtime, "require_database_url", lambda: "unused")
     monkeypatch.setattr(projector_runtime, "PostgresHomeProjector", _Projector)
+    monkeypatch.setattr(
+        projector_runtime,
+        "PostgresPlannedCostRecurrenceRepository",
+        _StubRecurrences,
+    )
     monkeypatch.setattr(projector_runtime, "prune_home_revisions", prune)
     monkeypatch.setattr(
         projector_runtime,
@@ -235,6 +255,11 @@ def test_one_shot_heartbeat_loss_cancels_projection_before_dispose(
     )
     monkeypatch.setattr(projector_runtime, "require_database_url", lambda: "unused")
     monkeypatch.setattr(projector_runtime, "PostgresHomeProjector", _Projector)
+    monkeypatch.setattr(
+        projector_runtime,
+        "PostgresPlannedCostRecurrenceRepository",
+        _StubRecurrences,
+    )
     monkeypatch.setattr(
         projector_runtime,
         "acquire_projector_leadership",
@@ -323,6 +348,11 @@ def test_continuous_runtime_reacquires_after_heartbeat_loss(
         monkeypatch.setattr(projector_runtime, "PostgresHomeProjector", _Projector)
         monkeypatch.setattr(
             projector_runtime,
+            "PostgresPlannedCostRecurrenceRepository",
+            _StubRecurrences,
+        )
+        monkeypatch.setattr(
+            projector_runtime,
             "acquire_projector_leadership",
             leadership,
         )
@@ -339,6 +369,7 @@ def test_continuous_runtime_reacquires_after_heartbeat_loss(
                 heartbeat_stale_seconds=0.03,
                 maximum_lag_seconds=10,
                 retention_seconds=10,
+                materialise_seconds=10,
                 retry_policy=EventRetryPolicy(),
                 retention_policy=RevisionRetentionPolicy(),
             )
@@ -467,7 +498,9 @@ def test_failed_continuous_cycle_advances_backoff_exactly_once(
                 heartbeat_stale_seconds=1,
                 maximum_lag_seconds=1,
                 retention_seconds=1,
+                materialise_seconds=1,
                 session_factory=object(),  # type: ignore[arg-type]
+                recurrences=_StubRecurrences(),  # type: ignore[arg-type]
                 retention_policy=RevisionRetentionPolicy(),
             )
         )

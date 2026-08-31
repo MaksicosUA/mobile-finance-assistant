@@ -16,12 +16,16 @@ from .goal_core import GoalCore
 from .main import create_app
 from .passwords import PasswordService
 from .planned_cost_core import PlannedCostCore
+from .planned_cost_recurrence_core import PlannedCostRecurrenceCore
 from .postgres_analytics_repository import PostgresAnalyticsRepository
 from .postgres_category_repository import PostgresCategoryRepository
 from .postgres_finance_account_repository import PostgresFinanceAccountRepository
 from .postgres_finance_repository import PostgresFinanceOperationRepository
 from .postgres_goal_repository import PostgresGoalRepository
 from .postgres_home_repository import PostgresHomeRepository
+from .postgres_planned_cost_recurrence_repository import (
+    PostgresPlannedCostRecurrenceRepository,
+)
 from .postgres_planned_cost_repository import PostgresPlannedCostRepository
 from .postgres_profile_repository import PostgresProfileRepository
 from .tokens import AccessTokenCodec
@@ -62,6 +66,11 @@ app = create_app(
     ),
     planned_cost_core=PlannedCostCore(
         repository=PostgresPlannedCostRepository(
+            session_factory=session_factory,
+        ),
+    ),
+    planned_cost_recurrence_core=PlannedCostRecurrenceCore(
+        repository=PostgresPlannedCostRecurrenceRepository(
             session_factory=session_factory,
         ),
     ),

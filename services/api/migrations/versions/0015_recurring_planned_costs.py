@@ -204,6 +204,23 @@ def upgrade() -> None:
         ["user_id", "created_at"],
     )
 
+    # A generated instance is written by the rule, not by a person typing. The
+    # trail should say so rather than credit the user with a row they never
+    # touched; a transition still always has a human behind it.
+    op.drop_constraint(
+        "ck_planned_cost_audit_event_type",
+        "planned_cost_audit_events",
+        type_="check",
+    )
+    op.create_check_constraint(
+        "ck_planned_cost_audit_event_type",
+        "planned_cost_audit_events",
+        "event_type IN ('planned_cost_created', 'planned_cost_confirmed', "
+        "'planned_cost_skipped', 'planned_cost_cancelled') "
+        "AND ((actor_type = 'user') OR "
+        "(actor_type = 'recurrence' AND event_type = 'planned_cost_created'))",
+    )
+
     op.add_column(
         "planned_costs",
         sa.Column("category_id", sa.Uuid(as_uuid=True), nullable=True),
@@ -269,6 +286,18 @@ def downgrade() -> None:
     if has_linked_plans:
         raise RuntimeError("Refusing lossy downgrade: categorised plans exist")
 
+    op.drop_constraint(
+        "ck_planned_cost_audit_event_type",
+        "planned_cost_audit_events",
+        type_="check",
+    )
+    op.create_check_constraint(
+        "ck_planned_cost_audit_event_type",
+        "planned_cost_audit_events",
+        "event_type IN ('planned_cost_created', 'planned_cost_confirmed', "
+        "'planned_cost_skipped', 'planned_cost_cancelled') "
+        "AND actor_type = 'user'",
+    )
     op.drop_index("ix_planned_costs_recurrence", table_name="planned_costs")
     op.drop_index(
         "uq_planned_costs_recurrence_occurrence",
