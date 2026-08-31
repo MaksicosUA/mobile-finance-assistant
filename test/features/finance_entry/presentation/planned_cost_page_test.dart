@@ -21,6 +21,7 @@ const _accountId = '22222222-2222-4222-8222-222222222222';
 const _accountCommandId = '33333333-3333-4333-8333-333333333333';
 const _planCommandId = '44444444-4444-4444-8444-444444444444';
 const _planId = '55555555-5555-4555-8555-555555555555';
+const _recurrenceId = '66666666-6666-4666-8666-666666666666';
 
 void main() {
   testWidgets('editing form fits 360 dp at 200 percent text scale', (
@@ -213,6 +214,271 @@ void main() {
     );
     expect(find.byKey(const Key('planned-cost-list-empty')), findsOneWidget);
   });
+
+  // --- repeating plans (ADR 0025) --------------------------------------------
+
+  testWidgets('the repeat switch turns the form into a series', (tester) async {
+    final repository = _FakeRepository(
+      createRecurrenceResult: FinanceEntrySuccess<PlannedCostRecurrenceCreated>(
+        requestId: 'req_synthetic_recurrence',
+        value: PlannedCostRecurrenceCreated(
+          recurrence: _recurrence(),
+          idempotentReplay: false,
+          occurrences: const ['2026-08-31', '2026-09-30', '2026-10-31'],
+        ),
+      ),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('planned-cost-title')),
+      'Аренда',
+    );
+    await tester.enterText(
+      find.byKey(const Key('planned-cost-amount')),
+      '800.00',
+    );
+    await _tapAt(tester, const Key('planned-cost-repeat'));
+    await _tapAt(tester, const Key('planned-cost-last-day'));
+    await _tapAt(tester, const Key('planned-cost-submit'));
+
+    expect(repository.drafts, isEmpty);
+    expect(repository.recurrenceDrafts, hasLength(1));
+    // «The last day of the month» is stored as 31: under clamping the two are
+    // the same schedule, so there is no second concept in the wire format.
+    expect(repository.recurrenceDrafts.single.dayOfMonth, 31);
+    expect(repository.recurrenceDrafts.single.toJson()['frequency'], 'monthly');
+  });
+
+  testWidgets('an accepted series shows where the anchor lands', (
+    tester,
+  ) async {
+    final repository = _FakeRepository(
+      createRecurrenceResult: FinanceEntrySuccess<PlannedCostRecurrenceCreated>(
+        requestId: 'req_synthetic_recurrence',
+        value: PlannedCostRecurrenceCreated(
+          recurrence: _recurrence(),
+          idempotentReplay: false,
+          occurrences: const ['2026-01-31', '2026-02-28', '2026-03-31'],
+        ),
+      ),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('planned-cost-title')),
+      'Аренда',
+    );
+    await tester.enterText(
+      find.byKey(const Key('planned-cost-amount')),
+      '800.00',
+    );
+    await _tapAt(tester, const Key('planned-cost-repeat'));
+    await _tapAt(tester, const Key('planned-cost-submit'));
+
+    expect(
+      find.byKey(const Key('planned-cost-recurrence-accepted')),
+      findsOneWidget,
+    );
+    // February is on screen before February happens. That is the point of
+    // reporting the dates at all.
+    expect(
+      find.byKey(const Key('recurrence-occurrence-2026-02-28')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'a short-month warning appears only for an anchor past the 28th',
+    (tester) async {
+      await _pumpPage(tester, repository: _FakeRepository());
+
+      await _tapAt(tester, const Key('planned-cost-repeat'));
+      // The clock is 9 August, so the anchor is the 9th: nothing to warn about.
+      expect(
+        find.byKey(const Key('planned-cost-short-month-hint')),
+        findsNothing,
+      );
+
+      await _tapAt(tester, const Key('planned-cost-last-day'));
+      await tester.ensureVisible(
+        find.byKey(const Key('planned-cost-short-month-hint')),
+      );
+      expect(
+        find.byKey(const Key('planned-cost-short-month-hint')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('skipping is offered on a series instance and not on a one-off', (
+    tester,
+  ) async {
+    const otherPlanId = '77777777-7777-4777-8777-777777777777';
+    final repository = _FakeRepository(
+      plans: const [
+        PlannedCost(
+          plannedCostId: _planId,
+          accountId: _accountId,
+          amount: '800.00',
+          currency: 'EUR',
+          title: 'Аренда',
+          plannedOn: '2026-09-30',
+          status: 'planned',
+          isDue: false,
+        ),
+        PlannedCost(
+          plannedCostId: otherPlanId,
+          accountId: _accountId,
+          amount: '40.00',
+          currency: 'EUR',
+          title: 'Страховка',
+          plannedOn: '2026-09-15',
+          status: 'planned',
+          isDue: false,
+        ),
+      ],
+      recurrences: [
+        PlannedCostRecurrenceListItem(
+          recurrence: _recurrence(),
+          upcoming: const [
+            PlannedCostRecurrenceInstance(
+              plannedCostId: _planId,
+              plannedOn: '2026-09-30',
+            ),
+          ],
+        ),
+      ],
+      settleResult: FinanceEntrySuccess<PlannedCostSettled>(
+        requestId: 'req_synthetic_planned_cost',
+        value: const PlannedCostSettled(
+          plannedCost: PlannedCost(
+            plannedCostId: _planId,
+            accountId: _accountId,
+            amount: '800.00',
+            currency: 'EUR',
+            title: 'Аренда',
+            plannedOn: '2026-09-30',
+            status: 'skipped',
+            isDue: false,
+          ),
+          idempotentReplay: false,
+        ),
+      ),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    // A one-off plan gets no skip button: skipping it would mean exactly what
+    // cancelling it means.
+    expect(
+      find.byKey(const Key('planned-cost-skip-$otherPlanId')),
+      findsNothing,
+    );
+
+    await _tapAt(tester, const Key('planned-cost-skip-$_planId'));
+
+    expect(repository.settled, [_planId]);
+    expect(repository.transitions, [PlannedCostTransition.skip]);
+  });
+
+  testWidgets('ending a series asks first and then drops the rule', (
+    tester,
+  ) async {
+    final repository = _FakeRepository(
+      recurrences: [
+        PlannedCostRecurrenceListItem(
+          recurrence: _recurrence(),
+          upcoming: const [],
+        ),
+      ],
+      endRecurrenceResult: FinanceEntrySuccess<PlannedCostRecurrenceEnded>(
+        requestId: 'req_synthetic_recurrence',
+        value: PlannedCostRecurrenceEnded(
+          recurrence: _recurrence(status: PlannedCostRecurrenceStatus.ended),
+          cancelledOccurrences: 2,
+        ),
+      ),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await _tapAt(tester, const Key('end-recurrence-$_recurrenceId'));
+    // Ending a series withdraws future payments, so it is never one tap.
+    expect(repository.endedRecurrences, isEmpty);
+    await tester.tap(find.byKey(const Key('confirm-end-recurrence')));
+    await tester.pumpAndSettle();
+
+    expect(repository.endedRecurrences, [_recurrenceId]);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('planned-cost-recurrence-empty')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.byKey(const Key('planned-cost-recurrence-empty')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a repeating form fits 360 dp at 200 percent text scale', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await _pumpPage(
+      tester,
+      repository: _FakeRepository(
+        recurrences: [
+          PlannedCostRecurrenceListItem(
+            recurrence: _recurrence(),
+            upcoming: const [],
+          ),
+        ],
+      ),
+      textScale: 2,
+    );
+
+    await _tapAt(tester, const Key('planned-cost-repeat'));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('end-recurrence-$_recurrenceId')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(tester.takeException(), isNull);
+  });
+}
+
+PlannedCostRecurrence _recurrence({
+  PlannedCostRecurrenceStatus status = PlannedCostRecurrenceStatus.active,
+}) {
+  return PlannedCostRecurrence(
+    recurrenceId: _recurrenceId,
+    accountId: _accountId,
+    amount: '800.00',
+    currency: 'EUR',
+    title: 'Аренда',
+    dayOfMonth: 31,
+    startsOn: '2026-08-09',
+    status: status,
+  );
+}
+
+/// Scrolls a control into view before tapping it.
+///
+/// The form is taller than a phone once the repeat controls and both lists are
+/// on it, and a tap on an off-screen widget is not a user's experience of the
+/// screen.
+Future<void> _tapAt(WidgetTester tester, Key key) async {
+  await tester.scrollUntilVisible(
+    find.byKey(key),
+    120,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.ensureVisible(find.byKey(key));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(key));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pumpPage(
@@ -257,6 +523,36 @@ Future<void> _pumpPage(
 }
 
 final class _FakeRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft) async {
+    recurrenceDrafts.add(draft);
+    final result = createRecurrenceResult;
+    if (result == null) throw StateError('No recurrence result configured.');
+    return result;
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences() async {
+    return FinanceEntrySuccess<PlannedCostRecurrenceList>(
+      requestId: 'req_synthetic_planned_cost',
+      value: PlannedCostRecurrenceList(recurrences: recurrences),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence(
+    String recurrenceId,
+    EndPlannedCostRecurrenceCommand command,
+  ) async {
+    endedRecurrences.add(recurrenceId);
+    final result = endRecurrenceResult;
+    if (result == null) throw StateError('No end result configured.');
+    return result;
+  }
+
   @override
   Future<FinanceEntryResult<OperationCorrected>> correctOperation(
     OperationCorrectionCommand command,
@@ -348,15 +644,25 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
     this.createResult,
     this.plans = const [],
     this.settleResult,
+    this.recurrences = const [],
+    this.createRecurrenceResult,
+    this.endRecurrenceResult,
   });
 
   final List<PlannedCost> plans;
   final FinanceEntryResult<PlannedCostSettled>? settleResult;
   final List<String> settled = [];
+  final List<PlannedCostTransition> transitions = [];
   final bool hasAccount;
   final FinanceEntryFailure? listFailure;
   final FinanceEntryResult<PlannedCostCreated>? createResult;
   final List<PlannedCostDraft> drafts = [];
+  final List<PlannedCostRecurrenceListItem> recurrences;
+  final FinanceEntryResult<PlannedCostRecurrenceCreated>?
+  createRecurrenceResult;
+  final FinanceEntryResult<PlannedCostRecurrenceEnded>? endRecurrenceResult;
+  final List<PlannedCostRecurrenceDraft> recurrenceDrafts = [];
+  final List<String> endedRecurrences = [];
   int listCalls = 0;
   @override
   Future<FinanceEntryResult<PlannedCostList>> listPlannedCosts() async {
@@ -372,6 +678,7 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
     PlannedCostTransitionCommand command,
   ) async {
     settled.add(plannedCostId);
+    transitions.add(command.transition);
     final result = settleResult;
     if (result == null) throw UnimplementedError();
     return result;

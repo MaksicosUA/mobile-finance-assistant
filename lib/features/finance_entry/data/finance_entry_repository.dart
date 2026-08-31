@@ -38,6 +38,18 @@ abstract interface class FinanceEntryRepositoryClient {
     PlannedCostTransitionCommand command,
   );
 
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft);
+
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences();
+
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence(
+    String recurrenceId,
+    EndPlannedCostRecurrenceCommand command,
+  );
+
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories();
 
   Future<FinanceEntryResult<OperationHistoryList>> listOperations({
@@ -221,6 +233,43 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
       (accessToken) => _api.transitionPlannedCost(
         accessToken: accessToken,
         plannedCostId: plannedCostId,
+        command: command,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft) {
+    // Like a one-off plan, a rule is a forecast and needs no commit preflight:
+    // nothing it writes changes the authoritative balance (ADR 0018, 0025).
+    return _authorized(
+      (accessToken) => _api.createPlannedCostRecurrence(
+        accessToken: accessToken,
+        draft: draft,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences() {
+    return _authorized(
+      (accessToken) =>
+          _api.listPlannedCostRecurrences(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence(
+    String recurrenceId,
+    EndPlannedCostRecurrenceCommand command,
+  ) {
+    return _authorized(
+      (accessToken) => _api.endPlannedCostRecurrence(
+        accessToken: accessToken,
+        recurrenceId: recurrenceId,
         command: command,
       ),
     );

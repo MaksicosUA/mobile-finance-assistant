@@ -321,6 +321,22 @@ GoalContribution _contribution(GoalContributionCommand command) =>
 
 final class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences() => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence(
+    String recurrenceId,
+    EndPlannedCostRecurrenceCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<OperationCorrected>> correctOperation(
     OperationCorrectionCommand command,
   ) => throw UnimplementedError();

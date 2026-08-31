@@ -219,6 +219,22 @@ Future<void> _pumpPage(
 }
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences() => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence(
+    String recurrenceId,
+    EndPlannedCostRecurrenceCommand command,
+  ) => throw UnimplementedError();
+
   _FakeRepository({this.listFailure, this.writeFailure});
 
   final FinanceEntryFailureKind? listFailure;

@@ -33,6 +33,12 @@ enum FinanceEntryErrorCode {
   plannedCostRejected,
   plannedCostNotFound,
   plannedCostPersistenceUnavailable,
+  // A repeating plan is its own contract (ADR 0025): the rule is refused or
+  // missing, not the instance it would have generated.
+  malformedRecurrence,
+  recurrenceRejected,
+  recurrenceNotFound,
+  recurrencePersistenceUnavailable,
   malformedGoalCommand,
   goalRejected,
   goalNotFound,

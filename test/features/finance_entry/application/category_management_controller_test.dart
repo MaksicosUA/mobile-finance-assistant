@@ -302,6 +302,22 @@ ProviderContainer _container(_FakeRepository repository) {
 /// Applies each accepted write the way the server would, so the controller is
 /// tested against the state it will actually be handed back.
 class _FakeRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences() => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence(
+    String recurrenceId,
+    EndPlannedCostRecurrenceCommand command,
+  ) => throw UnimplementedError();
+
   _FakeRepository({
     required ManagedCategoryList catalogue,
     this.listFailure,

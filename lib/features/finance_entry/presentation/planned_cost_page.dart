@@ -112,6 +112,11 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
         plannedCost,
         homeStatus,
       ),
+      PlannedCostRecurrenceAccepted() => _recurrenceAccepted(
+        context,
+        l10n,
+        state,
+      ),
       PlannedCostEditing() => _editing(context, l10n, state),
     };
   }
@@ -133,6 +138,7 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
   ) {
     final materialL10n = MaterialLocalizations.of(context);
     final message = _failureMessage(l10n, state);
+    final seriesInstances = state.seriesInstanceIds;
     return ListView(
       key: const Key('planned-cost-editing'),
       padding: const EdgeInsets.symmetric(vertical: 24),
@@ -163,7 +169,11 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
           onChanged: ref.read(plannedCostControllerProvider.notifier).setAmount,
         ),
         const SizedBox(height: 24),
-        Text(l10n.plannedCostDateLabel),
+        Text(
+          state.repeats
+              ? l10n.plannedCostRepeatDayLabel
+              : l10n.plannedCostDateLabel,
+        ),
         const SizedBox(height: 8),
         // Wrap, not Row: at 200% text scale the date and the button do not fit
         // on one 360 dp line, and clipping a control is not an option.
@@ -186,10 +196,48 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        SwitchListTile.adaptive(
+          key: const Key('planned-cost-repeat'),
+          contentPadding: EdgeInsets.zero,
+          value: state.repeats,
+          onChanged: state.isSubmitting
+              ? null
+              : ref.read(plannedCostControllerProvider.notifier).setRepeats,
+          title: Text(l10n.plannedCostRepeatToggle),
+        ),
+        if (state.repeats) ...[
+          SwitchListTile.adaptive(
+            key: const Key('planned-cost-last-day'),
+            contentPadding: EdgeInsets.zero,
+            value: state.lastDayOfMonth,
+            onChanged: state.isSubmitting
+                ? null
+                : ref
+                      .read(plannedCostControllerProvider.notifier)
+                      .setLastDayOfMonth,
+            title: Text(l10n.plannedCostRepeatLastDay),
+          ),
+          // Said before it happens rather than discovered in February.
+          if (state.dayOfMonth > 28)
+            Text(
+              key: const Key('planned-cost-short-month-hint'),
+              l10n.plannedCostRepeatShortMonthHint,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+        ],
         if (message != null) ...[
           const SizedBox(height: 24),
           _Message(key: const Key('planned-cost-message'), text: message),
         ],
+        const SizedBox(height: 24),
+        FilledButton(
+          key: const Key('planned-cost-submit'),
+          onPressed: state.isSubmitting
+              ? null
+              : () => ref.read(plannedCostControllerProvider.notifier).submit(),
+          child: Text(l10n.plannedCostSubmitAction),
+        ),
         const SizedBox(height: 32),
         Text(
           l10n.plannedCostListTitle,
@@ -208,32 +256,67 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
             l10n.plannedCostListEmpty,
             key: const Key('planned-cost-list-empty'),
           )
-        else
-          ...state.plans.map(
-            (plan) => _PlanRow(
+        else ...[
+          ...state.plans.map((plan) {
+            final busy = state.settlingId != null || state.isSubmitting;
+            // Skipping is offered only where it means something different from
+            // cancelling: on an instance a rule generated (ADR 0025).
+            final repeats = seriesInstances.contains(plan.plannedCostId);
+            return _PlanRow(
               key: Key('planned-cost-plan-${plan.plannedCostId}'),
               plan: plan,
               isSettling: state.settlingId == plan.plannedCostId,
-              onCancel: state.settlingId != null || state.isSubmitting
+              belongsToSeries: repeats,
+              onCancel: busy
                   ? null
                   : () => ref
                         .read(plannedCostControllerProvider.notifier)
                         .cancelPlan(plan.plannedCostId),
-              onConfirm: state.settlingId != null || state.isSubmitting
+              onSkip: busy || !repeats
+                  ? null
+                  : () => ref
+                        .read(plannedCostControllerProvider.notifier)
+                        .skipPlan(plan.plannedCostId),
+              onConfirm: busy
                   ? null
                   : () => ref
                         .read(plannedCostControllerProvider.notifier)
                         .confirmPlan(plan),
+            );
+          }),
+          if (seriesInstances.isNotEmpty)
+            Text(
+              l10n.plannedCostSkipHint,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+        ],
+        const SizedBox(height: 32),
+        Text(
+          l10n.plannedCostRecurrenceListTitle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        if (state.recurrences.isEmpty)
+          Text(
+            l10n.plannedCostRecurrenceListEmpty,
+            key: const Key('planned-cost-recurrence-empty'),
+          )
+        else
+          ...state.recurrences.map(
+            (item) => _RecurrenceRow(
+              key: Key('recurrence-${item.recurrence.recurrenceId}'),
+              recurrence: item.recurrence,
+              isEnding:
+                  state.endingRecurrenceId == item.recurrence.recurrenceId,
+              onEnd: state.endingRecurrenceId != null || state.isSubmitting
+                  ? null
+                  : () => _confirmEndSeries(
+                      context,
+                      l10n,
+                      item.recurrence.recurrenceId,
+                    ),
             ),
           ),
-        const SizedBox(height: 24),
-        FilledButton(
-          key: const Key('planned-cost-submit'),
-          onPressed: state.isSubmitting
-              ? null
-              : () => ref.read(plannedCostControllerProvider.notifier).submit(),
-          child: Text(l10n.plannedCostSubmitAction),
-        ),
       ],
     );
   }
@@ -278,6 +361,91 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
     );
   }
 
+  Widget _recurrenceAccepted(
+    BuildContext context,
+    AppLocalizations l10n,
+    PlannedCostRecurrenceAccepted state,
+  ) {
+    final materialL10n = MaterialLocalizations.of(context);
+    return ListView(
+      key: const Key('planned-cost-recurrence-accepted'),
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      children: [
+        Text(
+          l10n.plannedCostRecurrenceAcceptedTitle,
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        Text(l10n.plannedCostRecurrenceAcceptedDescription),
+        const SizedBox(height: 16),
+        Text(state.recurrence.title),
+        Text(_scheduleLabel(l10n, state.recurrence)),
+        const SizedBox(height: 16),
+        // The dates, not just the rule: this is where someone sees what the
+        // 31st does to February, before February.
+        Text(
+          l10n.plannedCostRepeatFirstDatesTitle,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        ...state.occurrences.map((occurrence) {
+          final parsed = DateTime.tryParse(occurrence);
+          return Text(
+            key: Key('recurrence-occurrence-$occurrence'),
+            parsed == null ? occurrence : materialL10n.formatMediumDate(parsed),
+          );
+        }),
+        const SizedBox(height: 16),
+        Text(
+          key: const Key('planned-cost-home-status'),
+          switch (state.homeStatus) {
+            PlannedCostHomeStatus.pending => l10n.plannedCostHomePending,
+            PlannedCostHomeStatus.updated => l10n.plannedCostHomeUpdated,
+            PlannedCostHomeStatus.projectionDelayed =>
+              l10n.plannedCostHomeDelayed,
+            PlannedCostHomeStatus.authenticationRequired ||
+            PlannedCostHomeStatus.failed => l10n.plannedCostHomeFailed,
+          },
+        ),
+        const SizedBox(height: 24),
+        FilledButton(
+          key: const Key('planned-cost-done'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.plannedCostDoneAction),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmEndSeries(
+    BuildContext context,
+    AppLocalizations l10n,
+    String recurrenceId,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.plannedCostRecurrenceEndDialogTitle),
+        content: Text(l10n.plannedCostRecurrenceEndDialogBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.cancelAction),
+          ),
+          FilledButton(
+            key: const Key('confirm-end-recurrence'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.plannedCostRecurrenceEndAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await ref
+        .read(plannedCostControllerProvider.notifier)
+        .endRecurrence(recurrenceId);
+  }
+
   Future<void> _pickDate(BuildContext context, PlannedCostEditing state) async {
     final selected = await showDatePicker(
       context: context,
@@ -298,6 +466,11 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
           return l10n.plannedCostIssueCurrencyMismatch;
         case PlannedCostIssueCode.unsupportedCurrency:
           return l10n.plannedCostIssueUnsupportedCurrency;
+        // Reachable only through a repeating plan, which is the first planned
+        // cost that can carry a catalogue link (ADR 0025).
+        case PlannedCostIssueCode.categoryUnavailable:
+        case PlannedCostIssueCode.categoryDirectionMismatch:
+          return l10n.plannedCostIssueCategoryUnavailable;
         case PlannedCostIssueCode.planBeforeAccountBaseline:
           return l10n.plannedCostIssueBeforeBaseline;
         case PlannedCostIssueCode.invalidLifecycleTransition:
@@ -317,14 +490,21 @@ class _PlanRow extends StatelessWidget {
   const _PlanRow({
     required this.plan,
     required this.isSettling,
+    required this.belongsToSeries,
     required this.onCancel,
+    required this.onSkip,
     required this.onConfirm,
     super.key,
   });
 
   final PlannedCost plan;
   final bool isSettling;
+
+  /// Whether a rule generated this instance. Only then does skipping mean
+  /// something other than cancelling.
+  final bool belongsToSeries;
   final VoidCallback? onCancel;
+  final VoidCallback? onSkip;
   final VoidCallback? onConfirm;
 
   @override
@@ -379,6 +559,12 @@ class _PlanRow extends StatelessWidget {
                 child: Text(l10n.plannedCostConfirmAction),
               ),
             ),
+            if (belongsToSeries)
+              TextButton(
+                key: Key('planned-cost-skip-${plan.plannedCostId}'),
+                onPressed: onSkip,
+                child: Text(l10n.plannedCostSkipAction),
+              ),
             Semantics(
               button: true,
               label: l10n.plannedCostCancelSemantics,
@@ -389,6 +575,68 @@ class _PlanRow extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+String _scheduleLabel(AppLocalizations l10n, PlannedCostRecurrence recurrence) {
+  // Under clamping these are the same schedule; the wording follows what the
+  // user chose rather than the number that was stored.
+  return recurrence.isLastDayOfMonth
+      ? l10n.plannedCostRecurrenceMonthlyLastDay
+      : l10n.plannedCostRecurrenceMonthlyOnDay(recurrence.dayOfMonth);
+}
+
+class _RecurrenceRow extends StatelessWidget {
+  const _RecurrenceRow({
+    required this.recurrence,
+    required this.isEnding,
+    required this.onEnd,
+    super.key,
+  });
+
+  final PlannedCostRecurrence recurrence;
+  final bool isEnding;
+  final VoidCallback? onEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 180,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(recurrence.title),
+                Text(
+                  _scheduleLabel(l10n, recurrence),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          Text('${recurrence.amount} ${recurrence.currency}'),
+          if (isEnding)
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+            )
+          else
+            TextButton(
+              key: Key('end-recurrence-${recurrence.recurrenceId}'),
+              onPressed: onEnd,
+              child: Text(l10n.plannedCostRecurrenceEndAction),
+            ),
         ],
       ),
     );

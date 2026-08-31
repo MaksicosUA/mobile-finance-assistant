@@ -89,9 +89,37 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     );
   }
 
+  /// Turns the form from a single payment into a repeating one (ADR 0025).
+  void setRepeats(bool value) {
+    final current = state;
+    if (_requestInFlight || current is! PlannedCostEditing) return;
+    _commandId = null;
+    state = current.copyWith(
+      repeats: value,
+      clearFailure: true,
+      issues: const [],
+    );
+  }
+
+  /// Anchors the series to the end of every month.
+  ///
+  /// Under clamping this is the same schedule as «the 31st», which is why it
+  /// stores 31 rather than introducing a second concept.
+  void setLastDayOfMonth(bool value) {
+    final current = state;
+    if (_requestInFlight || current is! PlannedCostEditing) return;
+    _commandId = null;
+    state = current.copyWith(
+      lastDayOfMonth: value,
+      clearFailure: true,
+      issues: const [],
+    );
+  }
+
   Future<void> submit() async {
     final current = state;
     if (_requestInFlight || current is! PlannedCostEditing) return;
+    if (current.repeats) return _submitRecurrence(current);
 
     late final PlannedCostDraft draft;
     try {
@@ -161,6 +189,177 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     }
   }
 
+  Future<void> _submitRecurrence(PlannedCostEditing current) async {
+    late final PlannedCostRecurrenceDraft draft;
+    try {
+      if (current.selectedDate.isBefore(current.earliestDate) ||
+          current.selectedDate.isAfter(current.latestDate)) {
+        throw const FormatException('Start date is outside local bounds.');
+      }
+      final commandId = _commandId ??= _newCommandId;
+      draft = PlannedCostRecurrenceDraft(
+        commandId: commandId,
+        accountId: current.account.accountId,
+        amount: _normalizedAmount(current.amount),
+        currency: current.account.currency,
+        title: current.title.trim(),
+        dayOfMonth: current.dayOfMonth,
+        startsOn: plannedCostWireDate(current.selectedDate),
+        requestedAt: plannedCostWireTimestamp(_now),
+      );
+      validatePlannedCostRecurrenceDraft(draft);
+    } on Object {
+      _commandId = null;
+      state = current.copyWith(failure: _invalidInputFailure());
+      return;
+    }
+
+    final requestGeneration = _beginRequest();
+    state = current.copyWith(
+      isSubmitting: true,
+      clearFailure: true,
+      issues: const [],
+    );
+    try {
+      final result = await _repository.createPlannedCostRecurrence(draft);
+      if (!_isCurrentRequest(requestGeneration)) return;
+      switch (result) {
+        case FinanceEntrySuccess(:final value):
+          _commandId = null;
+          state = PlannedCostRecurrenceAccepted(
+            recurrence: value.recurrence,
+            occurrences: value.occurrences,
+            homeStatus: PlannedCostHomeStatus.pending,
+          );
+          unawaited(_convergeHomeAfterAcceptedRecurrence(requestGeneration));
+        case FinanceEntryFailureResult(:final failure):
+          if (_requiresAuthentication(failure)) {
+            state = const PlannedCostAuthenticationRequired();
+            return;
+          }
+          state = current.copyWith(
+            isSubmitting: false,
+            failure: failure,
+            issues: failure.plannedCostIssues,
+          );
+      }
+    } on Object {
+      if (_isCurrentRequest(requestGeneration)) {
+        state = current.copyWith(
+          isSubmitting: false,
+          failure: _unexpectedFailure(),
+        );
+      }
+    } finally {
+      _endRequest(requestGeneration);
+    }
+  }
+
+  /// Skips one instance of a series.
+  ///
+  /// Different from cancelling: the rule keeps generating, and this month
+  /// simply will not happen. Offered only on an instance a rule produced,
+  /// because on a one-off plan it would mean exactly what cancel means.
+  Future<void> skipPlan(String plannedCostId) =>
+      _settlePlan(plannedCostId, PlannedCostTransition.skip);
+
+  /// Cancels one outstanding plan.
+  Future<void> cancelPlan(String plannedCostId) =>
+      _settlePlan(plannedCostId, PlannedCostTransition.cancel);
+
+  /// Ends a series: no further instances, and the untouched future ones are
+  /// withdrawn with it. Instances already due survive to be settled or skipped.
+  Future<void> endRecurrence(String recurrenceId) async {
+    final current = state;
+    if (_requestInFlight || current is! PlannedCostEditing) return;
+    if (current.endingRecurrenceId != null) return;
+
+    late final EndPlannedCostRecurrenceCommand command;
+    try {
+      command = EndPlannedCostRecurrenceCommand(
+        commandId: _newCommandId,
+        requestedAt: plannedCostWireTimestamp(_now),
+      );
+      validateEndPlannedCostRecurrence(command);
+      validateRecurrenceId(recurrenceId);
+    } on Object {
+      state = current.copyWith(failure: _invalidInputFailure());
+      return;
+    }
+
+    final requestGeneration = _beginRequest();
+    state = current.copyWith(
+      endingRecurrenceId: recurrenceId,
+      clearFailure: true,
+      issues: const [],
+    );
+    try {
+      final result = await _repository.endPlannedCostRecurrence(
+        recurrenceId,
+        command,
+      );
+      if (!_isCurrentRequest(requestGeneration)) return;
+      switch (result) {
+        case FinanceEntrySuccess():
+          final latest = state;
+          if (latest is! PlannedCostEditing) return;
+          final withdrawn = <String>{
+            for (final item in latest.recurrences)
+              if (item.recurrence.recurrenceId == recurrenceId)
+                for (final instance in item.upcoming) instance.plannedCostId,
+          };
+          state = latest.copyWith(
+            recurrences: latest.recurrences
+                .where((item) => item.recurrence.recurrenceId != recurrenceId)
+                .toList(growable: false),
+            clearEndingRecurrenceId: true,
+          );
+          // Re-read rather than guess which instances survived: an instance
+          // already due is left outstanding on purpose, and only the server
+          // knows which side of today each one fell on.
+          await _loadPlans(requestGeneration, keepOnFailure: withdrawn);
+          unawaited(_convergeHomeAfterSettledPlan());
+        case FinanceEntryFailureResult(:final failure):
+          if (_requiresAuthentication(failure)) {
+            state = const PlannedCostAuthenticationRequired();
+            return;
+          }
+          final latest = state;
+          if (latest is! PlannedCostEditing) return;
+          state = latest.copyWith(
+            failure: failure,
+            issues: failure.plannedCostIssues,
+            clearEndingRecurrenceId: true,
+          );
+      }
+    } on Object {
+      final latest = state;
+      if (_isCurrentRequest(requestGeneration) &&
+          latest is PlannedCostEditing) {
+        state = latest.copyWith(
+          failure: _unexpectedFailure(),
+          clearEndingRecurrenceId: true,
+        );
+      }
+    } finally {
+      _endRequest(requestGeneration);
+    }
+  }
+
+  Future<void> _convergeHomeAfterAcceptedRecurrence(
+    int requestGeneration,
+  ) async {
+    final status = await _homeStatusAfterWrite();
+    if (!_isCurrentRequest(requestGeneration)) return;
+    final current = state;
+    if (current is! PlannedCostRecurrenceAccepted) return;
+    state = PlannedCostRecurrenceAccepted(
+      recurrence: current.recurrence,
+      occurrences: current.occurrences,
+      homeStatus: status,
+    );
+  }
+
   Future<void> _load() async {
     if (_requestInFlight) return;
     final requestGeneration = _beginRequest();
@@ -179,6 +378,7 @@ class PlannedCostController extends Notifier<PlannedCostState> {
           }
           state = _editingState(value.account!);
           await _loadPlans(requestGeneration);
+          await _loadRecurrences(requestGeneration);
         case FinanceEntryFailureResult(:final failure):
           if (_requiresAuthentication(failure)) {
             state = const PlannedCostAuthenticationRequired();
@@ -195,12 +395,16 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     }
   }
 
-  /// Cancels one outstanding plan.
+  /// Moves one outstanding plan to a terminal status.
   ///
-  /// Cancel, not skip: with no recurrence yet the two would look identical to
-  /// a user, and cancel is what "this plan was wrong" means. Skip becomes
-  /// meaningful only once a rule generates instances.
-  Future<void> cancelPlan(String plannedCostId) async {
+  /// Cancel means the plan itself was wrong; skip means this one instance will
+  /// not happen and the rule continues. Until recurrence existed the two were
+  /// indistinguishable, which is why skip is only offered on an instance a rule
+  /// produced (ADR 0018, 0025).
+  Future<void> _settlePlan(
+    String plannedCostId,
+    PlannedCostTransition transition,
+  ) async {
     final current = state;
     if (_requestInFlight || current is! PlannedCostEditing) return;
     if (current.settlingId != null) return;
@@ -209,7 +413,7 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     try {
       command = PlannedCostTransitionCommand(
         commandId: _newCommandId,
-        transition: PlannedCostTransition.cancel,
+        transition: transition,
         requestedAt: plannedCostWireTimestamp(_now),
       );
       validatePlannedCostTransition(command);
@@ -235,11 +439,13 @@ class PlannedCostController extends Notifier<PlannedCostState> {
         case FinanceEntrySuccess():
           final latest = state;
           if (latest is! PlannedCostEditing) return;
-          // A settled plan stops being an obligation, so it leaves the list.
+          // A settled plan stops being an obligation, so it leaves the
+          // list — and the rule that owns it stops offering to skip it.
           state = latest.copyWith(
             plans: latest.plans
                 .where((plan) => plan.plannedCostId != plannedCostId)
                 .toList(growable: false),
+            recurrences: _withoutInstance(latest.recurrences, plannedCostId),
             clearSettlingId: true,
           );
           unawaited(_convergeHomeAfterSettledPlan());
@@ -446,7 +652,10 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     );
   }
 
-  Future<void> _loadPlans(int requestGeneration) async {
+  Future<void> _loadPlans(
+    int requestGeneration, {
+    Set<String> keepOnFailure = const <String>{},
+  }) async {
     try {
       final result = await _repository.listPlannedCosts();
       if (!_isCurrentRequest(requestGeneration)) return;
@@ -461,11 +670,63 @@ class PlannedCostController extends Notifier<PlannedCostState> {
           );
         case FinanceEntryFailureResult():
           // The list is secondary: failing to read it must not block planning.
+          // What it must not do either is leave instances on screen that the
+          // server has just withdrawn, so those are dropped locally.
+          if (keepOnFailure.isEmpty) return;
+          state = current.copyWith(
+            plans: current.plans
+                .where((plan) => !keepOnFailure.contains(plan.plannedCostId))
+                .toList(growable: false),
+          );
+      }
+    } on Object {
+      return;
+    }
+  }
+
+  /// Reads the user's rules with the instances each one owns.
+  ///
+  /// Secondary like the plan list: failing to read the rules must not stop
+  /// someone recording a plan, it only means no series is marked as such.
+  Future<void> _loadRecurrences(int requestGeneration) async {
+    try {
+      final result = await _repository.listPlannedCostRecurrences();
+      if (!_isCurrentRequest(requestGeneration)) return;
+      final current = state;
+      if (current is! PlannedCostEditing) return;
+      switch (result) {
+        case FinanceEntrySuccess(:final value):
+          state = current.copyWith(
+            recurrences: value.recurrences
+                .where(
+                  (item) =>
+                      item.recurrence.status ==
+                      PlannedCostRecurrenceStatus.active,
+                )
+                .toList(growable: false),
+          );
+        case FinanceEntryFailureResult():
           return;
       }
     } on Object {
       return;
     }
+  }
+
+  static List<PlannedCostRecurrenceListItem> _withoutInstance(
+    List<PlannedCostRecurrenceListItem> recurrences,
+    String plannedCostId,
+  ) {
+    return recurrences
+        .map(
+          (item) => PlannedCostRecurrenceListItem(
+            recurrence: item.recurrence,
+            upcoming: item.upcoming
+                .where((instance) => instance.plannedCostId != plannedCostId)
+                .toList(growable: false),
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<void> _convergeHomeAfterSettledPlan() async {
@@ -497,19 +758,23 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     );
   }
 
+  Future<PlannedCostHomeStatus> _homeStatusAfterWrite() async {
+    try {
+      return _homeStatus(
+        await ref
+            .read(homeControllerProvider.notifier)
+            .convergeAfterAcceptedWrite(),
+      );
+    } on Object {
+      return PlannedCostHomeStatus.failed;
+    }
+  }
+
   Future<void> _convergeHomeAfterAcceptedPlan(
     PlannedCost plannedCost,
     int requestGeneration,
   ) async {
-    PlannedCostHomeStatus homeStatus;
-    try {
-      final result = await ref
-          .read(homeControllerProvider.notifier)
-          .convergeAfterAcceptedWrite();
-      homeStatus = _homeStatus(result);
-    } on Object {
-      homeStatus = PlannedCostHomeStatus.failed;
-    }
+    final homeStatus = await _homeStatusAfterWrite();
     if (!_isCurrentRequest(requestGeneration)) return;
     final current = state;
     if (current is PlannedCostAccepted &&
