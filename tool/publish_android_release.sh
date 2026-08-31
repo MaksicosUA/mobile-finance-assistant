@@ -94,12 +94,14 @@ JSON
 
 echo "Publishing $version_name ($version_code), $size_bytes bytes"
 
-ssh "$MFA_RELEASE_HOST" "mkdir -p -- '$MFA_RELEASE_PATH'"
+ssh "$MFA_RELEASE_HOST" "mkdir -p -- '$MFA_RELEASE_PATH' && chmod 0755 -- '$MFA_RELEASE_PATH'"
 scp -q "$apk" "$MFA_RELEASE_HOST:$MFA_RELEASE_PATH/latest.apk.incoming"
-ssh "$MFA_RELEASE_HOST" "mv -f -- '$MFA_RELEASE_PATH/latest.apk.incoming' '$MFA_RELEASE_PATH/latest.apk'"
+# World-readable on purpose: the API container runs as its own unprivileged
+# user, and neither file is a secret — the APK is exactly what is distributed.
+ssh "$MFA_RELEASE_HOST" "chmod 0644 -- '$MFA_RELEASE_PATH/latest.apk.incoming' && mv -f -- '$MFA_RELEASE_PATH/latest.apk.incoming' '$MFA_RELEASE_PATH/latest.apk'"
 # Second, and only now: until this lands the old manifest still describes the
 # old file, and a device sees no update rather than a half-written one.
 scp -q "$manifest" "$MFA_RELEASE_HOST:$MFA_RELEASE_PATH/latest.json.incoming"
-ssh "$MFA_RELEASE_HOST" "mv -f -- '$MFA_RELEASE_PATH/latest.json.incoming' '$MFA_RELEASE_PATH/latest.json'"
+ssh "$MFA_RELEASE_HOST" "chmod 0644 -- '$MFA_RELEASE_PATH/latest.json.incoming' && mv -f -- '$MFA_RELEASE_PATH/latest.json.incoming' '$MFA_RELEASE_PATH/latest.json'"
 
 echo "Published. Devices on an older version will be offered $version_name."
