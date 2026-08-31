@@ -54,6 +54,11 @@ services:
       MFA_DATABASE_URL: ${MFA_DATABASE_URL:?}
       MFA_AUTH_JWT_SECRET: ${MFA_AUTH_JWT_SECRET:?}
       MFA_AUTH_REGISTRATION_ALLOWLIST: ${MFA_AUTH_REGISTRATION_ALLOWLIST-}
+      MFA_RELEASE_DIR: /srv/releases
+    volumes:
+      # Read-only: the API distributes a build, it never publishes one. The
+      # file arrives from where the signing key is (ADR 0026).
+      - ${MFA_DATA_ROOT:?}/releases:/srv/releases:ro
     expose:
       - "8000"
 

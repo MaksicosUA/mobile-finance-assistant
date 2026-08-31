@@ -7,9 +7,14 @@ runtime auth configuration and fails immediately when secrets are absent.
 from __future__ import annotations
 
 from .account_core import AccountCore
+from .app_release import FilesystemAppReleaseStore, NoAppReleaseStore
 from .auth import PostgresCurrentUserAuthenticator
 from .auth_service import PostgresAuthenticationService
-from .config import load_registration_allowlist, require_runtime_settings
+from .config import (
+    load_registration_allowlist,
+    load_release_directory,
+    require_runtime_settings,
+)
 from .database import create_database
 from .finance_core import FinanceCore
 from .goal_core import GoalCore
@@ -84,5 +89,10 @@ app = create_app(
         session_factory=session_factory,
     ),
     profile_repository=PostgresProfileRepository(session_factory=session_factory),
+    app_release_store=(
+        NoAppReleaseStore()
+        if (release_directory := load_release_directory()) is None
+        else FilesystemAppReleaseStore(directory=release_directory)
+    ),
     database_engine=engine,
 )

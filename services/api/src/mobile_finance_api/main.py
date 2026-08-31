@@ -22,6 +22,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from .account_core import AccountCore, UnavailableFinanceAccountRepository
 from .account_routes import router as account_router
 from .analytics_routes import router as analytics_router
+from .app_release import AppReleaseStore, NoAppReleaseStore
+from .app_release_routes import router as app_release_router
 from .auth import (
     AuthenticatedUser,
     CurrentUserAuthenticator,
@@ -275,6 +277,7 @@ def create_app(
     finance_operation_repository: object | None = None,
     analytics_repository: object | None = None,
     profile_repository: object | None = None,
+    app_release_store: AppReleaseStore | None = None,
     database_engine: AsyncEngine | None = None,
     registration_allowlist: frozenset[str] | None = None,
 ) -> FastAPI:
@@ -304,6 +307,11 @@ def create_app(
     # Absent means open registration, which is what a local run expects; a
     # public deployment sets it and only invited addresses get through.
     application.state.registration_allowlist = registration_allowlist
+    # A deployment that has never published a build has no update, which is a
+    # normal answer rather than a misconfiguration (ADR 0026).
+    application.state.app_release_store = (
+        app_release_store if app_release_store is not None else NoAppReleaseStore()
+    )
     application.state.authentication_service = (
         authentication_service
         if authentication_service is not None
@@ -413,6 +421,7 @@ def create_app(
     application.include_router(category_router)
     application.include_router(analytics_router)
     application.include_router(profile_router)
+    application.include_router(app_release_router)
     # Shares the /api/v1/operations prefix with the write routes on purpose:
     # proposing and committing are the same resource, but only one of them
     # writes (ADR 0022).

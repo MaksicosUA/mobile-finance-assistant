@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -104,3 +105,21 @@ def _bounded_setting(name: str, *, default: str) -> str:
     ):
         raise RuntimeError(f"{name} is invalid")
     return value
+
+
+def load_release_directory() -> Path | None:
+    """Where published Android builds live, if this deployment publishes any.
+
+    Unset means the deployment does not distribute the app, which is a valid
+    state. Set-but-broken is not: once someone intends to publish, a directory
+    that cannot be read has to be visible rather than reported as "up to date"
+    (ADR 0026).
+    """
+
+    raw = os.environ.get("MFA_RELEASE_DIR")
+    if raw is None:
+        return None
+    directory = raw.strip()
+    if not directory:
+        return None
+    return Path(directory)
