@@ -846,6 +846,208 @@ class FinanceOutboxEventRow(Base):
     )
 
 
+class PlannedCostRecurrenceRow(Base):
+    """A rule that generates planned instances (ADR 0025).
+
+    The rule itself is never a payment. It holds intent; every date it implies
+    becomes an ordinary ``planned_costs`` row, so confirming, skipping and
+    cancelling keep working exactly as they already do.
+
+    The anchor day is stored as the user meant it — 31 stays 31 — and each
+    occurrence clamps it into its own month at generation time. Storing a
+    already-clamped day would lose the intent after the first February.
+    """
+
+    __tablename__ = "planned_cost_recurrences"
+    __table_args__ = (
+        CheckConstraint(
+            "schema_version = '1'",
+            name="ck_planned_cost_recurrences_schema_version",
+        ),
+        CheckConstraint(
+            "amount > 0 AND amount NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_planned_cost_recurrences_positive_finite_amount",
+        ),
+        CheckConstraint(
+            "currency = 'EUR'",
+            name="ck_planned_cost_recurrences_v1_currency",
+        ),
+        CheckConstraint(
+            "title = btrim(title) AND title <> '' AND title !~ '[[:cntrl:]]' AND "
+            "(category IS NULL OR (category = btrim(category) AND "
+            "category <> '' AND category !~ '[[:cntrl:]]'))",
+            name="ck_planned_cost_recurrences_text",
+        ),
+        # Monthly only for now (ADR 0025). Weekly and yearly reuse the same
+        # anchor machinery and are added by widening this list deliberately.
+        CheckConstraint(
+            "frequency = 'monthly'",
+            name="ck_planned_cost_recurrences_frequency",
+        ),
+        CheckConstraint(
+            "day_of_month BETWEEN 1 AND 31",
+            name="ck_planned_cost_recurrences_day_of_month",
+        ),
+        CheckConstraint(
+            "starts_on BETWEEN DATE '1900-01-01' AND DATE '2100-12-31' AND "
+            "(ends_on IS NULL OR "
+            "(ends_on >= starts_on AND "
+            "ends_on BETWEEN DATE '1900-01-01' AND DATE '2100-12-31'))",
+            name="ck_planned_cost_recurrences_dates",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'ended')",
+            name="ck_planned_cost_recurrences_status",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_planned_cost_recurrences_payload_hash_length",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at "
+            "AND created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00' "
+            "AND updated_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_planned_cost_recurrences_operational_timestamps",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "command_id",
+            name="uq_planned_cost_recurrences_user_command",
+        ),
+        UniqueConstraint(
+            "id",
+            "user_id",
+            name="uq_planned_cost_recurrences_id_user",
+        ),
+        ForeignKeyConstraint(
+            ["account_id", "user_id", "currency"],
+            [
+                "finance_accounts.id",
+                "finance_accounts.user_id",
+                "finance_accounts.currency",
+            ],
+            name="fk_planned_cost_recurrences_owned_account_currency",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "user_id"],
+            ["finance_categories.id", "finance_categories.user_id"],
+            name="fk_planned_cost_recurrences_owned_category",
+        ),
+        Index(
+            "ix_planned_cost_recurrences_user_active",
+            "user_id",
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    account_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    category_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    frequency: Mapped[str] = mapped_column(String(16), nullable=False)
+    day_of_month: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    starts_on: Mapped[date] = mapped_column(Date, nullable=False)
+    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class PlannedCostRecurrenceAuditRow(Base):
+    """Append-only record of what happened to a rule.
+
+    The instances a rule generates keep their own audit rows in
+    ``planned_cost_audit_events``; this table records only the rule.
+    """
+
+    __tablename__ = "planned_cost_recurrence_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('recurrence_created', 'recurrence_ended')",
+            name="ck_planned_cost_recurrence_audit_event_type",
+        ),
+        CheckConstraint(
+            "(event_type = 'recurrence_created' AND previous_status IS NULL "
+            "AND new_status = 'active') OR "
+            "(event_type = 'recurrence_ended' AND previous_status = 'active' "
+            "AND new_status = 'ended')",
+            name="ck_planned_cost_recurrence_audit_transition",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_planned_cost_recurrence_audit_hash_length",
+        ),
+        CheckConstraint(
+            "created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_planned_cost_recurrence_audit_operational_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["recurrence_id", "user_id"],
+            [
+                "planned_cost_recurrences.id",
+                "planned_cost_recurrences.user_id",
+            ],
+            ondelete="CASCADE",
+            name="fk_planned_cost_recurrence_audit_owned_recurrence",
+        ),
+        UniqueConstraint(
+            "recurrence_id",
+            "command_id",
+            name="uq_planned_cost_recurrence_audit_recurrence_command",
+        ),
+        Index(
+            "uq_planned_cost_recurrence_audit_single_create",
+            "recurrence_id",
+            unique=True,
+            postgresql_where=text("event_type = 'recurrence_created'"),
+        ),
+        Index(
+            "uq_planned_cost_recurrence_audit_single_end",
+            "recurrence_id",
+            unique=True,
+            postgresql_where=text("event_type = 'recurrence_ended'"),
+        ),
+        Index(
+            "ix_planned_cost_recurrence_audit_user_created",
+            "user_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    recurrence_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
 class PlannedCostRow(Base):
     """Forecast-only intended payment (ADR 0018).
 
@@ -931,12 +1133,45 @@ class PlannedCostRow(Base):
             ["finance_operations.id", "finance_operations.user_id"],
             name="fk_planned_costs_confirmed_operation",
         ),
+        # The composite key makes borrowing another user's category
+        # unrepresentable rather than merely validated (ADR 0020).
+        ForeignKeyConstraint(
+            ["category_id", "user_id"],
+            ["finance_categories.id", "finance_categories.user_id"],
+            name="fk_planned_costs_owned_category",
+        ),
+        ForeignKeyConstraint(
+            ["recurrence_id", "user_id"],
+            [
+                "planned_cost_recurrences.id",
+                "planned_cost_recurrences.user_id",
+            ],
+            name="fk_planned_costs_owned_recurrence",
+        ),
         Index("ix_planned_costs_user_planned_on", "user_id", "planned_on"),
         Index(
             "ix_planned_costs_user_outstanding",
             "user_id",
             "planned_on",
             postgresql_where=text("status = 'planned'"),
+        ),
+        # What actually makes materialisation idempotent (ADR 0025): one live
+        # instance per rule per date, enforced by the database rather than by
+        # the generator remembering to look first. Cancelled rows are excluded
+        # so editing a rule can regenerate the same date it just superseded.
+        Index(
+            "uq_planned_costs_recurrence_occurrence",
+            "recurrence_id",
+            "planned_on",
+            unique=True,
+            postgresql_where=text(
+                "recurrence_id IS NOT NULL AND status <> 'cancelled'"
+            ),
+        ),
+        Index(
+            "ix_planned_costs_recurrence",
+            "recurrence_id",
+            postgresql_where=text("recurrence_id IS NOT NULL"),
         ),
     )
 
@@ -953,7 +1188,16 @@ class PlannedCostRow(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     title: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Kept as the evidence of what the user wrote, exactly as operations do.
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Nullable because "uncategorized" is a real state, not a gap to guess at.
+    category_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    # Set only on an instance a rule generated. A one-off plan has none, which
+    # is the whole difference between the two (ADR 0025).
+    recurrence_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
     planned_on: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     confirmed_operation_id: Mapped[UUID | None] = mapped_column(
