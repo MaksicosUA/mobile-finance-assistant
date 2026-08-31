@@ -1,0 +1,12 @@
+[Unit]
+Description=Logical backup of the finance database
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mfa/infra/docker/backup.sh
+# A failure is visible in `systemctl status mfa-backup` and in the journal
+# rather than in a mailbox nobody reads.
+StandardOutput=journal
+StandardError=journal

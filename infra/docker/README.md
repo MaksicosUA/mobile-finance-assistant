@@ -30,8 +30,31 @@ the deployment rather than something the first request discovers missing.
 
 ## Backups
 
-Hetzner snapshots capture the disk, which is not the same as a consistent
-database. Take a logical dump as well:
+Provider snapshots capture a disk, which is not the same as a database: a
+snapshot taken mid-write restores a file tree PostgreSQL then has to repair,
+and nothing tells you in advance whether it can.
 
-    docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
-      | gzip > "/mnt/mfa-data/backups/$(date -u +%Y-%m-%dT%H%M).sql.gz"
+`backup.sh` takes a logical dump in custom format, refuses to keep a
+suspiciously small one, and only then ages out anything older than
+`MFA_BACKUP_KEEP_DAYS` — so a run of failures can never delete the last working
+copy. Install the schedule once:
+
+    sudo cp mfa-backup.service mfa-backup.timer /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now mfa-backup.timer
+
+Failures surface in `systemctl status mfa-backup` and the journal rather than
+in a mailbox nobody reads.
+
+### Proving a backup restores
+
+A backup nobody restored is a hope. Restore the newest one into a scratch
+database and compare it with the live one, then drop the scratch:
+
+    docker compose exec -T postgres psql -U "$POSTGRES_USER" -d postgres \
+      -c "CREATE DATABASE mfa_restore_check;"
+    cat <newest>.dump | docker compose exec -T postgres \
+      pg_restore -U "$POSTGRES_USER" -d mfa_restore_check --no-owner --no-privileges
+    # compare counts of users, finance_operations, finance_categories, ...
+    docker compose exec -T postgres psql -U "$POSTGRES_USER" -d postgres \
+      -c "DROP DATABASE mfa_restore_check;"

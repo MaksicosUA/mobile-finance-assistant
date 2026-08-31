@@ -1,0 +1,11 @@
+[Unit]
+Description=Take a database backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+# A host that was asleep at 03:30 still gets its backup on the next boot.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
