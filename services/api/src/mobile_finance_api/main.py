@@ -37,6 +37,13 @@ from .goal_routes import router as goal_router
 from .models import HomeResponse, HomeV1Response
 from .operation_routes import router as operation_router
 from .planned_cost_core import PlannedCostCore, UnavailablePlannedCostRepository
+from .planned_cost_recurrence_core import (
+    PlannedCostRecurrenceCore,
+    UnavailablePlannedCostRecurrenceRepository,
+)
+from .planned_cost_recurrence_routes import (
+    router as planned_cost_recurrence_router,
+)
 from .planned_cost_routes import router as planned_cost_router
 from .postgres_analytics_repository import UnavailableAnalyticsRepository
 from .postgres_category_repository import UnavailableCategoryRepository
@@ -262,6 +269,7 @@ def create_app(
     account_core: AccountCore | None = None,
     finance_core: FinanceCore | None = None,
     planned_cost_core: PlannedCostCore | None = None,
+    planned_cost_recurrence_core: PlannedCostRecurrenceCore | None = None,
     goal_core: GoalCore | None = None,
     category_repository: object | None = None,
     finance_operation_repository: object | None = None,
@@ -319,6 +327,13 @@ def create_app(
         planned_cost_core
         if planned_cost_core is not None
         else PlannedCostCore(repository=UnavailablePlannedCostRepository())
+    )
+    application.state.planned_cost_recurrence_core = (
+        planned_cost_recurrence_core
+        if planned_cost_recurrence_core is not None
+        else PlannedCostRecurrenceCore(
+            repository=UnavailablePlannedCostRecurrenceRepository()
+        )
     )
     application.state.goal_core = (
         goal_core
@@ -393,6 +408,7 @@ def create_app(
     application.include_router(account_router)
     application.include_router(operation_router)
     application.include_router(planned_cost_router)
+    application.include_router(planned_cost_recurrence_router)
     application.include_router(goal_router)
     application.include_router(category_router)
     application.include_router(analytics_router)

@@ -80,6 +80,7 @@ def test_the_adapters_the_read_routes_need_are_present(runtime_app) -> None:  # 
         "account_core",
         "finance_core",
         "planned_cost_core",
+        "planned_cost_recurrence_core",
         "goal_core",
         "category_repository",
         "finance_operation_repository",

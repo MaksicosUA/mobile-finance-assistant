@@ -2720,6 +2720,120 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'в сравнении с {from} — {to}'**
   String analyticsComparedWith(String from, String to);
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Эта категория недоступна. Выберите другую.'**
+  String get plannedCostIssueCategoryUnavailable;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторять каждый месяц'**
+  String get plannedCostRepeatToggle;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'День месяца'**
+  String get plannedCostRepeatDayLabel;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Последний день месяца'**
+  String get plannedCostRepeatLastDay;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'В коротких месяцах платёж сдвинется на последний день: 31 января, 28 февраля, 31 марта.'**
+  String get plannedCostRepeatShortMonthHint;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Ближайшие даты'**
+  String get plannedCostRepeatFirstDatesTitle;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторяется'**
+  String get plannedCostRecurrenceListTitle;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторяющихся трат пока нет.'**
+  String get plannedCostRecurrenceListEmpty;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Каждый месяц, {day} числа'**
+  String plannedCostRecurrenceMonthlyOnDay(int day);
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Каждый месяц, последний день'**
+  String get plannedCostRecurrenceMonthlyLastDay;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Закончить'**
+  String get plannedCostRecurrenceEndAction;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Закончить серию?'**
+  String get plannedCostRecurrenceEndDialogTitle;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Новые платежи создаваться не будут. Будущие запланированные платежи из этой серии отменятся, а уже наступившие останутся — их нужно подтвердить или пропустить.'**
+  String get plannedCostRecurrenceEndDialogBody;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Серия закончена. Отменено будущих платежей: {count}'**
+  String plannedCostRecurrenceEndedMessage(int count);
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пропустить'**
+  String get plannedCostSkipAction;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'«Пропустить» убирает один платёж, серия продолжится.'**
+  String get plannedCostSkipHint;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Повторяющаяся трата записана'**
+  String get plannedCostRecurrenceAcceptedTitle;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Платежи будут появляться сами. Это прогноз: баланс он не меняет.'**
+  String get plannedCostRecurrenceAcceptedDescription;
+
+  /// Repeating planned cost (ADR 0025).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось изменить повторяющуюся трату.'**
+  String get plannedCostRecurrenceFailure;
 }
 
 class _AppLocalizationsDelegate

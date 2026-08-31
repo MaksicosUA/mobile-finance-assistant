@@ -53,6 +53,22 @@ abstract interface class FinanceEntryApiClient {
     required PlannedCostTransitionCommand command,
   });
 
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence({
+    required String accessToken,
+    required PlannedCostRecurrenceDraft draft,
+  });
+
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences({required String accessToken});
+
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence({
+    required String accessToken,
+    required String recurrenceId,
+    required EndPlannedCostRecurrenceCommand command,
+  });
+
   Future<FinanceEntryResult<FinanceCategoryList>> listCategories({
     required String accessToken,
   });
@@ -429,6 +445,81 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
         json,
         statusCode: statusCode,
         plannedCostId: plannedCostId,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence({
+    required String accessToken,
+    required PlannedCostRecurrenceDraft draft,
+  }) {
+    try {
+      validatePlannedCostRecurrenceDraft(draft);
+    } on Object {
+      return Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/planned-cost-recurrences',
+      accessToken: accessToken,
+      body: draft.toJson(),
+      // 201 on the first accepted command, 200 on an idempotent replay.
+      acceptedStatuses: const {200, 201},
+      contract: _ContractKind.plannedCostRecurrence,
+      parse: (json, statusCode) =>
+          _parseRecurrenceCreated(json, statusCode: statusCode, draft: draft),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences({required String accessToken}) {
+    return _request(
+      method: 'GET',
+      path: '/api/v1/planned-cost-recurrences',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.plannedCostRecurrence,
+      parse: (json, statusCode) => _parseRecurrenceList(json, statusCode),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence({
+    required String accessToken,
+    required String recurrenceId,
+    required EndPlannedCostRecurrenceCommand command,
+  }) {
+    try {
+      validateEndPlannedCostRecurrence(command);
+      validateRecurrenceId(recurrenceId);
+    } on Object {
+      return Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/planned-cost-recurrences/$recurrenceId/end',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200},
+      contract: _ContractKind.plannedCostRecurrence,
+      parse: (json, statusCode) => _parseRecurrenceEnded(
+        json,
+        statusCode: statusCode,
+        recurrenceId: recurrenceId,
       ),
     );
   }
@@ -965,6 +1056,103 @@ PlannedCostCreated _parsePlannedCostCreated(
     throw const FormatException('Server plan does not match the command.');
   }
   return PlannedCostCreated(plannedCost: plannedCost, idempotentReplay: replay);
+}
+
+PlannedCostRecurrenceCreated _parseRecurrenceCreated(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required PlannedCostRecurrenceDraft draft,
+}) {
+  _expectKeys(json, const {
+    'schemaVersion',
+    'idempotentReplay',
+    'recurrence',
+    'occurrences',
+  });
+  _requireSchema(json);
+  final replay = json['idempotentReplay'];
+  if (replay is! bool) throw const FormatException('Invalid idempotentReplay.');
+  // A replay is exactly the 200 case; a first acceptance is exactly 201.
+  if (replay != (statusCode == 200)) {
+    throw const FormatException('Replay flag disagrees with status.');
+  }
+  final recurrence = PlannedCostRecurrence.fromJson(
+    _object(json['recurrence']),
+  );
+  if (recurrence.accountId != draft.accountId ||
+      recurrence.title != draft.title ||
+      recurrence.currency != draft.currency ||
+      recurrence.dayOfMonth != draft.dayOfMonth) {
+    throw const FormatException('Server rule does not match the command.');
+  }
+  return PlannedCostRecurrenceCreated(
+    recurrence: recurrence,
+    idempotentReplay: replay,
+    occurrences: _occurrenceDates(json['occurrences']),
+  );
+}
+
+PlannedCostRecurrenceList _parseRecurrenceList(
+  Map<String, Object?> json,
+  int status,
+) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {'schemaVersion', 'recurrences'});
+  _requireSchema(json);
+  final raw = json['recurrences'];
+  if (raw is! List<Object?> || raw.length > 200) {
+    throw const FormatException('Invalid recurrence list.');
+  }
+  return PlannedCostRecurrenceList(
+    recurrences: raw
+        .map((item) => PlannedCostRecurrenceListItem.fromJson(_object(item)))
+        .toList(growable: false),
+  );
+}
+
+PlannedCostRecurrenceEnded _parseRecurrenceEnded(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required String recurrenceId,
+}) {
+  if (statusCode != 200) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {
+    'schemaVersion',
+    'idempotentReplay',
+    'recurrence',
+    'cancelledOccurrences',
+  });
+  _requireSchema(json);
+  final replay = json['idempotentReplay'];
+  if (replay is! bool) throw const FormatException('Invalid idempotentReplay.');
+  final recurrence = PlannedCostRecurrence.fromJson(
+    _object(json['recurrence']),
+  );
+  if (recurrence.recurrenceId != recurrenceId) {
+    throw const FormatException('Server ended a different rule.');
+  }
+  // An ended rule is terminal; a server still reporting it active would leave
+  // the screen offering to end something it just ended.
+  if (recurrence.status != PlannedCostRecurrenceStatus.ended) {
+    throw const FormatException('Ended rule is still active.');
+  }
+  final cancelled = json['cancelledOccurrences'];
+  if (cancelled is! int || cancelled < 0) {
+    throw const FormatException('Invalid cancelledOccurrences.');
+  }
+  return PlannedCostRecurrenceEnded(
+    recurrence: recurrence,
+    cancelledOccurrences: cancelled,
+  );
+}
+
+List<String> _occurrenceDates(Object? raw) {
+  if (raw is! List<Object?> || raw.length > 64) {
+    throw const FormatException('Invalid occurrences.');
+  }
+  return raw
+      .map((item) => _accountDate(<String, Object?>{'date': item}, 'date'))
+      .toList(growable: false);
 }
 
 PlannedCostList _parsePlannedCostList(Map<String, Object?> json, int status) {
@@ -1723,9 +1911,15 @@ _ErrorDetail? _tryErrorDetail(
         goalIssues: goalIssues,
       );
     }
-    if (contract == _ContractKind.plannedCost) {
+    if (contract == _ContractKind.plannedCost ||
+        contract == _ContractKind.plannedCostRecurrence) {
+      // A rule reuses the planned-cost issue space: the refusals mean the same
+      // things and read the same way, so a second enum would only duplicate
+      // the messages.
       final plannedCostIssues = _plannedCostIssues(detail['issues']);
-      final rejected = code == FinanceEntryErrorCode.plannedCostRejected;
+      final rejected =
+          code == FinanceEntryErrorCode.plannedCostRejected ||
+          code == FinanceEntryErrorCode.recurrenceRejected;
       if (rejected != plannedCostIssues.isNotEmpty) {
         throw const FormatException('Inconsistent planned cost detail.');
       }
@@ -1797,6 +1991,7 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     // Planned cost and goal rejections use their own issue codes, never
     // FinanceIssue.
     _ContractKind.plannedCost => false,
+    _ContractKind.plannedCostRecurrence => false,
     _ContractKind.goal => false,
     _ContractKind.category => false,
     // A correction is validated exactly like a new operation, so it can be
@@ -1856,6 +2051,12 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.plannedCostRejected,
       FinanceEntryErrorCode.plannedCostNotFound,
       FinanceEntryErrorCode.plannedCostPersistenceUnavailable,
+    }.contains(code),
+    _ContractKind.plannedCostRecurrence => const {
+      FinanceEntryErrorCode.malformedRecurrence,
+      FinanceEntryErrorCode.recurrenceRejected,
+      FinanceEntryErrorCode.recurrenceNotFound,
+      FinanceEntryErrorCode.recurrencePersistenceUnavailable,
     }.contains(code),
     _ContractKind.goal => const {
       FinanceEntryErrorCode.malformedGoalCommand,
@@ -1938,6 +2139,11 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'PLANNED_COST_NOT_FOUND' => FinanceEntryErrorCode.plannedCostNotFound,
   'PLANNED_COST_PERSISTENCE_UNAVAILABLE' =>
     FinanceEntryErrorCode.plannedCostPersistenceUnavailable,
+  'MALFORMED_RECURRENCE' => FinanceEntryErrorCode.malformedRecurrence,
+  'RECURRENCE_REJECTED' => FinanceEntryErrorCode.recurrenceRejected,
+  'RECURRENCE_NOT_FOUND' => FinanceEntryErrorCode.recurrenceNotFound,
+  'RECURRENCE_PERSISTENCE_UNAVAILABLE' =>
+    FinanceEntryErrorCode.recurrencePersistenceUnavailable,
   'AUTHENTICATION_UNAVAILABLE' =>
     FinanceEntryErrorCode.authenticationUnavailable,
   'FINANCE_PERSISTENCE_UNAVAILABLE' =>
@@ -2132,6 +2338,7 @@ enum _ContractKind {
   operation,
   operationReversal,
   plannedCost,
+  plannedCostRecurrence,
   goal,
   category,
   analytics,

@@ -12,6 +12,9 @@ from collections.abc import Awaitable, Callable, Sequence
 from .config import require_database_url
 from .database import AsyncSessionFactory, create_database
 from .postgres_home_projector import PostgresHomeProjector
+from .postgres_planned_cost_recurrence_repository import (
+    PostgresPlannedCostRecurrenceRepository,
+)
 from .postgres_projector_supervision import (
     ProjectorLeaderLease,
     acquire_projector_leadership,
@@ -170,6 +173,9 @@ async def _run_once(
         session_factory=session_factory,
         retry_policy=retry_policy,
     )
+    recurrences = PostgresPlannedCostRecurrenceRepository(
+        session_factory=session_factory,
+    )
     try:
         async with acquire_projector_leadership(engine=engine) as lease:
             if lease is None:
@@ -178,6 +184,9 @@ async def _run_once(
             async def one_shot_work(
                 set_status: Callable[[str], None],
             ) -> None:
+                # Extend repeating plans first: the instances it writes publish
+                # their own invalidations, which the same cycle then consumes.
+                materialised = await recurrences.materialise_active_rules()
                 # Reconcile healthy users before processing event streams.
                 reconciliation = await projector.reconcile_all()
                 projection = await projector.drain_available(max_candidates=max_cycles)
@@ -196,9 +205,10 @@ async def _run_once(
                     set_status("idle")
                 _LOGGER.info(
                     "Home projector cycle complete consumed=%d "
-                    "reconciled=%d pruned=%d failures=%s",
+                    "reconciled=%d materialised=%d pruned=%d failures=%s",
                     projection.published,
                     reconciliation.published,
+                    materialised,
                     pruned,
                     failures_present,
                 )
@@ -229,6 +239,7 @@ async def _run_forever(
     heartbeat_stale_seconds: float,
     maximum_lag_seconds: float,
     retention_seconds: float,
+    materialise_seconds: float,
     retry_policy: EventRetryPolicy,
     retention_policy: RevisionRetentionPolicy,
 ) -> None:
@@ -236,6 +247,9 @@ async def _run_forever(
     projector = PostgresHomeProjector(
         session_factory=session_factory,
         retry_policy=retry_policy,
+    )
+    recurrences = PostgresPlannedCostRecurrenceRepository(
+        session_factory=session_factory,
     )
     leadership_backoff = BoundedRuntimeBackoff(
         initial_seconds=runtime_backoff_initial_seconds,
@@ -272,7 +286,9 @@ async def _run_forever(
                             heartbeat_stale_seconds=heartbeat_stale_seconds,
                             maximum_lag_seconds=maximum_lag_seconds,
                             retention_seconds=retention_seconds,
+                            materialise_seconds=materialise_seconds,
                             session_factory=session_factory,
+                            recurrences=recurrences,
                             retention_policy=retention_policy,
                         )
 
@@ -307,7 +323,9 @@ async def _run_leader_loop(
     heartbeat_stale_seconds: float,
     maximum_lag_seconds: float,
     retention_seconds: float,
+    materialise_seconds: float,
     session_factory: AsyncSessionFactory,
+    recurrences: PostgresPlannedCostRecurrenceRepository,
     retention_policy: RevisionRetentionPolicy,
 ) -> None:
     event_backoff = BoundedRuntimeBackoff(
@@ -317,6 +335,7 @@ async def _run_leader_loop(
     next_reconciliation = 0.0
     next_health = 0.0
     next_retention = 0.0
+    next_materialisation = 0.0
     while True:
         consumed = 0
         reconciled = 0
@@ -351,6 +370,27 @@ async def _run_leader_loop(
                 cycle_failed = True
                 _LOGGER.error(
                     "Home projector reconciliation failed error_type=%s",
+                    type(error).__name__,
+                )
+
+        if now >= next_materialisation:
+            try:
+                # Repeating plans grow their next few months here. The write is
+                # idempotent by a database index, so a missed or repeated run
+                # costs nothing but a query (ADR 0025).
+                materialised = await recurrences.materialise_active_rules()
+                next_materialisation = now + materialise_seconds
+                if materialised:
+                    _LOGGER.info(
+                        "Planned cost recurrence materialisation wrote=%d",
+                        materialised,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                cycle_failed = True
+                _LOGGER.error(
+                    "Planned cost recurrence materialisation failed error_type=%s",
                     type(error).__name__,
                 )
 
@@ -471,6 +511,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--heartbeat-stale-seconds", type=float, default=30.0)
     parser.add_argument("--maximum-lag-seconds", type=float, default=120.0)
     parser.add_argument("--retention-seconds", type=float, default=86400.0)
+    # Hourly: a plan's next months are never urgent, and creating a rule
+    # materialises its own instances immediately anyway.
+    parser.add_argument("--materialise-seconds", type=float, default=3600.0)
     parser.add_argument("--retention-minimum-revisions", type=int, default=2)
     parser.add_argument("--retention-grace-days", type=int, default=30)
     parser.add_argument("--retention-maximum-per-cycle", type=int, default=100)
@@ -528,6 +571,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 heartbeat_stale_seconds=args.heartbeat_stale_seconds,
                 maximum_lag_seconds=args.maximum_lag_seconds,
                 retention_seconds=args.retention_seconds,
+                materialise_seconds=args.materialise_seconds,
                 retry_policy=retry_policy,
                 retention_policy=retention_policy,
             )

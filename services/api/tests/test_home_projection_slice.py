@@ -811,6 +811,21 @@ def test_projector_runtime_rejects_non_finite_intervals(
         projector_runtime.main([f"{argument}={value}"])
 
 
+class _StubRecurrences:
+    """Stands in for the materialiser the projector leader now also runs.
+
+    Recurrence has its own tests; here it only has to be present and quiet, so
+    a cycle's shape can still be asserted without a database.
+    """
+
+    def __init__(self, **kwargs: object) -> None:
+        del kwargs
+
+    async def materialise_active_rules(self, **kwargs: object) -> int:
+        del kwargs
+        return 0
+
+
 def test_one_shot_processes_healthy_streams_then_reports_aggregate_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -873,6 +888,11 @@ def test_one_shot_processes_healthy_streams_then_reports_aggregate_failure(
         lambda: "postgresql+asyncpg://synthetic.invalid/test",
     )
     monkeypatch.setattr(projector_runtime, "PostgresHomeProjector", _Projector)
+    monkeypatch.setattr(
+        projector_runtime,
+        "PostgresPlannedCostRecurrenceRepository",
+        _StubRecurrences,
+    )
     monkeypatch.setattr(projector_runtime, "prune_home_revisions", prune)
 
     @asynccontextmanager

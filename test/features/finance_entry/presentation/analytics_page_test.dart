@@ -280,6 +280,22 @@ AnalyticsWindow _window({bool empty = false}) => AnalyticsWindow(
 );
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences() => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence(
+    String recurrenceId,
+    EndPlannedCostRecurrenceCommand command,
+  ) => throw UnimplementedError();
+
   _FakeRepository({this.failure, this.empty = false, this.failRefresh = false});
 
   final FinanceEntryFailureKind? failure;

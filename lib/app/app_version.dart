@@ -12,7 +12,7 @@
 library;
 
 /// The `version:` field of `pubspec.yaml`, without its build metadata.
-const String appVersionFallback = '0.1.14';
+const String appVersionFallback = '0.1.15';
 
 const String appVersion = String.fromEnvironment(
   'APP_VERSION',

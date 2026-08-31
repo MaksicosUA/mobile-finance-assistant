@@ -37,10 +37,17 @@ final class PlannedCostEditing extends PlannedCostState {
     this.isSubmitting = false,
     this.failure,
     this.settlingId,
+    this.repeats = false,
+    this.lastDayOfMonth = false,
+    this.endingRecurrenceId,
     List<PlannedCostIssue> issues = const [],
     List<PlannedCost> plans = const [],
+    List<PlannedCostRecurrenceListItem> recurrences = const [],
   }) : issues = List<PlannedCostIssue>.unmodifiable(issues),
-       plans = List<PlannedCost>.unmodifiable(plans);
+       plans = List<PlannedCost>.unmodifiable(plans),
+       recurrences = List<PlannedCostRecurrenceListItem>.unmodifiable(
+         recurrences,
+       );
 
   final FinanceAccount account;
   final String title;
@@ -66,6 +73,32 @@ final class PlannedCostEditing extends PlannedCostState {
   /// shows progress instead of the whole screen.
   final String? settlingId;
 
+  /// Whether the form records a repeating payment rather than a single one
+  /// (ADR 0025). The chosen date then becomes the day the series starts.
+  final bool repeats;
+
+  /// Anchors the series to the end of every month. Clamping makes «the 31st»
+  /// and «the last day» the same schedule, so this stores 31 rather than a
+  /// second concept.
+  final bool lastDayOfMonth;
+
+  /// The rules the user already has, each with the outstanding instances it
+  /// owns — which is how an instance of a series is told from a one-off plan.
+  final List<PlannedCostRecurrenceListItem> recurrences;
+
+  /// The rule an ending is currently in flight for.
+  final String? endingRecurrenceId;
+
+  /// The day of the month the series would be anchored to, unclamped.
+  int get dayOfMonth => lastDayOfMonth ? 31 : selectedDate.day;
+
+  /// Instances that belong to a series, so the screen can offer to skip one.
+  /// Skipping a one-off plan would mean exactly what cancelling means.
+  Set<String> get seriesInstanceIds => <String>{
+    for (final item in recurrences)
+      for (final instance in item.upcoming) instance.plannedCostId,
+  };
+
   PlannedCostEditing copyWith({
     String? title,
     String? amount,
@@ -74,9 +107,14 @@ final class PlannedCostEditing extends PlannedCostState {
     FinanceEntryFailure? failure,
     List<PlannedCostIssue>? issues,
     List<PlannedCost>? plans,
+    List<PlannedCostRecurrenceListItem>? recurrences,
     String? settlingId,
+    bool? repeats,
+    bool? lastDayOfMonth,
+    String? endingRecurrenceId,
     bool clearFailure = false,
     bool clearSettlingId = false,
+    bool clearEndingRecurrenceId = false,
   }) {
     return PlannedCostEditing(
       account: account,
@@ -89,7 +127,13 @@ final class PlannedCostEditing extends PlannedCostState {
       failure: clearFailure ? null : (failure ?? this.failure),
       issues: issues ?? this.issues,
       plans: plans ?? this.plans,
+      recurrences: recurrences ?? this.recurrences,
       settlingId: clearSettlingId ? null : (settlingId ?? this.settlingId),
+      repeats: repeats ?? this.repeats,
+      lastDayOfMonth: lastDayOfMonth ?? this.lastDayOfMonth,
+      endingRecurrenceId: clearEndingRecurrenceId
+          ? null
+          : (endingRecurrenceId ?? this.endingRecurrenceId),
     );
   }
 }
@@ -114,6 +158,24 @@ final class PlannedCostAccepted extends PlannedCostState {
   });
 
   final PlannedCost plannedCost;
+  final PlannedCostHomeStatus homeStatus;
+}
+
+/// A repeating plan was accepted, with the dates it has just materialised.
+///
+/// Shown as its own state rather than folded into [PlannedCostAccepted]: the
+/// point of the screen is the list of dates, because that is where a user sees
+/// what «the 31st» does to February before it happens.
+@immutable
+final class PlannedCostRecurrenceAccepted extends PlannedCostState {
+  PlannedCostRecurrenceAccepted({
+    required this.recurrence,
+    required this.homeStatus,
+    required List<String> occurrences,
+  }) : occurrences = List<String>.unmodifiable(occurrences);
+
+  final PlannedCostRecurrence recurrence;
+  final List<String> occurrences;
   final PlannedCostHomeStatus homeStatus;
 }
 

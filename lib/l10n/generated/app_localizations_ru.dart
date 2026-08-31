@@ -1508,4 +1508,73 @@ class AppLocalizationsRu extends AppLocalizations {
   String analyticsComparedWith(String from, String to) {
     return 'в сравнении с $from — $to';
   }
+
+  @override
+  String get plannedCostIssueCategoryUnavailable =>
+      'Эта категория недоступна. Выберите другую.';
+
+  @override
+  String get plannedCostRepeatToggle => 'Повторять каждый месяц';
+
+  @override
+  String get plannedCostRepeatDayLabel => 'День месяца';
+
+  @override
+  String get plannedCostRepeatLastDay => 'Последний день месяца';
+
+  @override
+  String get plannedCostRepeatShortMonthHint =>
+      'В коротких месяцах платёж сдвинется на последний день: 31 января, 28 февраля, 31 марта.';
+
+  @override
+  String get plannedCostRepeatFirstDatesTitle => 'Ближайшие даты';
+
+  @override
+  String get plannedCostRecurrenceListTitle => 'Повторяется';
+
+  @override
+  String get plannedCostRecurrenceListEmpty => 'Повторяющихся трат пока нет.';
+
+  @override
+  String plannedCostRecurrenceMonthlyOnDay(int day) {
+    return 'Каждый месяц, $day числа';
+  }
+
+  @override
+  String get plannedCostRecurrenceMonthlyLastDay =>
+      'Каждый месяц, последний день';
+
+  @override
+  String get plannedCostRecurrenceEndAction => 'Закончить';
+
+  @override
+  String get plannedCostRecurrenceEndDialogTitle => 'Закончить серию?';
+
+  @override
+  String get plannedCostRecurrenceEndDialogBody =>
+      'Новые платежи создаваться не будут. Будущие запланированные платежи из этой серии отменятся, а уже наступившие останутся — их нужно подтвердить или пропустить.';
+
+  @override
+  String plannedCostRecurrenceEndedMessage(int count) {
+    return 'Серия закончена. Отменено будущих платежей: $count';
+  }
+
+  @override
+  String get plannedCostSkipAction => 'Пропустить';
+
+  @override
+  String get plannedCostSkipHint =>
+      '«Пропустить» убирает один платёж, серия продолжится.';
+
+  @override
+  String get plannedCostRecurrenceAcceptedTitle =>
+      'Повторяющаяся трата записана';
+
+  @override
+  String get plannedCostRecurrenceAcceptedDescription =>
+      'Платежи будут появляться сами. Это прогноз: баланс он не меняет.';
+
+  @override
+  String get plannedCostRecurrenceFailure =>
+      'Не удалось изменить повторяющуюся трату.';
 }

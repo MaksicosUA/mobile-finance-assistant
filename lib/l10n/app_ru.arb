@@ -1248,5 +1248,91 @@
         "type": "String"
       }
     }
+  },
+  "plannedCostIssueCategoryUnavailable": "Эта категория недоступна. Выберите другую.",
+  "@plannedCostIssueCategoryUnavailable": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRepeatToggle": "Повторять каждый месяц",
+  "@plannedCostRepeatToggle": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRepeatDayLabel": "День месяца",
+  "@plannedCostRepeatDayLabel": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRepeatLastDay": "Последний день месяца",
+  "@plannedCostRepeatLastDay": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRepeatShortMonthHint": "В коротких месяцах платёж сдвинется на последний день: 31 января, 28 февраля, 31 марта.",
+  "@plannedCostRepeatShortMonthHint": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRepeatFirstDatesTitle": "Ближайшие даты",
+  "@plannedCostRepeatFirstDatesTitle": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceListTitle": "Повторяется",
+  "@plannedCostRecurrenceListTitle": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceListEmpty": "Повторяющихся трат пока нет.",
+  "@plannedCostRecurrenceListEmpty": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceMonthlyOnDay": "Каждый месяц, {day} числа",
+  "@plannedCostRecurrenceMonthlyOnDay": {
+    "description": "Repeating planned cost (ADR 0025).",
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "plannedCostRecurrenceMonthlyLastDay": "Каждый месяц, последний день",
+  "@plannedCostRecurrenceMonthlyLastDay": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceEndAction": "Закончить",
+  "@plannedCostRecurrenceEndAction": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceEndDialogTitle": "Закончить серию?",
+  "@plannedCostRecurrenceEndDialogTitle": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceEndDialogBody": "Новые платежи создаваться не будут. Будущие запланированные платежи из этой серии отменятся, а уже наступившие останутся — их нужно подтвердить или пропустить.",
+  "@plannedCostRecurrenceEndDialogBody": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceEndedMessage": "Серия закончена. Отменено будущих платежей: {count}",
+  "@plannedCostRecurrenceEndedMessage": {
+    "description": "Repeating planned cost (ADR 0025).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "plannedCostSkipAction": "Пропустить",
+  "@plannedCostSkipAction": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostSkipHint": "«Пропустить» убирает один платёж, серия продолжится.",
+  "@plannedCostSkipHint": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceAcceptedTitle": "Повторяющаяся трата записана",
+  "@plannedCostRecurrenceAcceptedTitle": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceAcceptedDescription": "Платежи будут появляться сами. Это прогноз: баланс он не меняет.",
+  "@plannedCostRecurrenceAcceptedDescription": {
+    "description": "Repeating planned cost (ADR 0025)."
+  },
+  "plannedCostRecurrenceFailure": "Не удалось изменить повторяющуюся трату.",
+  "@plannedCostRecurrenceFailure": {
+    "description": "Repeating planned cost (ADR 0025)."
   }
 }

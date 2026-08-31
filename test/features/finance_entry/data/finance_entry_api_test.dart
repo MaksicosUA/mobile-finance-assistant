@@ -848,6 +848,254 @@ void main() {
       expect(failure.code, FinanceEntryErrorCode.profileUnavailable);
     });
   });
+
+  group('recurring planned costs (ADR 0025)', () {
+    test('a created rule reports the dates it materialised', () async {
+      final adapter = _QueueAdapter([_JsonResponse(201, _recurrenceCreated())]);
+      final api = _api(adapter);
+
+      final result = await api.createPlannedCostRecurrence(
+        accessToken: 'access-token',
+        draft: _recurrenceDraft(),
+      );
+
+      final created =
+          (result as FinanceEntrySuccess<PlannedCostRecurrenceCreated>).value;
+      expect(created.idempotentReplay, isFalse);
+      expect(created.recurrence.dayOfMonth, 31);
+      // February is in the answer, which is where a user sees the clamp.
+      expect(created.occurrences, ['2026-01-31', '2026-02-28', '2026-03-31']);
+      expect(
+        adapter.requests.single.uri.path,
+        '/api/v1/planned-cost-recurrences',
+      );
+    });
+
+    test('a replay flag that disagrees with the status is refused', () async {
+      final replayed = _recurrenceCreated();
+      replayed['idempotentReplay'] = true;
+      final adapter = _QueueAdapter([_JsonResponse(201, replayed)]);
+      final api = _api(adapter);
+
+      final result = await api.createPlannedCostRecurrence(
+        accessToken: 'access-token',
+        draft: _recurrenceDraft(),
+      );
+
+      // 201 means first acceptance and 200 means replay. A server claiming
+      // both at once is not something to interpret generously.
+      expect(_failure(result).kind, FinanceEntryFailureKind.malformedResponse);
+    });
+
+    test('a rule that does not match the command is refused', () async {
+      final mismatched = _recurrenceCreated();
+      (mismatched['recurrence']! as Map<String, Object?>)['dayOfMonth'] = 15;
+      final adapter = _QueueAdapter([_JsonResponse(201, mismatched)]);
+      final api = _api(adapter);
+
+      final result = await api.createPlannedCostRecurrence(
+        accessToken: 'access-token',
+        draft: _recurrenceDraft(),
+      );
+
+      expect(_failure(result).kind, FinanceEntryFailureKind.malformedResponse);
+    });
+
+    test('an unknown key in the rule is refused rather than ignored', () async {
+      final widened = _recurrenceCreated();
+      (widened['recurrence']! as Map<String, Object?>)['weekday'] = 'monday';
+      final adapter = _QueueAdapter([_JsonResponse(201, widened)]);
+      final api = _api(adapter);
+
+      final result = await api.createPlannedCostRecurrence(
+        accessToken: 'access-token',
+        draft: _recurrenceDraft(),
+      );
+
+      expect(_failure(result).kind, FinanceEntryFailureKind.malformedResponse);
+    });
+
+    test('a wrong category is a typed refusal, not a bare error', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(422, {
+          'detail': {
+            'code': 'RECURRENCE_REJECTED',
+            'issues': [
+              {'code': 'CATEGORY_DIRECTION_MISMATCH', 'field': 'categoryId'},
+            ],
+          },
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.createPlannedCostRecurrence(
+        accessToken: 'access-token',
+        draft: _recurrenceDraft(),
+      );
+
+      final failure = _failure(result);
+      expect(failure.code, FinanceEntryErrorCode.recurrenceRejected);
+      expect(
+        failure.plannedCostIssues.single.code,
+        PlannedCostIssueCode.categoryDirectionMismatch,
+      );
+    });
+
+    test('ending a series reports what it withdrew', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(200, {
+          'schemaVersion': '1',
+          'idempotentReplay': false,
+          'recurrence': _recurrence(status: 'ended'),
+          'cancelledOccurrences': 2,
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.endPlannedCostRecurrence(
+        accessToken: 'access-token',
+        recurrenceId: _recurrenceId,
+        command: const EndPlannedCostRecurrenceCommand(
+          commandId: _recurrenceCommandId,
+          requestedAt: '2026-01-15T23:30:00Z',
+        ),
+      );
+
+      final ended =
+          (result as FinanceEntrySuccess<PlannedCostRecurrenceEnded>).value;
+      expect(ended.cancelledOccurrences, 2);
+      expect(ended.recurrence.status, PlannedCostRecurrenceStatus.ended);
+    });
+
+    test('a rule reported still active after ending is refused', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(200, {
+          'schemaVersion': '1',
+          'idempotentReplay': false,
+          'recurrence': _recurrence(),
+          'cancelledOccurrences': 0,
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.endPlannedCostRecurrence(
+        accessToken: 'access-token',
+        recurrenceId: _recurrenceId,
+        command: const EndPlannedCostRecurrenceCommand(
+          commandId: _recurrenceCommandId,
+          requestedAt: '2026-01-15T23:30:00Z',
+        ),
+      );
+
+      // Otherwise the screen keeps offering to end something already ended.
+      expect(_failure(result).kind, FinanceEntryFailureKind.malformedResponse);
+    });
+
+    test('the listing links a rule to the instances it owns', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(200, {
+          'schemaVersion': '1',
+          'recurrences': [
+            {
+              'recurrence': _recurrence(),
+              'upcoming': [
+                {
+                  'plannedCostId': _recurrenceInstanceId,
+                  'plannedOn': '2026-02-28',
+                },
+              ],
+            },
+          ],
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.listPlannedCostRecurrences(
+        accessToken: 'access-token',
+      );
+
+      final listed =
+          (result as FinanceEntrySuccess<PlannedCostRecurrenceList>).value;
+      expect(
+        listed.recurrences.single.upcoming.single.plannedCostId,
+        _recurrenceInstanceId,
+      );
+    });
+
+    test('the planned cost response is still frozen', () async {
+      // The link travels on the rule listing precisely because it cannot
+      // travel here: the installed client parses a plan with a closed key set,
+      // so a new key would stop it loading rather than degrade it.
+      expect(
+        () => PlannedCost.fromJson({
+          'plannedCostId': _recurrenceInstanceId,
+          'userId': '11111111-1111-4111-8111-111111111111',
+          'accountId': _plannedAccountId,
+          'commandId': _recurrenceCommandId,
+          'amount': '800.00',
+          'currency': 'EUR',
+          'title': 'Аренда',
+          'category': null,
+          'plannedOn': '2026-02-28',
+          'status': 'planned',
+          'isDue': false,
+          'confirmedOperationId': null,
+          'createdAt': '2026-01-15T23:30:00Z',
+          'updatedAt': '2026-01-15T23:30:00Z',
+          'recurrenceId': _recurrenceId,
+        }),
+        throwsFormatException,
+      );
+    });
+  });
+}
+
+const _recurrenceId = '99999999-9999-4999-8999-999999999999';
+const _recurrenceCommandId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const _recurrenceInstanceId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const _plannedAccountId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+PlannedCostRecurrenceDraft _recurrenceDraft() {
+  return const PlannedCostRecurrenceDraft(
+    commandId: _recurrenceCommandId,
+    accountId: _plannedAccountId,
+    amount: '800.00',
+    currency: 'EUR',
+    title: 'Аренда',
+    dayOfMonth: 31,
+    startsOn: '2026-01-01',
+    requestedAt: '2026-01-15T23:30:00Z',
+  );
+}
+
+Map<String, Object?> _recurrence({String status = 'active'}) {
+  return <String, Object?>{
+    'recurrenceId': _recurrenceId,
+    'userId': '11111111-1111-4111-8111-111111111111',
+    'accountId': _plannedAccountId,
+    'commandId': _recurrenceCommandId,
+    'amount': '800.00',
+    'currency': 'EUR',
+    'title': 'Аренда',
+    'category': null,
+    'categoryId': null,
+    'frequency': 'monthly',
+    'dayOfMonth': 31,
+    'startsOn': '2026-01-01',
+    'endsOn': null,
+    'status': status,
+    'createdAt': '2026-01-15T23:30:00Z',
+    'updatedAt': '2026-01-15T23:30:00Z',
+  };
+}
+
+Map<String, Object?> _recurrenceCreated() {
+  return <String, Object?>{
+    'schemaVersion': '1',
+    'idempotentReplay': false,
+    'recurrence': _recurrence(),
+    'occurrences': ['2026-01-31', '2026-02-28', '2026-03-31'],
+  };
 }
 
 const _categoryId = '88888888-8888-4888-8888-888888888888';

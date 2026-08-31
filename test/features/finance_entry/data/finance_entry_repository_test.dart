@@ -621,6 +621,26 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence({
+    required String accessToken,
+    required PlannedCostRecurrenceDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences({required String accessToken}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence({
+    required String accessToken,
+    required String recurrenceId,
+    required EndPlannedCostRecurrenceCommand command,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<OperationCorrected>> correctOperation({
     required String accessToken,
     required OperationCorrectionCommand command,

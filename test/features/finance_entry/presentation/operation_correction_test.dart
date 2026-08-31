@@ -192,6 +192,22 @@ final class _FixedCapture implements FinanceCaptureContextSource {
 }
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceCreated>>
+  createPlannedCostRecurrence(PlannedCostRecurrenceDraft draft) =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceList>>
+  listPlannedCostRecurrences() => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<PlannedCostRecurrenceEnded>>
+  endPlannedCostRecurrence(
+    String recurrenceId,
+    EndPlannedCostRecurrenceCommand command,
+  ) => throw UnimplementedError();
+
   _FakeRepository({this.rejectEvaluation = false, this.correctionFailure});
 
   final bool rejectEvaluation;

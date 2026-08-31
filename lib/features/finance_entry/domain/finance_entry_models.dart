@@ -906,6 +906,10 @@ enum PlannedCostIssueCode {
   planBeforeAccountBaseline,
   invalidLifecycleTransition,
   confirmingOperationMissing,
+  // Reached only through a recurrence rule, which is the first planned cost
+  // that can carry a catalogue link (ADR 0025).
+  categoryUnavailable,
+  categoryDirectionMismatch,
 }
 
 @immutable
@@ -1167,6 +1171,13 @@ PlannedCostIssueCode _plannedCostIssueCode(String value) => switch (value) {
   'UNSUPPORTED_CURRENCY' => PlannedCostIssueCode.unsupportedCurrency,
   'PLAN_BEFORE_ACCOUNT_BASELINE' =>
     PlannedCostIssueCode.planBeforeAccountBaseline,
+  // The same refusal for the same reason, named for the rule rather than the
+  // instance, so it reads the same way to the user.
+  'RECURRENCE_BEFORE_ACCOUNT_BASELINE' =>
+    PlannedCostIssueCode.planBeforeAccountBaseline,
+  'CATEGORY_UNAVAILABLE' => PlannedCostIssueCode.categoryUnavailable,
+  'CATEGORY_DIRECTION_MISMATCH' =>
+    PlannedCostIssueCode.categoryDirectionMismatch,
   'INVALID_LIFECYCLE_TRANSITION' =>
     PlannedCostIssueCode.invalidLifecycleTransition,
   'CONFIRMING_OPERATION_MISSING' =>
@@ -2700,3 +2711,316 @@ FinanceIssueField _issueField(String value) => switch (value) {
 
 bool _containsControl(String value) =>
     value.codeUnits.any((unit) => unit < 0x20 || unit == 0x7f);
+
+// --- recurring planned costs (ADR 0025) --------------------------------------
+
+/// How often a rule repeats. Monthly only for now; weekly and yearly reuse the
+/// same anchor arithmetic and are added deliberately, not by accident.
+enum PlannedCostFrequency { monthly }
+
+/// Whether a rule still generates instances.
+enum PlannedCostRecurrenceStatus { active, ended }
+
+/// Request to record one repeating intended payment.
+///
+/// `dayOfMonth` is the day the user meant, kept unclamped: 31 stays 31, and
+/// the server shortens it into each month that is too short. Storing an
+/// already-clamped day would lose the intent after the first February.
+@immutable
+final class PlannedCostRecurrenceDraft {
+  const PlannedCostRecurrenceDraft({
+    required this.commandId,
+    required this.accountId,
+    required this.amount,
+    required this.currency,
+    required this.title,
+    required this.dayOfMonth,
+    required this.startsOn,
+    required this.requestedAt,
+    this.category,
+    this.categoryId,
+    this.endsOn,
+  });
+
+  factory PlannedCostRecurrenceDraft.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'commandId',
+      'accountId',
+      'amount',
+      'currency',
+      'title',
+      'category',
+      'categoryId',
+      'frequency',
+      'dayOfMonth',
+      'startsOn',
+      'endsOn',
+      'requestedAt',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    _requiredLiteral(json, 'frequency', 'monthly');
+    final startsOn = _date(json, 'startsOn');
+    final endsOn = json['endsOn'] == null ? null : _date(json, 'endsOn');
+    if (endsOn != null && endsOn.compareTo(startsOn) < 0) {
+      throw const FormatException('endsOn must not precede startsOn.');
+    }
+    return PlannedCostRecurrenceDraft(
+      commandId: _requiredUuid(json, 'commandId'),
+      accountId: _requiredUuid(json, 'accountId'),
+      amount: _positiveMoney(json, 'amount'),
+      currency: _currency(json, 'currency'),
+      title: _boundedText(json, 'title', maximumLength: 100),
+      category: _optionalBoundedText(json, 'category', maximumLength: 100),
+      categoryId: _optionalUuid(json, 'categoryId'),
+      dayOfMonth: _dayOfMonth(json, 'dayOfMonth'),
+      startsOn: startsOn,
+      endsOn: endsOn,
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final String accountId;
+  final String amount;
+  final String currency;
+  final String title;
+  final String? category;
+  final String? categoryId;
+  final int dayOfMonth;
+  final String startsOn;
+  final String? endsOn;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'accountId': accountId,
+    'amount': amount,
+    'currency': currency,
+    'title': title,
+    'category': category,
+    'categoryId': categoryId,
+    'frequency': 'monthly',
+    'dayOfMonth': dayOfMonth,
+    'startsOn': startsOn,
+    'endsOn': endsOn,
+    'requestedAt': requestedAt,
+  };
+}
+
+/// Command that stops a rule from generating anything further.
+@immutable
+final class EndPlannedCostRecurrenceCommand {
+  const EndPlannedCostRecurrenceCommand({
+    required this.commandId,
+    required this.requestedAt,
+  });
+
+  factory EndPlannedCostRecurrenceCommand.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'commandId', 'requestedAt'});
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return EndPlannedCostRecurrenceCommand(
+      commandId: _requiredUuid(json, 'commandId'),
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'requestedAt': requestedAt,
+  };
+}
+
+@immutable
+final class PlannedCostRecurrence {
+  const PlannedCostRecurrence({
+    required this.recurrenceId,
+    required this.accountId,
+    required this.amount,
+    required this.currency,
+    required this.title,
+    required this.dayOfMonth,
+    required this.startsOn,
+    required this.status,
+    this.category,
+    this.categoryId,
+    this.endsOn,
+  });
+
+  factory PlannedCostRecurrence.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'recurrenceId',
+      'userId',
+      'accountId',
+      'commandId',
+      'amount',
+      'currency',
+      'title',
+      'category',
+      'categoryId',
+      'frequency',
+      'dayOfMonth',
+      'startsOn',
+      'endsOn',
+      'status',
+      'createdAt',
+      'updatedAt',
+    });
+    _requiredLiteral(json, 'frequency', 'monthly');
+    return PlannedCostRecurrence(
+      recurrenceId: _requiredUuid(json, 'recurrenceId'),
+      accountId: _requiredUuid(json, 'accountId'),
+      amount: _positiveMoney(json, 'amount'),
+      currency: _currency(json, 'currency'),
+      title: _boundedText(json, 'title', maximumLength: 100),
+      category: _optionalBoundedText(json, 'category', maximumLength: 100),
+      categoryId: _optionalUuid(json, 'categoryId'),
+      dayOfMonth: _dayOfMonth(json, 'dayOfMonth'),
+      startsOn: _date(json, 'startsOn'),
+      endsOn: json['endsOn'] == null ? null : _date(json, 'endsOn'),
+      status: _recurrenceStatus(_requiredString(json, 'status')),
+    );
+  }
+
+  final String recurrenceId;
+  final String accountId;
+  final String amount;
+  final String currency;
+  final String title;
+  final String? category;
+  final String? categoryId;
+  final int dayOfMonth;
+  final String startsOn;
+  final String? endsOn;
+  final PlannedCostRecurrenceStatus status;
+
+  /// True when the anchor lands on the end of every month, which is what
+  /// clamping makes «31st» and «last day of the month» mean identically.
+  bool get isLastDayOfMonth => dayOfMonth == 31;
+}
+
+/// One outstanding instance a rule has already written.
+@immutable
+final class PlannedCostRecurrenceInstance {
+  const PlannedCostRecurrenceInstance({
+    required this.plannedCostId,
+    required this.plannedOn,
+  });
+
+  factory PlannedCostRecurrenceInstance.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'plannedCostId', 'plannedOn'});
+    return PlannedCostRecurrenceInstance(
+      plannedCostId: _requiredUuid(json, 'plannedCostId'),
+      plannedOn: _date(json, 'plannedOn'),
+    );
+  }
+
+  final String plannedCostId;
+  final String plannedOn;
+}
+
+/// A rule with the outstanding instances it owns.
+@immutable
+final class PlannedCostRecurrenceListItem {
+  PlannedCostRecurrenceListItem({
+    required this.recurrence,
+    required List<PlannedCostRecurrenceInstance> upcoming,
+  }) : upcoming = List<PlannedCostRecurrenceInstance>.unmodifiable(upcoming);
+
+  factory PlannedCostRecurrenceListItem.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'recurrence', 'upcoming'});
+    final raw = json['upcoming'];
+    if (raw is! List) throw const FormatException('Invalid upcoming.');
+    return PlannedCostRecurrenceListItem(
+      recurrence: PlannedCostRecurrence.fromJson(
+        _nestedObject(json, 'recurrence'),
+      ),
+      upcoming: raw
+          .map(
+            (item) => PlannedCostRecurrenceInstance.fromJson(_asObject(item)),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  final PlannedCostRecurrence recurrence;
+  final List<PlannedCostRecurrenceInstance> upcoming;
+}
+
+@immutable
+final class PlannedCostRecurrenceCreated {
+  PlannedCostRecurrenceCreated({
+    required this.recurrence,
+    required this.idempotentReplay,
+    required List<String> occurrences,
+  }) : occurrences = List<String>.unmodifiable(occurrences);
+
+  final PlannedCostRecurrence recurrence;
+  final bool idempotentReplay;
+
+  /// The dates the rule has just materialised, so the screen can show where
+  /// the anchor actually lands before a short month surprises anyone.
+  final List<String> occurrences;
+}
+
+@immutable
+final class PlannedCostRecurrenceEnded {
+  const PlannedCostRecurrenceEnded({
+    required this.recurrence,
+    required this.cancelledOccurrences,
+  });
+
+  final PlannedCostRecurrence recurrence;
+
+  /// Future instances nobody had acted on, withdrawn with the rule. An
+  /// instance already due survives, because it is an obligation that arrived.
+  final int cancelledOccurrences;
+}
+
+@immutable
+final class PlannedCostRecurrenceList {
+  PlannedCostRecurrenceList({
+    required List<PlannedCostRecurrenceListItem> recurrences,
+  }) : recurrences = List<PlannedCostRecurrenceListItem>.unmodifiable(
+         recurrences,
+       );
+
+  final List<PlannedCostRecurrenceListItem> recurrences;
+}
+
+void validatePlannedCostRecurrenceDraft(PlannedCostRecurrenceDraft draft) {
+  PlannedCostRecurrenceDraft.fromJson(draft.toJson());
+}
+
+void validateEndPlannedCostRecurrence(EndPlannedCostRecurrenceCommand command) {
+  EndPlannedCostRecurrenceCommand.fromJson(command.toJson());
+}
+
+/// Validates an identifier before it is interpolated into a request path.
+String validateRecurrenceId(String value) {
+  if (!_uuidPattern.hasMatch(value)) {
+    throw const FormatException('Invalid recurrence id.');
+  }
+  return value;
+}
+
+int _dayOfMonth(Map<String, Object?> json, String key) {
+  final value = json[key];
+  // 29, 30 and 31 are accepted rather than refused: refusing them was one of
+  // the answers to February this design rejected (ADR 0025).
+  if (value is! int || value < 1 || value > 31) {
+    throw FormatException('Invalid $key.');
+  }
+  return value;
+}
+
+PlannedCostRecurrenceStatus _recurrenceStatus(String value) => switch (value) {
+  'active' => PlannedCostRecurrenceStatus.active,
+  'ended' => PlannedCostRecurrenceStatus.ended,
+  _ => throw FormatException('Unsupported recurrence status: $value'),
+};
