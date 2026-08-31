@@ -344,6 +344,23 @@ by passing the previous delivered revision to
 rejection — dirty or shallow checkout, malformed or regressing epoch, overflow —
 still applies.
 
+### Publishing an update devices can install
+
+Once a signed build exists, publish it so installed apps can offer it:
+
+```bash
+MFA_RELEASE_HOST=<user@host> MFA_RELEASE_PATH=/mnt/mfa-data/releases \
+  tool/publish_android_release.sh --notes "what changed"
+```
+
+The APK is uploaded first and the manifest second, each through a temporary
+name, so a manifest never names a file that is not fully there. The API serves
+both behind the same bearer token as everything else, from a directory mounted
+read-only: the host distributes what it is given and can build or sign nothing.
+
+In the app the check is a button in Profile and nothing else — no polling and no
+check on launch. See [ADR 0026](docs/adr/0026-in-app-update-delivery.md).
+
 For device testing and for delivery use `tool/build_android_network_release.sh`,
 which signs with the stable key and upgrades in place. A release build without
 `MFA_ANDROID_KEY_PROPERTIES` is refused rather than falling back to the debug
