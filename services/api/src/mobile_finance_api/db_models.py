@@ -42,7 +42,9 @@ class UserRow(Base):
         ),
         CheckConstraint(
             "(timezone_revision = 0 AND canonical_timezone IS NULL) OR "
-            "(timezone_revision = 1 AND "
+            # At least one, not exactly one: the number counts how many times
+            # the timezone has been settled, and it is correctable (ADR 0028).
+            "(timezone_revision >= 1 AND "
             "canonical_timezone = btrim(canonical_timezone) AND "
             "canonical_timezone <> '' AND "
             "canonical_timezone !~ '[[:cntrl:]]' AND "
@@ -282,7 +284,8 @@ class FinanceAccountAuditRow(Base):
     __tablename__ = "finance_account_audit_events"
     __table_args__ = (
         CheckConstraint(
-            "event_type IN ('account_opened', 'account_baseline_corrected') "
+            "event_type IN ('account_opened', 'account_baseline_corrected', "
+            "'account_timezone_corrected') "
             "AND actor_type = 'user'",
             name="ck_finance_account_audit_event_type",
         ),
@@ -293,7 +296,13 @@ class FinanceAccountAuditRow(Base):
             "AND details ? 'previousOpeningBalanceOn' "
             "AND details ? 'openingBalanceOn' "
             "AND jsonb_typeof(details -> 'previousOpeningBalanceOn') = 'string' "
-            "AND jsonb_typeof(details -> 'openingBalanceOn') = 'string')",
+            "AND jsonb_typeof(details -> 'openingBalanceOn') = 'string') OR "
+            "(event_type = 'account_timezone_corrected' AND details IS NOT NULL "
+            "AND jsonb_typeof(details) = 'object' "
+            "AND details ? 'previousTimezone' "
+            "AND details ? 'timezone' "
+            "AND jsonb_typeof(details -> 'previousTimezone') = 'string' "
+            "AND jsonb_typeof(details -> 'timezone') = 'string')",
             name="ck_finance_account_audit_details",
         ),
         CheckConstraint(
@@ -347,7 +356,8 @@ class FinanceAccountOutboxEventRow(Base):
         ),
         CheckConstraint(
             "event_type IN ('finance.account.opened.v1', "
-            "'finance.account.baseline_corrected.v1')",
+            "'finance.account.baseline_corrected.v1', "
+            "'finance.account.timezone_corrected.v1')",
             name="ck_finance_account_outbox_event_type",
         ),
         CheckConstraint(

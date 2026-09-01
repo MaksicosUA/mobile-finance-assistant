@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,8 @@ from .account_contracts import (
     AccountDraft,
     CommittedFinanceAccount,
     CorrectBaselineDraft,
+    CorrectTimezoneCommand,
+    TimezoneIssue,
 )
 from .account_core import (
     AccountAlreadyInitialized,
@@ -25,6 +28,8 @@ from .account_core import (
     BaselineCorrectionSnapshot,
     BaselineWriteResult,
     FinanceAccountSnapshot,
+    TimezoneRejected,
+    TimezoneWriteResult,
 )
 from .database import AsyncSessionFactory
 from .db_models import (
@@ -348,6 +353,142 @@ class PostgresFinanceAccountRepository:
             raise AccountPersistenceUnavailable
         return _baseline_replay_result(account=account, audit=audit)
 
+    async def correct_timezone(
+        self,
+        *,
+        user_id: UUID,
+        command: CorrectTimezoneCommand,
+        payload_hash: bytes,
+    ) -> TimezoneWriteResult:
+        if len(payload_hash) != 32:
+            raise AccountPersistenceUnavailable
+        created_at = _aware_utc(self._clock())
+
+        async with self._session_factory() as database:
+            async with database.begin():
+                # Both rows are locked because both carry the timezone and the
+                # projector refuses to run while they disagree (ADR 0028).
+                user = await database.scalar(
+                    select(UserRow)
+                    .where(UserRow.id == user_id, UserRow.disabled_at.is_(None))
+                    .with_for_update()
+                )
+                account = await database.scalar(
+                    select(FinanceAccountRow)
+                    .where(
+                        FinanceAccountRow.id == command.account_id,
+                        FinanceAccountRow.user_id == user_id,
+                        FinanceAccountRow.status == "active",
+                    )
+                    .with_for_update()
+                )
+                if user is None or account is None:
+                    raise AccountPersistenceUnavailable
+
+                existing = await database.scalar(
+                    select(FinanceAccountAuditRow).where(
+                        FinanceAccountAuditRow.account_id == command.account_id,
+                        FinanceAccountAuditRow.user_id == user_id,
+                        FinanceAccountAuditRow.command_id == command.command_id,
+                    )
+                )
+                if existing is not None:
+                    if (
+                        existing.payload_hash != payload_hash
+                        or existing.event_type != "account_timezone_corrected"
+                    ):
+                        raise AccountCommandConflict
+                    return TimezoneWriteResult(
+                        account_id=account.id,
+                        canonical_timezone=account.opening_timezone,
+                        timezone_revision=user.timezone_revision,
+                        idempotent_replay=True,
+                    )
+
+                previous = account.opening_timezone
+                if previous == command.canonical_timezone:
+                    raise TimezoneRejected(
+                        (
+                            TimezoneIssue(
+                                code="TIMEZONE_UNCHANGED",
+                                field="canonicalTimezone",
+                            ),
+                        )
+                    )
+
+                # Moving somewhere still on yesterday would date a recorded
+                # operation in the future, and a future-dated operation is
+                # excluded from the balance until the day catches up. Refused
+                # rather than letting a confirmed amount vanish for hours.
+                local_today = created_at.astimezone(
+                    ZoneInfo(command.canonical_timezone)
+                ).date()
+                latest = await _latest_operation_on(
+                    database=database,
+                    user_id=user_id,
+                    account_id=command.account_id,
+                )
+                if latest is not None and latest > local_today:
+                    raise TimezoneRejected(
+                        (
+                            TimezoneIssue(
+                                code="TIMEZONE_BEHIND_RECORDED_OPERATIONS",
+                                field="canonicalTimezone",
+                            ),
+                        )
+                    )
+
+                account.opening_timezone = command.canonical_timezone
+                user.canonical_timezone = command.canonical_timezone
+                user.timezone_revision = user.timezone_revision + 1
+                user.updated_at = created_at
+                database.add_all(
+                    [
+                        FinanceAccountAuditRow(
+                            id=uuid4(),
+                            account_id=command.account_id,
+                            user_id=user_id,
+                            command_id=command.command_id,
+                            event_type="account_timezone_corrected",
+                            actor_type="user",
+                            payload_hash=payload_hash,
+                            details={
+                                "previousTimezone": previous,
+                                "timezone": command.canonical_timezone,
+                            },
+                            created_at=created_at,
+                        ),
+                        FinanceAccountOutboxEventRow(
+                            id=uuid4(),
+                            aggregate_type="finance_account",
+                            aggregate_id=command.account_id,
+                            user_id=user_id,
+                            command_id=command.command_id,
+                            event_type="finance.account.timezone_corrected.v1",
+                            payload=_outbox_payload(
+                                account_id=command.account_id,
+                                user_id=user_id,
+                                command_id=command.command_id,
+                            ),
+                            created_at=created_at,
+                            published_at=None,
+                            attempt_count=0,
+                            validation_failure_count=0,
+                            next_attempt_at=created_at,
+                            last_failed_at=None,
+                            failure_code=None,
+                            dead_lettered_at=None,
+                        ),
+                    ]
+                )
+                result = TimezoneWriteResult(
+                    account_id=account.id,
+                    canonical_timezone=command.canonical_timezone,
+                    timezone_revision=user.timezone_revision,
+                    idempotent_replay=False,
+                )
+        return result
+
     async def correct_opening_baseline(
         self,
         *,
@@ -452,6 +593,21 @@ class PostgresFinanceAccountRepository:
                 previous_opening_balance_on=previous_opening_balance_on,
                 idempotent_replay=False,
             )
+
+
+async def _latest_operation_on(
+    *,
+    database: AsyncSession,
+    user_id: UUID,
+    account_id: UUID,
+) -> date | None:
+    latest: date | None = await database.scalar(
+        select(func.max(FinanceOperationRow.occurred_on)).where(
+            FinanceOperationRow.account_id == account_id,
+            FinanceOperationRow.user_id == user_id,
+        )
+    )
+    return latest
 
 
 async def _earliest_operation_on(

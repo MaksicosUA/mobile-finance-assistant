@@ -166,6 +166,7 @@ AccountErrorCode = Literal[
     "ACCOUNT_REJECTED",
     "ACCOUNT_UNAVAILABLE",
     "BASELINE_REJECTED",
+    "TIMEZONE_REJECTED",
     "AUTHENTICATION_UNAVAILABLE",
     "FINANCE_PERSISTENCE_UNAVAILABLE",
 ]
@@ -293,6 +294,41 @@ class BaselineIssue(AccountApiModel):
     field: Literal["openingBalanceOn"]
 
 
+class CorrectTimezoneCommand(AccountApiModel):
+    """An explicit request to change where this account's months are drawn.
+
+    One phase, not the evaluate/confirm handshake a baseline needs: no balance
+    moves. An operation keeps the local date it was captured with (ADR 0007),
+    so what changes is only what "today" and "this month" mean from now on.
+    """
+
+    schema_version: Literal["1"] = Field(alias="schemaVersion")
+    command_id: UUID = Field(alias="commandId")
+    account_id: UUID = Field(alias="accountId")
+    canonical_timezone: TimezoneName = Field(alias="canonicalTimezone")
+    requested_at: UtcTimestamp = Field(alias="requestedAt")
+
+
+class TimezoneIssue(AccountApiModel):
+    code: Literal[
+        # The account already reports in this zone; nothing to correct.
+        "TIMEZONE_UNCHANGED",
+        # Moving there would date a recorded operation in the future, and a
+        # future-dated operation is excluded from the balance until the day
+        # catches up. Refused rather than letting money vanish for hours.
+        "TIMEZONE_BEHIND_RECORDED_OPERATIONS",
+    ]
+    field: Literal["canonicalTimezone"]
+
+
+class CorrectTimezoneResponse(AccountApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    idempotent_replay: bool = Field(alias="idempotentReplay")
+    account_id: UUID = Field(alias="accountId")
+    canonical_timezone: TimezoneName = Field(alias="canonicalTimezone")
+    timezone_revision: int = Field(alias="timezoneRevision", ge=1)
+
+
 class EvaluateBaselineRequest(AccountApiModel):
     draft: CorrectBaselineDraft
 
@@ -346,6 +382,9 @@ class AccountErrorDetail(AccountApiModel):
     baseline_issues: tuple[BaselineIssue, ...] = Field(
         default=(), alias="baselineIssues"
     )
+    timezone_issues: tuple[TimezoneIssue, ...] = Field(
+        default=(), alias="timezoneIssues"
+    )
 
     @model_validator(mode="after")
     def issues_are_consistent(self) -> Self:
@@ -357,6 +396,10 @@ class AccountErrorDetail(AccountApiModel):
             raise ValueError("baseline rejection requires issues")
         if self.code != "BASELINE_REJECTED" and self.baseline_issues:
             raise ValueError("only baseline rejection may expose baseline issues")
+        if self.code == "TIMEZONE_REJECTED" and not self.timezone_issues:
+            raise ValueError("timezone rejection requires issues")
+        if self.code != "TIMEZONE_REJECTED" and self.timezone_issues:
+            raise ValueError("only timezone rejection may expose timezone issues")
         return self
 
 
@@ -455,3 +498,9 @@ def account_contract_schema() -> dict[str, object]:
         ),
         **generated,
     }
+
+
+def correct_timezone_command_hash(command: CorrectTimezoneCommand) -> str:
+    """Canonical hash binding a command_id to exact timezone content."""
+
+    return _canonical_hash(command.model_dump(mode="json", by_alias=True))

@@ -15,13 +15,17 @@ from .account_contracts import (
     BaselineIssue,
     CommittedFinanceAccount,
     CorrectBaselineDraft,
+    CorrectTimezoneCommand,
+    CorrectTimezoneResponse,
     EvaluateAccountResponse,
     EvaluateBaselineResponse,
     ListAccountsResponse,
+    TimezoneIssue,
     account_draft_hash,
     baseline_draft_hash,
     confirmed_account_command_hash,
     confirmed_baseline_command_hash,
+    correct_timezone_command_hash,
 )
 
 
@@ -40,6 +44,14 @@ class AccountAlreadyInitialized(Exception):
 class AccountRejected(Exception):
     def __init__(self, issues: tuple[AccountIssue, ...]) -> None:
         super().__init__("account rejected")
+        self.issues = issues
+
+
+class TimezoneRejected(Exception):
+    """The reporting timezone could not be moved as asked (ADR 0028)."""
+
+    def __init__(self, issues: tuple[TimezoneIssue, ...]) -> None:
+        super().__init__("timezone rejected")
         self.issues = issues
 
 
@@ -76,6 +88,14 @@ class FinanceAccountDirectory(Protocol):
         account_id: UUID,
     ) -> FinanceAccountSnapshot | None:
         """Return an owned active account without exposing foreign accounts."""
+
+
+@dataclass(frozen=True, slots=True)
+class TimezoneWriteResult:
+    account_id: UUID
+    canonical_timezone: str
+    timezone_revision: int
+    idempotent_replay: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +204,19 @@ class FinanceAccountRepository(FinanceAccountDirectory, Protocol):
     ) -> BaselineWriteResult:
         """Atomically move the baseline earlier with audit and invalidation."""
 
+    async def correct_timezone(
+        self,
+        *,
+        user_id: UUID,
+        command: CorrectTimezoneCommand,
+        payload_hash: bytes,
+    ) -> TimezoneWriteResult:
+        """Move both copies of the timezone, with audit and invalidation.
+
+        The projector refuses to run while the user's and the account's copies
+        disagree, so they move in one transaction or not at all (ADR 0028).
+        """
+
 
 class UnavailableFinanceAccountRepository:
     async def get_owned_active_account(
@@ -253,6 +286,16 @@ class UnavailableFinanceAccountRepository:
         confirmed_at: datetime,
     ) -> BaselineWriteResult:
         del user_id, draft, payload_hash, confirmed_at
+        raise AccountPersistenceUnavailable
+
+    async def correct_timezone(
+        self,
+        *,
+        user_id: UUID,
+        command: CorrectTimezoneCommand,
+        payload_hash: bytes,
+    ) -> TimezoneWriteResult:
+        del user_id, command, payload_hash
         raise AccountPersistenceUnavailable
 
 
@@ -347,6 +390,33 @@ class AccountCore:
             confirmed_at=confirmed_at,
         )
         return result
+
+    async def correct_timezone(
+        self,
+        *,
+        user_id: UUID,
+        command: CorrectTimezoneCommand,
+    ) -> CorrectTimezoneResponse:
+        """Move where this account's months are drawn (ADR 0028).
+
+        One phase: no balance moves, because an operation keeps the local date
+        it was captured with. The refusals that exist are structural — the same
+        zone, or one far enough behind that a recorded operation would be dated
+        in the future.
+        """
+
+        payload_hash = bytes.fromhex(correct_timezone_command_hash(command))
+        result = await self._repository.correct_timezone(
+            user_id=user_id,
+            command=command,
+            payload_hash=payload_hash,
+        )
+        return CorrectTimezoneResponse(
+            idempotent_replay=result.idempotent_replay,
+            account_id=result.account_id,
+            canonical_timezone=result.canonical_timezone,
+            timezone_revision=result.timezone_revision,
+        )
 
     async def evaluate_baseline(
         self,

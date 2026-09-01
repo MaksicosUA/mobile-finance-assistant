@@ -21,11 +21,14 @@ from .account_contracts import (
     CommitAccountResponse,
     CommitBaselineRequest,
     CommitBaselineResponse,
+    CorrectTimezoneCommand,
+    CorrectTimezoneResponse,
     EvaluateAccountRequest,
     EvaluateAccountResponse,
     EvaluateBaselineRequest,
     EvaluateBaselineResponse,
     ListAccountsResponse,
+    TimezoneIssue,
 )
 from .account_core import (
     AccountAlreadyInitialized,
@@ -36,6 +39,7 @@ from .account_core import (
     AccountRejected,
     AccountUnavailable,
     BaselineRejected,
+    TimezoneRejected,
 )
 from .auth import AuthenticatedUser, current_user
 
@@ -221,6 +225,59 @@ async def list_accounts(
 
 
 @router.post(
+    "/timezone",
+    response_model=CorrectTimezoneResponse,
+    response_model_by_alias=True,
+    responses={
+        401: {"description": "Authentication is required"},
+        409: {
+            "model": AccountErrorResponse,
+            "description": "Command identity conflict",
+        },
+        422: {
+            "model": AccountErrorResponse,
+            "description": "Malformed or deterministically rejected command",
+        },
+        503: {
+            "model": AccountErrorResponse,
+            "description": "Account persistence is unavailable",
+        },
+    },
+)
+async def correct_timezone(
+    body: CorrectTimezoneCommand,
+    core: AccountCoreDependency,
+    user: CurrentUserDependency,
+) -> CorrectTimezoneResponse:
+    """Move where this account's months are drawn (ADR 0028).
+
+    One phase: no balance moves, because an operation keeps the local date it
+    was captured with.
+    """
+
+    try:
+        return await core.correct_timezone(
+            user_id=_authenticated_user_id(user), command=body
+        )
+    except AccountCommandConflict:
+        public_error = _account_error(
+            status_code=status.HTTP_409_CONFLICT,
+            code="COMMAND_CONFLICT",
+        )
+    except TimezoneRejected as rejection:
+        public_error = _account_error(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="TIMEZONE_REJECTED",
+            timezone_issues=rejection.issues,
+        )
+    except AccountPersistenceUnavailable:
+        public_error = _unavailable()
+    except Exception:
+        public_error = _unavailable()
+    raise public_error
+
+
+@router.post(
     "/baseline/evaluate",
     response_model=EvaluateBaselineResponse,
     response_model_by_alias=True,
@@ -356,16 +413,20 @@ def _account_error(
     code: AccountErrorCode,
     issues: tuple[AccountIssue, ...] = (),
     baseline_issues: tuple[BaselineIssue, ...] = (),
+    timezone_issues: tuple[TimezoneIssue, ...] = (),
 ) -> HTTPException:
     detail = AccountErrorDetail(
         code=code,
         issues=issues,
         baseline_issues=baseline_issues,
+        timezone_issues=timezone_issues,
     ).model_dump(mode="json", by_alias=True)
     # Keep the wire shape of every pre-existing error byte-identical: installed
-    # clients parse this strictly, so the field appears only when it is used.
+    # clients parse this strictly, so each field appears only when it is used.
     if not baseline_issues:
         detail.pop("baselineIssues", None)
+    if not timezone_issues:
+        detail.pop("timezoneIssues", None)
     return HTTPException(
         status_code=status_code,
         detail=detail,

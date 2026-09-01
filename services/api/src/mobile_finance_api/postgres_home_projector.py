@@ -1062,9 +1062,13 @@ def _validate_account_events(
                 or event.payload != expected_payload
             ):
                 raise _OutboxContractError(kind="account", event_id=event.id)
-        elif event.event_type == "finance.account.baseline_corrected.v1":
-            # A correction carries its own command identity (ADR 0016), so the
-            # payload is checked against that instead of the opening command.
+        elif event.event_type in {
+            "finance.account.baseline_corrected.v1",
+            "finance.account.timezone_corrected.v1",
+        }:
+            # A correction carries its own command identity (ADR 0016, ADR
+            # 0028), so the payload is checked against that instead of the
+            # opening command.
             if event.payload != {
                 "schemaVersion": "1",
                 "accountId": str(account.id),
