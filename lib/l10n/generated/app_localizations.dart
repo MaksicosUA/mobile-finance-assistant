@@ -2942,6 +2942,66 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'{megabytes} МБ'**
   String appUpdateMegabytes(String megabytes);
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Уведомления'**
+  String get notificationsQuietLabel;
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Ничего, что требует внимания.'**
+  String get notificationsEmpty;
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Здесь появятся напоминания о платежах и новые версии приложения.'**
+  String get notificationsEmptyHint;
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Доступна версия {version}'**
+  String notificationUpdateTitle(String version);
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Обновить можно в профиле.'**
+  String get notificationUpdateBody;
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть профиль'**
+  String get notificationUpdateAction;
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Просрочен платёж: {title}'**
+  String notificationPaymentOverdueTitle(String title);
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скоро платёж: {title}'**
+  String notificationPaymentDueSoonTitle(String title);
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'{date}, {amount}'**
+  String notificationPaymentBody(String date, String amount);
+
+  /// Notification centre (ADR 0026 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть запланированные'**
+  String get notificationPaymentAction;
 }
 
 class _AppLocalizationsDelegate

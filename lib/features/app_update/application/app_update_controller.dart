@@ -9,6 +9,7 @@ import '../../finance_entry/data/finance_entry_repository.dart';
 import '../../finance_entry/domain/finance_entry_models.dart';
 import '../../finance_entry/domain/finance_entry_result.dart';
 import '../data/app_update_installer.dart';
+import '../data/app_update_schedule_store.dart';
 import 'app_update_state.dart';
 
 export 'app_update_state.dart';
@@ -20,6 +21,11 @@ export 'app_update_state.dart';
 /// otherwise always be "nothing to compare against".
 final installedVersionCodeProvider = Provider<int?>(
   (ref) => installedVersionCode,
+);
+
+/// The clock the weekly interval is measured against.
+final updateClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
 );
 
 final appUpdateControllerProvider =
@@ -46,6 +52,49 @@ class AppUpdateController extends Notifier<AppUpdateState> {
     ref.watch(authAccountEpochProvider);
     _busy = false;
     return const AppUpdateIdle();
+  }
+
+  /// Asks the server at most once a week, at start-up, and says nothing
+  /// unless it has something to say.
+  ///
+  /// A quiet check that finds nothing leaves the screen exactly as it was: the
+  /// person did not ask, so they are not told. A failure is silent for the same
+  /// reason, and the timestamp advances only on success — a week offline must
+  /// not consume the week's check.
+  Future<void> checkIfDue() async {
+    if (_busy) return;
+    if (ref.read(authControllerProvider) is! AuthSignedIn) return;
+    final store = ref.read(appUpdateScheduleStoreProvider);
+    final now = ref.read(updateClockProvider)();
+    try {
+      final last = await store.lastCheckedAt();
+      if (last != null && now.toUtc().difference(last) < updateCheckInterval) {
+        return;
+      }
+    } on Object {
+      return;
+    }
+    if (!ref.mounted) return;
+
+    _busy = true;
+    try {
+      final result = await ref
+          .read(financeEntryRepositoryProvider)
+          .readAppUpdate();
+      if (!ref.mounted) return;
+      if (result case FinanceEntrySuccess(:final value)) {
+        await store.recordCheckedAt(now);
+        if (!ref.mounted) return;
+        final derived = _stateFor(value.release);
+        // Only an actual update is worth interrupting the screen's own state
+        // for; "up to date" is an answer to a question nobody asked.
+        if (derived is AppUpdateAvailable) state = derived;
+      }
+    } on Object {
+      return;
+    } finally {
+      _busy = false;
+    }
   }
 
   Future<void> check() async {

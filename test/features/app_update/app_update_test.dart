@@ -9,6 +9,8 @@ import 'package:mobile_finance_assistant/app/settings/app_settings.dart';
 import 'package:mobile_finance_assistant/app/theme/app_theme.dart';
 import 'package:mobile_finance_assistant/features/app_update/application/app_update_controller.dart';
 import 'package:mobile_finance_assistant/features/app_update/data/app_update_installer.dart';
+import 'package:mobile_finance_assistant/features/app_update/data/app_update_schedule_store.dart';
+import 'package:mobile_finance_assistant/features/auth/application/auth_controller.dart';
 import 'package:mobile_finance_assistant/features/app_update/presentation/app_update_section.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/application/finance_entry_controller.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/data/finance_entry_repository.dart';
@@ -237,6 +239,149 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  // --- the weekly check (ADR 0026 amendment) --------------------------------
+
+  test('a check is skipped while nobody is signed in', () async {
+    final repository = _FakeRepository(release: _releaseJson());
+    final schedule = _RecordingSchedule();
+    final container = _container(
+      repository: repository,
+      schedule: schedule,
+      signedIn: false,
+    );
+    addTearDown(container.dispose);
+
+    await container.read(appUpdateControllerProvider.notifier).checkIfDue();
+
+    expect(repository.checks, 0);
+    expect(container.read(appUpdateControllerProvider), isA<AppUpdateIdle>());
+  });
+
+  test('a check inside the week is skipped', () async {
+    final repository = _FakeRepository(release: _releaseJson());
+    final schedule = _RecordingSchedule(
+      last: _now.subtract(const Duration(days: 2)),
+    );
+    final container = _container(repository: repository, schedule: schedule);
+    addTearDown(container.dispose);
+
+    await container.read(appUpdateControllerProvider.notifier).checkIfDue();
+
+    expect(repository.checks, 0);
+  });
+
+  test('a week later the check runs and reports what it found', () async {
+    final repository = _FakeRepository(release: _releaseJson());
+    final schedule = _RecordingSchedule(
+      last: _now.subtract(const Duration(days: 8)),
+    );
+    final container = _container(repository: repository, schedule: schedule);
+    addTearDown(container.dispose);
+
+    await container.read(appUpdateControllerProvider.notifier).checkIfDue();
+
+    expect(repository.checks, 1);
+    expect(
+      container.read(appUpdateControllerProvider),
+      isA<AppUpdateAvailable>(),
+    );
+    expect(schedule.recorded, [_now]);
+  });
+
+  test('a quiet check that finds nothing says nothing', () async {
+    // "Up to date" is an answer to a question nobody asked.
+    final repository = _FakeRepository(release: null);
+    final schedule = _RecordingSchedule(
+      last: _now.subtract(const Duration(days: 8)),
+    );
+    final container = _container(repository: repository, schedule: schedule);
+    addTearDown(container.dispose);
+
+    await container.read(appUpdateControllerProvider.notifier).checkIfDue();
+
+    expect(repository.checks, 1);
+    expect(container.read(appUpdateControllerProvider), isA<AppUpdateIdle>());
+  });
+
+  test(
+    'a failed quiet check is silent and does not consume the week',
+    () async {
+      final repository = _FakeRepository(
+        checkFailure: FinanceEntryFailure(
+          kind: FinanceEntryFailureKind.offline,
+          requestId: 'req_synthetic_update',
+        ),
+      );
+      final schedule = _RecordingSchedule(
+        last: _now.subtract(const Duration(days: 8)),
+      );
+      final container = _container(repository: repository, schedule: schedule);
+      addTearDown(container.dispose);
+
+      await container.read(appUpdateControllerProvider.notifier).checkIfDue();
+
+      // Nobody asked, so nobody is told; and a week offline must not eat the
+      // week's check.
+      expect(container.read(appUpdateControllerProvider), isA<AppUpdateIdle>());
+      expect(schedule.recorded, isEmpty);
+    },
+  );
+
+  test('a first run with no record checks immediately', () async {
+    final repository = _FakeRepository(release: _releaseJson());
+    final schedule = _RecordingSchedule();
+    final container = _container(repository: repository, schedule: schedule);
+    addTearDown(container.dispose);
+
+    await container.read(appUpdateControllerProvider.notifier).checkIfDue();
+
+    expect(repository.checks, 1);
+  });
+}
+
+final _now = DateTime.utc(2026, 9, 1, 9);
+
+ProviderContainer _container({
+  required _FakeRepository repository,
+  required _RecordingSchedule schedule,
+  bool signedIn = true,
+}) {
+  return ProviderContainer(
+    overrides: [
+      financeEntryRepositoryProvider.overrideWithValue(repository),
+      appUpdateScheduleStoreProvider.overrideWithValue(schedule),
+      appUpdateInstallerProvider.overrideWithValue(_FakeInstaller()),
+      installedVersionCodeProvider.overrideWithValue(_installedCode),
+      updateClockProvider.overrideWithValue(() => _now),
+      authControllerProvider.overrideWith(
+        () => signedIn ? _SignedInAuth() : _SignedOutAuth(),
+      ),
+    ],
+  );
+}
+
+final class _SignedInAuth extends AuthController {
+  @override
+  AuthState build() => const AuthSignedIn();
+}
+
+final class _SignedOutAuth extends AuthController {
+  @override
+  AuthState build() => const AuthSignedOut();
+}
+
+final class _RecordingSchedule implements AppUpdateScheduleStore {
+  _RecordingSchedule({this.last});
+
+  final DateTime? last;
+  final List<DateTime> recorded = [];
+
+  @override
+  Future<DateTime?> lastCheckedAt() async => last;
+
+  @override
+  Future<void> recordCheckedAt(DateTime moment) async => recorded.add(moment);
 }
 
 Future<void> _tapCheck(WidgetTester tester) async {
@@ -330,9 +475,11 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
   final Map<String, Object?>? release;
   final FinanceEntryFailure? checkFailure;
   final List<String> downloads = [];
+  int checks = 0;
 
   @override
   Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate() async {
+    checks += 1;
     final failure = checkFailure;
     if (failure != null) {
       return FinanceEntryFailureResult<AppUpdateManifest>(failure);

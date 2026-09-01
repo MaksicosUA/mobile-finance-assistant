@@ -1643,4 +1643,43 @@ class AppLocalizationsRu extends AppLocalizations {
   String appUpdateMegabytes(String megabytes) {
     return '$megabytes МБ';
   }
+
+  @override
+  String get notificationsQuietLabel => 'Уведомления';
+
+  @override
+  String get notificationsEmpty => 'Ничего, что требует внимания.';
+
+  @override
+  String get notificationsEmptyHint =>
+      'Здесь появятся напоминания о платежах и новые версии приложения.';
+
+  @override
+  String notificationUpdateTitle(String version) {
+    return 'Доступна версия $version';
+  }
+
+  @override
+  String get notificationUpdateBody => 'Обновить можно в профиле.';
+
+  @override
+  String get notificationUpdateAction => 'Открыть профиль';
+
+  @override
+  String notificationPaymentOverdueTitle(String title) {
+    return 'Просрочен платёж: $title';
+  }
+
+  @override
+  String notificationPaymentDueSoonTitle(String title) {
+    return 'Скоро платёж: $title';
+  }
+
+  @override
+  String notificationPaymentBody(String date, String amount) {
+    return '$date, $amount';
+  }
+
+  @override
+  String get notificationPaymentAction => 'Открыть запланированные';
 }

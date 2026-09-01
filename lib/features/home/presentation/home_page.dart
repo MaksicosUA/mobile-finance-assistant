@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/settings/app_settings_controller.dart';
 import '../../../app/theme/app_tokens.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../notifications/application/notifications_controller.dart';
 import '../application/home_controller.dart';
 import '../data/home_repository.dart';
 import '../domain/home_snapshot.dart';
@@ -108,6 +109,7 @@ class _HomePageState extends ConsumerState<HomePage>
       });
     });
     final l10n = AppLocalizations.of(context);
+    final hasUnseenNotifications = ref.watch(hasUnseenNotificationsProvider);
     final homeState = ref.watch(homeControllerProvider);
     final settings = ref.watch(appSettingsControllerProvider);
     final userName = homeState.knownUserName;
@@ -138,7 +140,10 @@ class _HomePageState extends ConsumerState<HomePage>
                     localNow: _localNow,
                   ),
                   dateLabel: dateLabel,
-                  notificationsLabel: l10n.notificationsLabel,
+                  notificationsLabel: hasUnseenNotifications
+                      ? l10n.notificationsLabel
+                      : l10n.notificationsQuietLabel,
+                  hasUnseenNotifications: hasUnseenNotifications,
                   onNotificationsPressed: widget.onNotificationsPressed,
                 ),
                 const SizedBox(height: AppSpacing.lg),

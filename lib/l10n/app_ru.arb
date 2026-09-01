@@ -1424,5 +1424,68 @@
         "type": "String"
       }
     }
+  },
+  "notificationsQuietLabel": "Уведомления",
+  "@notificationsQuietLabel": {
+    "description": "Notification centre (ADR 0026 amendment)."
+  },
+  "notificationsEmpty": "Ничего, что требует внимания.",
+  "@notificationsEmpty": {
+    "description": "Notification centre (ADR 0026 amendment)."
+  },
+  "notificationsEmptyHint": "Здесь появятся напоминания о платежах и новые версии приложения.",
+  "@notificationsEmptyHint": {
+    "description": "Notification centre (ADR 0026 amendment)."
+  },
+  "notificationUpdateTitle": "Доступна версия {version}",
+  "@notificationUpdateTitle": {
+    "description": "Notification centre (ADR 0026 amendment).",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationUpdateBody": "Обновить можно в профиле.",
+  "@notificationUpdateBody": {
+    "description": "Notification centre (ADR 0026 amendment)."
+  },
+  "notificationUpdateAction": "Открыть профиль",
+  "@notificationUpdateAction": {
+    "description": "Notification centre (ADR 0026 amendment)."
+  },
+  "notificationPaymentOverdueTitle": "Просрочен платёж: {title}",
+  "@notificationPaymentOverdueTitle": {
+    "description": "Notification centre (ADR 0026 amendment).",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationPaymentDueSoonTitle": "Скоро платёж: {title}",
+  "@notificationPaymentDueSoonTitle": {
+    "description": "Notification centre (ADR 0026 amendment).",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationPaymentBody": "{date}, {amount}",
+  "@notificationPaymentBody": {
+    "description": "Notification centre (ADR 0026 amendment).",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "notificationPaymentAction": "Открыть запланированные",
+  "@notificationPaymentAction": {
+    "description": "Notification centre (ADR 0026 amendment)."
   }
 }

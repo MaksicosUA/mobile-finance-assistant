@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/home/application/home_controller.dart';
 import '../features/home/presentation/home_page.dart';
+import '../features/app_update/application/app_update_controller.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/finance_entry/application/operation_sync_controller.dart';
 import '../features/finance_entry/domain/operation_outbox.dart';
@@ -14,6 +17,7 @@ import '../features/finance_entry/presentation/planned_cost_page.dart';
 import '../features/finance_entry/presentation/savings_goal_page.dart';
 import '../features/finance_entry/presentation/finance_entry_page.dart';
 import '../features/home/presentation/widgets/home_status_banner.dart';
+import '../features/notifications/presentation/notifications_page.dart';
 import '../features/profile/presentation/profile_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
@@ -49,6 +53,12 @@ class _AppShellState extends ConsumerState<AppShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // At most once a week, and only while signed in. It says nothing unless it
+    // finds something, and then only by marking the bell (ADR 0026 amendment).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(ref.read(appUpdateControllerProvider.notifier).checkIfDue());
+    });
     if (isNetworkBackendConfigured) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -142,16 +152,17 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   void _openNotifications() {
-    final l10n = AppLocalizations.of(context);
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (routeContext) => Scaffold(
-          body: StubPage(
-            title: l10n.notificationsTitle,
-            description: l10n.notificationsStubDescription,
-            actionLabel: l10n.backLabel,
-            onBackHome: () => Navigator.of(routeContext).pop(),
-          ),
+        builder: (routeContext) => NotificationsPage(
+          onOpenProfile: () {
+            Navigator.of(routeContext).pop();
+            setState(() => _section = AppSection.profile);
+          },
+          onOpenPlannedCosts: () {
+            Navigator.of(routeContext).pop();
+            _openPlannedCost();
+          },
         ),
       ),
     );

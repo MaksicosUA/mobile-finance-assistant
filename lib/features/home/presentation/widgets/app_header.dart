@@ -13,12 +13,18 @@ class AppHeader extends StatelessWidget {
     required this.greeting,
     required this.dateLabel,
     required this.notificationsLabel,
+    required this.hasUnseenNotifications,
     required this.onNotificationsPressed,
   });
 
   final String greeting;
   final String dateLabel;
   final String notificationsLabel;
+
+  /// Whether anything is actually waiting. The dot used to be drawn
+  /// unconditionally, so the app claimed there was news from the day it
+  /// shipped — including to a screen reader.
+  final bool hasUnseenNotifications;
   final VoidCallback onNotificationsPressed;
 
   @override
@@ -60,19 +66,21 @@ class AppHeader extends StatelessWidget {
                       Icons.notifications_none_rounded,
                       color: colors.textPrimary,
                     ),
-                    Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: colors.surface, width: 2),
+                    if (hasUnseenNotifications)
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: Container(
+                          key: const Key('notifications-dot'),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: colors.surface, width: 2),
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
