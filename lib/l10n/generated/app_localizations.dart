@@ -3002,6 +3002,138 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Открыть запланированные'**
   String get notificationPaymentAction;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Бюджеты'**
+  String get budgetsTitle;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Бюджеты'**
+  String get budgetsSettingsAction;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Месячные лимиты и сколько осталось'**
+  String get budgetsSettingsDescription;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'{from} — {to}'**
+  String budgetsPeriod(String from, String to);
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Все траты'**
+  String get budgetsOverallTitle;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Лимитов пока нет.'**
+  String get budgetsEmpty;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Поставьте месячный лимит на категорию или сразу на все траты.'**
+  String get budgetsEmptyHint;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Потрачено {spent} из {limit}'**
+  String budgetsSpentOfLimit(String spent, String limit);
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Осталось {amount}'**
+  String budgetsRemaining(String amount);
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Перерасход {amount}'**
+  String budgetsOverspentBy(String amount);
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Ещё запланировано {amount}'**
+  String budgetsPlanned(String amount);
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Поставить лимит'**
+  String get budgetsAddAction;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Снять'**
+  String get budgetsRemoveAction;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Снять лимит?'**
+  String get budgetsRemoveDialogTitle;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Трата останется, перестанет считаться только лимит. Поставить новый можно в любой момент.'**
+  String get budgetsRemoveDialogBody;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'На что'**
+  String get budgetsCategoryLabel;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Лимит в месяц'**
+  String get budgetsLimitLabel;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохранить'**
+  String get budgetsSaveAction;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить бюджеты.'**
+  String get budgetsLoadError;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось сохранить лимит.'**
+  String get budgetsWriteError;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Для всех категорий лимиты уже стоят.'**
+  String get budgetsNoCategoriesLeft;
+
+  /// Monthly budgets (ADR 0027).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала создайте счёт.'**
+  String get budgetsAccountRequired;
 }
 
 class _AppLocalizationsDelegate

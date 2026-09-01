@@ -1682,4 +1682,82 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get notificationPaymentAction => 'Открыть запланированные';
+
+  @override
+  String get budgetsTitle => 'Бюджеты';
+
+  @override
+  String get budgetsSettingsAction => 'Бюджеты';
+
+  @override
+  String get budgetsSettingsDescription => 'Месячные лимиты и сколько осталось';
+
+  @override
+  String budgetsPeriod(String from, String to) {
+    return '$from — $to';
+  }
+
+  @override
+  String get budgetsOverallTitle => 'Все траты';
+
+  @override
+  String get budgetsEmpty => 'Лимитов пока нет.';
+
+  @override
+  String get budgetsEmptyHint =>
+      'Поставьте месячный лимит на категорию или сразу на все траты.';
+
+  @override
+  String budgetsSpentOfLimit(String spent, String limit) {
+    return 'Потрачено $spent из $limit';
+  }
+
+  @override
+  String budgetsRemaining(String amount) {
+    return 'Осталось $amount';
+  }
+
+  @override
+  String budgetsOverspentBy(String amount) {
+    return 'Перерасход $amount';
+  }
+
+  @override
+  String budgetsPlanned(String amount) {
+    return 'Ещё запланировано $amount';
+  }
+
+  @override
+  String get budgetsAddAction => 'Поставить лимит';
+
+  @override
+  String get budgetsRemoveAction => 'Снять';
+
+  @override
+  String get budgetsRemoveDialogTitle => 'Снять лимит?';
+
+  @override
+  String get budgetsRemoveDialogBody =>
+      'Трата останется, перестанет считаться только лимит. Поставить новый можно в любой момент.';
+
+  @override
+  String get budgetsCategoryLabel => 'На что';
+
+  @override
+  String get budgetsLimitLabel => 'Лимит в месяц';
+
+  @override
+  String get budgetsSaveAction => 'Сохранить';
+
+  @override
+  String get budgetsLoadError => 'Не удалось загрузить бюджеты.';
+
+  @override
+  String get budgetsWriteError => 'Не удалось сохранить лимит.';
+
+  @override
+  String get budgetsNoCategoriesLeft => 'Для всех категорий лимиты уже стоят.';
+
+  @override
+  String get budgetsAccountRequired => 'Сначала создайте счёт.';
 }

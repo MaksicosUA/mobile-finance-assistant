@@ -303,6 +303,21 @@ ProviderContainer _container(_FakeRepository repository) {
 /// tested against the state it will actually be handed back.
 class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets() =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> setBudget(
+    SetBudgetCommand command,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> removeBudget(
+    String budgetId,
+    RemoveBudgetCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate() =>
       throw UnimplementedError();
 

@@ -61,6 +61,11 @@ enum FinanceEntryErrorCode {
   // Asking about an installable update (ADR 0026).
   appReleaseUnavailable,
   appReleaseNotFound,
+  // Monthly ceilings (ADR 0027).
+  malformedBudget,
+  budgetRejected,
+  budgetNotFound,
+  budgetPersistenceUnavailable,
   authenticationUnavailable,
   financePersistenceUnavailable,
 }

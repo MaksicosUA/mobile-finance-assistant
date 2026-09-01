@@ -7,6 +7,7 @@ import '../features/home/application/home_controller.dart';
 import '../features/home/presentation/home_page.dart';
 import '../features/app_update/application/app_update_controller.dart';
 import '../features/auth/application/auth_controller.dart';
+import '../features/budgets/presentation/budgets_page.dart';
 import '../features/finance_entry/application/operation_sync_controller.dart';
 import '../features/finance_entry/domain/operation_outbox.dart';
 import '../features/finance_entry/presentation/account_baseline_page.dart';
@@ -114,6 +115,14 @@ class _AppShellState extends ConsumerState<AppShell>
       _section = AppSection.chat;
       _quickEntryRequested = false;
     });
+  }
+
+  void _openBudgets() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => BudgetsPage(onSignInRequested: _openSessionExpired),
+      ),
+    );
   }
 
   void _openPlannedCost() {
@@ -271,6 +280,7 @@ class _AppShellState extends ConsumerState<AppShell>
               onPlanCost: _openPlannedCost,
               onManageCategories: _openCategories,
               onOperationHistory: _openOperationHistory,
+              onBudgets: _openBudgets,
               onSignOut: ref.read(authControllerProvider.notifier).signOut,
             )
           else

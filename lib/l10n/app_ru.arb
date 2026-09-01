@@ -1487,5 +1487,124 @@
   "notificationPaymentAction": "Открыть запланированные",
   "@notificationPaymentAction": {
     "description": "Notification centre (ADR 0026 amendment)."
+  },
+  "budgetsTitle": "Бюджеты",
+  "@budgetsTitle": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsSettingsAction": "Бюджеты",
+  "@budgetsSettingsAction": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsSettingsDescription": "Месячные лимиты и сколько осталось",
+  "@budgetsSettingsDescription": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsPeriod": "{from} — {to}",
+  "@budgetsPeriod": {
+    "description": "Monthly budgets (ADR 0027).",
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetsOverallTitle": "Все траты",
+  "@budgetsOverallTitle": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsEmpty": "Лимитов пока нет.",
+  "@budgetsEmpty": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsEmptyHint": "Поставьте месячный лимит на категорию или сразу на все траты.",
+  "@budgetsEmptyHint": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsSpentOfLimit": "Потрачено {spent} из {limit}",
+  "@budgetsSpentOfLimit": {
+    "description": "Monthly budgets (ADR 0027).",
+    "placeholders": {
+      "spent": {
+        "type": "String"
+      },
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetsRemaining": "Осталось {amount}",
+  "@budgetsRemaining": {
+    "description": "Monthly budgets (ADR 0027).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetsOverspentBy": "Перерасход {amount}",
+  "@budgetsOverspentBy": {
+    "description": "Monthly budgets (ADR 0027).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetsPlanned": "Ещё запланировано {amount}",
+  "@budgetsPlanned": {
+    "description": "Monthly budgets (ADR 0027).",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetsAddAction": "Поставить лимит",
+  "@budgetsAddAction": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsRemoveAction": "Снять",
+  "@budgetsRemoveAction": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsRemoveDialogTitle": "Снять лимит?",
+  "@budgetsRemoveDialogTitle": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsRemoveDialogBody": "Трата останется, перестанет считаться только лимит. Поставить новый можно в любой момент.",
+  "@budgetsRemoveDialogBody": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsCategoryLabel": "На что",
+  "@budgetsCategoryLabel": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsLimitLabel": "Лимит в месяц",
+  "@budgetsLimitLabel": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsSaveAction": "Сохранить",
+  "@budgetsSaveAction": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsLoadError": "Не удалось загрузить бюджеты.",
+  "@budgetsLoadError": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsWriteError": "Не удалось сохранить лимит.",
+  "@budgetsWriteError": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsNoCategoriesLeft": "Для всех категорий лимиты уже стоят.",
+  "@budgetsNoCategoriesLeft": {
+    "description": "Monthly budgets (ADR 0027)."
+  },
+  "budgetsAccountRequired": "Сначала создайте счёт.",
+  "@budgetsAccountRequired": {
+    "description": "Monthly budgets (ADR 0027)."
   }
 }

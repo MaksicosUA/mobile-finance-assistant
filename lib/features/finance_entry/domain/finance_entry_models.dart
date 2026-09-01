@@ -1176,6 +1176,8 @@ PlannedCostIssueCode _plannedCostIssueCode(String value) => switch (value) {
   'RECURRENCE_BEFORE_ACCOUNT_BASELINE' =>
     PlannedCostIssueCode.planBeforeAccountBaseline,
   'CATEGORY_UNAVAILABLE' => PlannedCostIssueCode.categoryUnavailable,
+  // A ceiling that was already withdrawn (ADR 0027).
+  'BUDGET_ALREADY_REMOVED' => PlannedCostIssueCode.invalidLifecycleTransition,
   'CATEGORY_DIRECTION_MISMATCH' =>
     PlannedCostIssueCode.categoryDirectionMismatch,
   'INVALID_LIFECYCLE_TRANSITION' =>
@@ -3110,4 +3112,252 @@ final class AppUpdateManifest {
   /// Null when the deployment has published nothing, which is a normal answer
   /// rather than a failure.
   final AppRelease? release;
+}
+
+// --- monthly budgets (ADR 0027) ----------------------------------------------
+
+/// One ceiling and how the month stands against it.
+///
+/// Only the limit is stored server-side. Spent, remaining and overspent are
+/// derived there from committed operations and arrive already computed, so two
+/// screens cannot reach two answers.
+@immutable
+final class Budget {
+  const Budget({
+    required this.budgetId,
+    required this.limit,
+    required this.spent,
+    required this.remaining,
+    required this.planned,
+    required this.overspent,
+    this.categoryId,
+    this.name,
+  });
+
+  factory Budget.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'budgetId',
+      'categoryId',
+      'name',
+      'limit',
+      'spent',
+      'remaining',
+      'planned',
+      'overspent',
+    });
+    final overspent = json['overspent'];
+    if (overspent is! bool) throw const FormatException('Invalid overspent.');
+    final categoryId = _optionalUuid(json, 'categoryId');
+    final name = _optionalBoundedText(json, 'name', maximumLength: 100);
+    // The overall ceiling carries neither; a category line carries both.
+    if ((categoryId == null) != (name == null)) {
+      throw const FormatException('A named budget must carry its category.');
+    }
+    return Budget(
+      budgetId: _requiredUuid(json, 'budgetId'),
+      categoryId: categoryId,
+      name: name,
+      limit: _positiveMoney(json, 'limit'),
+      spent: _nonNegativeMoney(json, 'spent'),
+      // Signed: going over is a negative remainder, not a floor at zero.
+      remaining: _signedMoney(json, 'remaining'),
+      planned: _nonNegativeMoney(json, 'planned'),
+      overspent: overspent,
+    );
+  }
+
+  final String budgetId;
+
+  /// Null for the overall monthly ceiling, which is a meaning rather than a
+  /// missing value.
+  final String? categoryId;
+  final String? name;
+  final String limit;
+  final String spent;
+  final String remaining;
+
+  /// What is still planned this period. Shown beside the remainder and never
+  /// subtracted from it (ADR 0018, ADR 0027).
+  final String planned;
+  final bool overspent;
+
+  bool get isOverall => categoryId == null;
+}
+
+@immutable
+final class BudgetsSnapshot {
+  BudgetsSnapshot({
+    required this.periodFrom,
+    required this.periodTo,
+    required this.currency,
+    required this.overall,
+    required List<Budget> categories,
+  }) : categories = List<Budget>.unmodifiable(categories);
+
+  factory BudgetsSnapshot.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'period',
+      'currency',
+      'overall',
+      'categories',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    final period = _nestedObject(json, 'period');
+    _expectKeys(period, const {'from', 'to'});
+    final raw = json['categories'];
+    if (raw is! List || raw.length > 200) {
+      throw const FormatException('Invalid budget list.');
+    }
+    final overall = json['overall'];
+    return BudgetsSnapshot(
+      periodFrom: _date(period, 'from'),
+      periodTo: _date(period, 'to'),
+      currency: _currency(json, 'currency'),
+      overall: overall == null ? null : Budget.fromJson(_asObject(overall)),
+      categories: raw
+          .map((item) => Budget.fromJson(_asObject(item)))
+          .toList(growable: false),
+    );
+  }
+
+  final String periodFrom;
+  final String periodTo;
+  final String currency;
+  final Budget? overall;
+  final List<Budget> categories;
+
+  bool get isEmpty => overall == null && categories.isEmpty;
+}
+
+/// Declares or changes one ceiling. Idempotent by its target state: saying 400
+/// twice leaves one ceiling of 400.
+@immutable
+final class SetBudgetCommand {
+  const SetBudgetCommand({
+    required this.commandId,
+    required this.accountId,
+    required this.limit,
+    required this.currency,
+    required this.requestedAt,
+    this.categoryId,
+  });
+
+  factory SetBudgetCommand.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'commandId',
+      'accountId',
+      'categoryId',
+      'limit',
+      'currency',
+      'requestedAt',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return SetBudgetCommand(
+      commandId: _requiredUuid(json, 'commandId'),
+      accountId: _requiredUuid(json, 'accountId'),
+      categoryId: _optionalUuid(json, 'categoryId'),
+      limit: _positiveMoney(json, 'limit'),
+      currency: _currency(json, 'currency'),
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final String accountId;
+  final String? categoryId;
+  final String limit;
+  final String currency;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'accountId': accountId,
+    'categoryId': categoryId,
+    'limit': limit,
+    'currency': currency,
+    'requestedAt': requestedAt,
+  };
+}
+
+@immutable
+final class RemoveBudgetCommand {
+  const RemoveBudgetCommand({
+    required this.commandId,
+    required this.requestedAt,
+  });
+
+  factory RemoveBudgetCommand.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'commandId', 'requestedAt'});
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return RemoveBudgetCommand(
+      commandId: _requiredUuid(json, 'commandId'),
+      requestedAt: _timestamp(json, 'requestedAt'),
+    );
+  }
+
+  final String commandId;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'requestedAt': requestedAt,
+  };
+}
+
+@immutable
+final class BudgetWritten {
+  const BudgetWritten({required this.budgetId, this.categoryId});
+
+  factory BudgetWritten.fromSetJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'idempotentReplay',
+      'budgetId',
+      'categoryId',
+      'limit',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    if (json['idempotentReplay'] is! bool) {
+      throw const FormatException('Invalid idempotentReplay.');
+    }
+    // Parsed even though it is not kept: a limit the server cannot express as
+    // a decimal string is a malformed answer, not a field to skip.
+    _positiveMoney(json, 'limit');
+    return BudgetWritten(
+      budgetId: _requiredUuid(json, 'budgetId'),
+      categoryId: _optionalUuid(json, 'categoryId'),
+    );
+  }
+
+  factory BudgetWritten.fromRemovalJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'idempotentReplay', 'budgetId'});
+    _requiredLiteral(json, 'schemaVersion', '1');
+    if (json['idempotentReplay'] is! bool) {
+      throw const FormatException('Invalid idempotentReplay.');
+    }
+    return BudgetWritten(budgetId: _requiredUuid(json, 'budgetId'));
+  }
+
+  final String budgetId;
+  final String? categoryId;
+}
+
+void validateSetBudget(SetBudgetCommand command) {
+  SetBudgetCommand.fromJson(command.toJson());
+}
+
+void validateRemoveBudget(RemoveBudgetCommand command) {
+  RemoveBudgetCommand.fromJson(command.toJson());
+}
+
+/// Validates an identifier before it is interpolated into a request path.
+String validateBudgetId(String value) {
+  if (!_uuidPattern.hasMatch(value)) {
+    throw const FormatException('Invalid budget id.');
+  }
+  return value;
 }

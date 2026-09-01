@@ -73,6 +73,15 @@ abstract interface class FinanceEntryRepositoryClient {
     String? to,
   });
 
+  Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets();
+
+  Future<FinanceEntryResult<BudgetWritten>> setBudget(SetBudgetCommand command);
+
+  Future<FinanceEntryResult<BudgetWritten>> removeBudget(
+    String budgetId,
+    RemoveBudgetCommand command,
+  );
+
   Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate();
 
   Future<FinanceEntryResult<void>> downloadAppRelease({
@@ -369,6 +378,37 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         period: period,
         from: from,
         to: to,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets() {
+    return _authorized(
+      (accessToken) => _api.readBudgets(accessToken: accessToken),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> setBudget(
+    SetBudgetCommand command,
+  ) {
+    return _authorized(
+      (accessToken) =>
+          _api.setBudget(accessToken: accessToken, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> removeBudget(
+    String budgetId,
+    RemoveBudgetCommand command,
+  ) {
+    return _authorized(
+      (accessToken) => _api.removeBudget(
+        accessToken: accessToken,
+        budgetId: budgetId,
+        command: command,
       ),
     );
   }

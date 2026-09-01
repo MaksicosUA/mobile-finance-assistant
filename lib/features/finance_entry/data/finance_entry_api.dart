@@ -93,6 +93,21 @@ abstract interface class FinanceEntryApiClient {
     required String accessToken,
   });
 
+  Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets({
+    required String accessToken,
+  });
+
+  Future<FinanceEntryResult<BudgetWritten>> setBudget({
+    required String accessToken,
+    required SetBudgetCommand command,
+  });
+
+  Future<FinanceEntryResult<BudgetWritten>> removeBudget({
+    required String accessToken,
+    required String budgetId,
+    required RemoveBudgetCommand command,
+  });
+
   Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate({
     required String accessToken,
   });
@@ -658,6 +673,89 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
   }
 
   @override
+  Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets({
+    required String accessToken,
+  }) {
+    return _request(
+      method: 'GET',
+      path: '/api/v1/budgets',
+      accessToken: accessToken,
+      acceptedStatuses: const {200},
+      contract: _ContractKind.budget,
+      parse: (json, statusCode) {
+        if (statusCode != 200) throw const FormatException('Invalid status.');
+        return BudgetsSnapshot.fromJson(json);
+      },
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> setBudget({
+    required String accessToken,
+    required SetBudgetCommand command,
+  }) {
+    try {
+      validateSetBudget(command);
+    } on Object {
+      return Future<FinanceEntryResult<BudgetWritten>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      // Idempotent by target state: saying 400 twice leaves one ceiling of 400.
+      method: 'PUT',
+      path: '/api/v1/budgets',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200},
+      contract: _ContractKind.budget,
+      parse: (json, statusCode) => _parseBudgetWritten(
+        json,
+        statusCode: statusCode,
+        expectedCategoryId: command.categoryId,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> removeBudget({
+    required String accessToken,
+    required String budgetId,
+    required RemoveBudgetCommand command,
+  }) {
+    try {
+      validateRemoveBudget(command);
+      validateBudgetId(budgetId);
+    } on Object {
+      return Future<FinanceEntryResult<BudgetWritten>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/budgets/$budgetId/remove',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200},
+      contract: _ContractKind.budget,
+      parse: (json, statusCode) {
+        if (statusCode != 200) throw const FormatException('Invalid status.');
+        final written = BudgetWritten.fromRemovalJson(json);
+        if (written.budgetId != budgetId) {
+          throw const FormatException('Server removed a different budget.');
+        }
+        return written;
+      },
+    );
+  }
+
+  @override
   Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate({
     required String accessToken,
   }) {
@@ -1148,6 +1246,19 @@ PlannedCostCreated _parsePlannedCostCreated(
     throw const FormatException('Server plan does not match the command.');
   }
   return PlannedCostCreated(plannedCost: plannedCost, idempotentReplay: replay);
+}
+
+BudgetWritten _parseBudgetWritten(
+  Map<String, Object?> json, {
+  required int statusCode,
+  required String? expectedCategoryId,
+}) {
+  if (statusCode != 200) throw const FormatException('Invalid status.');
+  final written = BudgetWritten.fromSetJson(json);
+  if (written.categoryId != expectedCategoryId) {
+    throw const FormatException('Server set a ceiling on another category.');
+  }
+  return written;
 }
 
 PlannedCostRecurrenceCreated _parseRecurrenceCreated(
@@ -2004,14 +2115,16 @@ _ErrorDetail? _tryErrorDetail(
       );
     }
     if (contract == _ContractKind.plannedCost ||
-        contract == _ContractKind.plannedCostRecurrence) {
+        contract == _ContractKind.plannedCostRecurrence ||
+        contract == _ContractKind.budget) {
       // A rule reuses the planned-cost issue space: the refusals mean the same
       // things and read the same way, so a second enum would only duplicate
       // the messages.
       final plannedCostIssues = _plannedCostIssues(detail['issues']);
       final rejected =
           code == FinanceEntryErrorCode.plannedCostRejected ||
-          code == FinanceEntryErrorCode.recurrenceRejected;
+          code == FinanceEntryErrorCode.recurrenceRejected ||
+          code == FinanceEntryErrorCode.budgetRejected;
       if (rejected != plannedCostIssues.isNotEmpty) {
         throw const FormatException('Inconsistent planned cost detail.');
       }
@@ -2086,6 +2199,8 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     _ContractKind.plannedCostRecurrence => false,
     // Asking about an update submits nothing, so nothing is rejected.
     _ContractKind.appRelease => false,
+    // A ceiling is refused with its own issue codes, never FinanceIssue.
+    _ContractKind.budget => false,
     _ContractKind.goal => false,
     _ContractKind.category => false,
     // A correction is validated exactly like a new operation, so it can be
@@ -2172,6 +2287,12 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.appReleaseUnavailable,
       FinanceEntryErrorCode.appReleaseNotFound,
     }.contains(code),
+    _ContractKind.budget => const {
+      FinanceEntryErrorCode.malformedBudget,
+      FinanceEntryErrorCode.budgetRejected,
+      FinanceEntryErrorCode.budgetNotFound,
+      FinanceEntryErrorCode.budgetPersistenceUnavailable,
+    }.contains(code),
     _ContractKind.category => const {
       FinanceEntryErrorCode.malformedCategoryCommand,
       FinanceEntryErrorCode.categoryNotFound,
@@ -2242,6 +2363,11 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'RECURRENCE_NOT_FOUND' => FinanceEntryErrorCode.recurrenceNotFound,
   'RECURRENCE_PERSISTENCE_UNAVAILABLE' =>
     FinanceEntryErrorCode.recurrencePersistenceUnavailable,
+  'MALFORMED_BUDGET' => FinanceEntryErrorCode.malformedBudget,
+  'BUDGET_REJECTED' => FinanceEntryErrorCode.budgetRejected,
+  'BUDGET_NOT_FOUND' => FinanceEntryErrorCode.budgetNotFound,
+  'BUDGET_PERSISTENCE_UNAVAILABLE' =>
+    FinanceEntryErrorCode.budgetPersistenceUnavailable,
   'APP_RELEASE_UNAVAILABLE' => FinanceEntryErrorCode.appReleaseUnavailable,
   'APP_RELEASE_NOT_FOUND' => FinanceEntryErrorCode.appReleaseNotFound,
   'AUTHENTICATION_UNAVAILABLE' =>
@@ -2445,6 +2571,7 @@ enum _ContractKind {
   profile,
   textEntry,
   appRelease,
+  budget,
 }
 
 final class _ErrorDetail {

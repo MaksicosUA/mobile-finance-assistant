@@ -621,6 +621,24 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets({
+    required String accessToken,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> setBudget({
+    required String accessToken,
+    required SetBudgetCommand command,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> removeBudget({
+    required String accessToken,
+    required String budgetId,
+    required RemoveBudgetCommand command,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate({
     required String accessToken,
   }) => throw UnimplementedError();

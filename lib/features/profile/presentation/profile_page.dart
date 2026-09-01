@@ -23,6 +23,7 @@ class ProfilePage extends ConsumerStatefulWidget {
     required this.onPlanCost,
     required this.onManageCategories,
     required this.onOperationHistory,
+    required this.onBudgets,
     required this.onSignOut,
     super.key,
   });
@@ -32,6 +33,7 @@ class ProfilePage extends ConsumerStatefulWidget {
   final VoidCallback onPlanCost;
   final VoidCallback onManageCategories;
   final VoidCallback onOperationHistory;
+  final VoidCallback onBudgets;
   final Future<void> Function() onSignOut;
 
   @override
@@ -125,6 +127,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     label: l10n.categoriesSettingsAction,
                     description: l10n.categoriesSettingsDescription,
                     onPressed: widget.onManageCategories,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: SettingsActionRow(
+                    key: const Key('profile-budgets'),
+                    icon: Icons.pie_chart_outline_rounded,
+                    label: l10n.budgetsSettingsAction,
+                    description: l10n.budgetsSettingsDescription,
+                    onPressed: widget.onBudgets,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),

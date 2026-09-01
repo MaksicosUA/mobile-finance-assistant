@@ -240,6 +240,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.readCalls, 2);
+    // The screen still ends where it should. It is taller than the viewport
+    // now, so this is reached by scrolling rather than assumed to be in view.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('profile-version')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const Key('profile-version')), findsOneWidget);
   });
 }
@@ -287,6 +294,7 @@ Future<void> _pumpPage(
             onPlanCost: onPlanCost ?? () {},
             onManageCategories: onManageCategories ?? () {},
             onOperationHistory: onOperationHistory ?? () {},
+            onBudgets: () {},
             onSignOut: onSignOut ?? () async {},
           ),
         ),
@@ -302,6 +310,21 @@ Future<void> _pumpPage(
 }
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
+  @override
+  Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets() =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> setBudget(
+    SetBudgetCommand command,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> removeBudget(
+    String budgetId,
+    RemoveBudgetCommand command,
+  ) => throw UnimplementedError();
+
   @override
   Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate() =>
       throw UnimplementedError();

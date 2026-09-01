@@ -518,6 +518,21 @@ final class _FakeOperationDeliveryCoordinator
 
 final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets() =>
+      throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> setBudget(
+    SetBudgetCommand command,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<BudgetWritten>> removeBudget(
+    String budgetId,
+    RemoveBudgetCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<AppUpdateManifest>> readAppUpdate() =>
       throw UnimplementedError();
 
