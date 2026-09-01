@@ -10,6 +10,7 @@ from .account_core import AccountCore
 from .app_release import FilesystemAppReleaseStore, NoAppReleaseStore
 from .auth import PostgresCurrentUserAuthenticator
 from .auth_service import PostgresAuthenticationService
+from .budget_core import BudgetCore
 from .config import (
     load_registration_allowlist,
     load_release_directory,
@@ -23,6 +24,7 @@ from .passwords import PasswordService
 from .planned_cost_core import PlannedCostCore
 from .planned_cost_recurrence_core import PlannedCostRecurrenceCore
 from .postgres_analytics_repository import PostgresAnalyticsRepository
+from .postgres_budget_repository import PostgresBudgetRepository
 from .postgres_category_repository import PostgresCategoryRepository
 from .postgres_finance_account_repository import PostgresFinanceAccountRepository
 from .postgres_finance_repository import PostgresFinanceOperationRepository
@@ -68,6 +70,9 @@ app = create_app(
         ),
         account_directory=finance_accounts,
         category_directory=finance_categories,
+    ),
+    budget_core=BudgetCore(
+        repository=PostgresBudgetRepository(session_factory=session_factory),
     ),
     planned_cost_core=PlannedCostCore(
         repository=PostgresPlannedCostRepository(

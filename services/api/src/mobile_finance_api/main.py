@@ -32,6 +32,8 @@ from .auth import (
 )
 from .auth_routes import router as auth_router
 from .auth_service import AuthenticationService, UnavailableAuthenticationService
+from .budget_core import BudgetCore, UnavailableBudgetRepository
+from .budget_routes import router as budget_router
 from .category_routes import router as category_router
 from .finance_core import FinanceCore, UnavailableFinanceOperationRepository
 from .goal_core import GoalCore, UnavailableGoalRepository
@@ -270,6 +272,7 @@ def create_app(
     authentication_service: AuthenticationService | None = None,
     account_core: AccountCore | None = None,
     finance_core: FinanceCore | None = None,
+    budget_core: BudgetCore | None = None,
     planned_cost_core: PlannedCostCore | None = None,
     planned_cost_recurrence_core: PlannedCostRecurrenceCore | None = None,
     goal_core: GoalCore | None = None,
@@ -335,6 +338,11 @@ def create_app(
         planned_cost_core
         if planned_cost_core is not None
         else PlannedCostCore(repository=UnavailablePlannedCostRepository())
+    )
+    application.state.budget_core = (
+        budget_core
+        if budget_core is not None
+        else BudgetCore(repository=UnavailableBudgetRepository())
     )
     application.state.planned_cost_recurrence_core = (
         planned_cost_recurrence_core
@@ -418,6 +426,7 @@ def create_app(
     application.include_router(planned_cost_router)
     application.include_router(planned_cost_recurrence_router)
     application.include_router(goal_router)
+    application.include_router(budget_router)
     application.include_router(category_router)
     application.include_router(analytics_router)
     application.include_router(profile_router)
