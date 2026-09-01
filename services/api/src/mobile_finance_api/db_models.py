@@ -846,6 +846,170 @@ class FinanceOutboxEventRow(Base):
     )
 
 
+class FinanceBudgetRow(Base):
+    """A monthly spending ceiling (ADR 0027).
+
+    Stores the limit and nothing else. What has been spent against it is
+    derived from committed operations at read time, exactly as a goal's balance
+    and a plan's due state are — a stored total is a second answer that can
+    disagree with the operations it claims to summarise, silently.
+
+    ``category_id`` is null for the overall monthly ceiling. That is a
+    meaningful value, not a missing one.
+    """
+
+    __tablename__ = "finance_budgets"
+    __table_args__ = (
+        CheckConstraint(
+            "schema_version = '1'",
+            name="ck_finance_budgets_schema_version",
+        ),
+        CheckConstraint(
+            "limit_amount > 0 AND limit_amount NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_finance_budgets_positive_finite_limit",
+        ),
+        CheckConstraint(
+            "currency = 'EUR'",
+            name="ck_finance_budgets_v1_currency",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'removed')",
+            name="ck_finance_budgets_status",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_finance_budgets_payload_hash_length",
+        ),
+        CheckConstraint(
+            "updated_at >= created_at "
+            "AND created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00' "
+            "AND updated_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_budgets_operational_timestamps",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "command_id",
+            name="uq_finance_budgets_user_command",
+        ),
+        UniqueConstraint("id", "user_id", name="uq_finance_budgets_id_user"),
+        ForeignKeyConstraint(
+            ["account_id", "user_id", "currency"],
+            [
+                "finance_accounts.id",
+                "finance_accounts.user_id",
+                "finance_accounts.currency",
+            ],
+            name="fk_finance_budgets_owned_account_currency",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "user_id"],
+            ["finance_categories.id", "finance_categories.user_id"],
+            name="fk_finance_budgets_owned_category",
+        ),
+        Index(
+            "uq_finance_budgets_active_category",
+            "user_id",
+            "category_id",
+            unique=True,
+            postgresql_where=text("category_id IS NOT NULL AND status = 'active'"),
+        ),
+        # A plain unique would not say "one overall ceiling": PostgreSQL treats
+        # NULLs as distinct, so every one of them would be allowed.
+        Index(
+            "uq_finance_budgets_active_overall",
+            "user_id",
+            unique=True,
+            postgresql_where=text("category_id IS NULL AND status = 'active'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    account_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    category_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        nullable=True,
+    )
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    limit_amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceBudgetAuditRow(Base):
+    """Append-only record of every ceiling that was set, changed or removed."""
+
+    __tablename__ = "finance_budget_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('budget_set', 'budget_changed', 'budget_removed')",
+            name="ck_finance_budget_audit_event_type",
+        ),
+        CheckConstraint(
+            "(event_type = 'budget_set' AND previous_limit IS NULL "
+            "AND new_limit IS NOT NULL) OR "
+            "(event_type = 'budget_changed' AND previous_limit IS NOT NULL "
+            "AND new_limit IS NOT NULL) OR "
+            "(event_type = 'budget_removed' AND previous_limit IS NOT NULL "
+            "AND new_limit IS NULL)",
+            name="ck_finance_budget_audit_limits",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_finance_budget_audit_hash_length",
+        ),
+        CheckConstraint(
+            "created_at >= TIMESTAMPTZ '1900-01-01 00:00:00+00' "
+            "AND created_at < TIMESTAMPTZ '2101-01-01 00:00:00+00'",
+            name="ck_finance_budget_audit_operational_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["budget_id", "user_id"],
+            ["finance_budgets.id", "finance_budgets.user_id"],
+            ondelete="CASCADE",
+            name="fk_finance_budget_audit_owned_budget",
+        ),
+        UniqueConstraint(
+            "budget_id",
+            "command_id",
+            name="uq_finance_budget_audit_budget_command",
+        ),
+        Index("ix_finance_budget_audit_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    budget_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    previous_limit: Mapped[Decimal | None] = mapped_column(
+        Numeric(38, 18),
+        nullable=True,
+    )
+    new_limit: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
 class PlannedCostRecurrenceRow(Base):
     """A rule that generates planned instances (ADR 0025).
 
