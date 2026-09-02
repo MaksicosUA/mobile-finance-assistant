@@ -1760,4 +1760,64 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get budgetsAccountRequired => 'Сначала создайте счёт.';
+
+  @override
+  String get timezoneTitle => 'Часовой пояс учёта';
+
+  @override
+  String timezoneCurrent(String zone) {
+    return 'Сейчас $zone';
+  }
+
+  @override
+  String get timezoneExplanation =>
+      'Здесь решается, где проходит граница дня и месяца. Уже записанные операции остаются на своих датах — меняется только то, что считается «сегодня» и «этот месяц».';
+
+  @override
+  String get timezoneSearchField => 'Поиск города или зоны';
+
+  @override
+  String get timezoneDeviceSection => 'ПОЯС ТЕЛЕФОНА';
+
+  @override
+  String get timezoneAllSection => 'ВСЕ ПОЯСА';
+
+  @override
+  String get timezoneNothingFound => 'Ничего не найдено';
+
+  @override
+  String timezoneConfirmTitle(String zone) {
+    return 'Перенести учёт в $zone?';
+  }
+
+  @override
+  String get timezoneConfirmBody =>
+      'Суммы и даты уже записанных операций не изменятся. По-новому будут считаться только «сегодня» и границы месяца.';
+
+  @override
+  String get timezoneConfirmAction => 'Перенести';
+
+  @override
+  String timezoneCorrected(String zone) {
+    return 'Учёт ведётся в $zone';
+  }
+
+  @override
+  String get timezoneUnchangedError => 'Учёт уже ведётся в этом поясе.';
+
+  @override
+  String get timezoneBehindOperationsError =>
+      'В этом поясе последняя запись оказалась бы в будущем, и её сумма пропала бы из баланса до завтра. Выберите пояс восточнее или попробуйте позже.';
+
+  @override
+  String get timezoneWriteError => 'Не удалось изменить часовой пояс.';
+
+  @override
+  String get timezoneLoadError => 'Не удалось загрузить счёт.';
+
+  @override
+  String get timezoneAccountRequired => 'Сначала создайте счёт.';
+
+  @override
+  String get timezoneSettingsDescription => 'Где проходит граница дня и месяца';
 }

@@ -621,6 +621,11 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone({
+    required String accessToken,
+    required FinanceTimezoneCommand command,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets({
     required String accessToken,
   }) => throw UnimplementedError();

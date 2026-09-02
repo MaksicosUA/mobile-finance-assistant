@@ -1606,5 +1606,88 @@
   "budgetsAccountRequired": "Сначала создайте счёт.",
   "@budgetsAccountRequired": {
     "description": "Monthly budgets (ADR 0027)."
+  },
+  "timezoneTitle": "Часовой пояс учёта",
+  "@timezoneTitle": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneCurrent": "Сейчас {zone}",
+  "@timezoneCurrent": {
+    "description": "Reporting timezone correction (ADR 0028).",
+    "placeholders": {
+      "zone": {
+        "type": "String"
+      }
+    }
+  },
+  "timezoneExplanation": "Здесь решается, где проходит граница дня и месяца. Уже записанные операции остаются на своих датах — меняется только то, что считается «сегодня» и «этот месяц».",
+  "@timezoneExplanation": {
+    "description": "Reporting timezone correction (ADR 0028): history is not re-filed."
+  },
+  "timezoneSearchField": "Поиск города или зоны",
+  "@timezoneSearchField": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneDeviceSection": "ПОЯС ТЕЛЕФОНА",
+  "@timezoneDeviceSection": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneAllSection": "ВСЕ ПОЯСА",
+  "@timezoneAllSection": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneNothingFound": "Ничего не найдено",
+  "@timezoneNothingFound": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneConfirmTitle": "Перенести учёт в {zone}?",
+  "@timezoneConfirmTitle": {
+    "description": "Reporting timezone correction (ADR 0028).",
+    "placeholders": {
+      "zone": {
+        "type": "String"
+      }
+    }
+  },
+  "timezoneConfirmBody": "Суммы и даты уже записанных операций не изменятся. По-новому будут считаться только «сегодня» и границы месяца.",
+  "@timezoneConfirmBody": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneConfirmAction": "Перенести",
+  "@timezoneConfirmAction": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneCorrected": "Учёт ведётся в {zone}",
+  "@timezoneCorrected": {
+    "description": "Reporting timezone correction (ADR 0028).",
+    "placeholders": {
+      "zone": {
+        "type": "String"
+      }
+    }
+  },
+  "timezoneUnchangedError": "Учёт уже ведётся в этом поясе.",
+  "@timezoneUnchangedError": {
+    "description": "Reporting timezone correction (ADR 0028): TIMEZONE_UNCHANGED."
+  },
+  "timezoneBehindOperationsError": "В этом поясе последняя запись оказалась бы в будущем, и её сумма пропала бы из баланса до завтра. Выберите пояс восточнее или попробуйте позже.",
+  "@timezoneBehindOperationsError": {
+    "description": "Reporting timezone correction (ADR 0028): TIMEZONE_BEHIND_RECORDED_OPERATIONS."
+  },
+  "timezoneWriteError": "Не удалось изменить часовой пояс.",
+  "@timezoneWriteError": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneLoadError": "Не удалось загрузить счёт.",
+  "@timezoneLoadError": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneAccountRequired": "Сначала создайте счёт.",
+  "@timezoneAccountRequired": {
+    "description": "Reporting timezone correction (ADR 0028)."
+  },
+  "timezoneSettingsDescription": "Где проходит граница дня и месяца",
+  "@timezoneSettingsDescription": {
+    "description": "Profile action opening the reporting timezone screen (ADR 0028)."
   }
 }

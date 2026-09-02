@@ -20,6 +20,7 @@ import '../features/finance_entry/presentation/finance_entry_page.dart';
 import '../features/home/presentation/widgets/home_status_banner.dart';
 import '../features/notifications/presentation/notifications_page.dart';
 import '../features/profile/presentation/profile_page.dart';
+import '../features/timezone/presentation/timezone_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
 import 'theme/app_colors.dart';
@@ -123,6 +124,12 @@ class _AppShellState extends ConsumerState<AppShell>
         builder: (_) => BudgetsPage(onSignInRequested: _openSessionExpired),
       ),
     );
+  }
+
+  void _openTimezone() {
+    Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute<void>(builder: (_) => const TimezonePage()));
   }
 
   void _openPlannedCost() {
@@ -281,6 +288,7 @@ class _AppShellState extends ConsumerState<AppShell>
               onManageCategories: _openCategories,
               onOperationHistory: _openOperationHistory,
               onBudgets: _openBudgets,
+              onCorrectTimezone: _openTimezone,
               onSignOut: ref.read(authControllerProvider.notifier).signOut,
             )
           else

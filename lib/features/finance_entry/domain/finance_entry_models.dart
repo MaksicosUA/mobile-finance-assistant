@@ -41,6 +41,17 @@ enum FinanceBaselineIssueCode {
   baselineAfterExistingOperation,
 }
 
+/// Why a request to redraw an account's months was refused (ADR 0028).
+enum FinanceTimezoneIssueCode {
+  /// The account already reports in that zone; there is nothing to correct.
+  timezoneUnchanged,
+
+  /// Moving there would date a recorded operation in the future, and a
+  /// future-dated operation is excluded from the balance until the day catches
+  /// up. Refused rather than letting money vanish for hours.
+  timezoneBehindRecordedOperations,
+}
+
 enum FinanceIssueField {
   account,
   openingBalanceOn,
@@ -310,6 +321,101 @@ final class FinanceBaselineIssue {
     _requiredLiteral(json, 'field', 'openingBalanceOn');
     return FinanceBaselineIssue(
       code: _baselineIssueCode(_requiredString(json, 'code')),
+    );
+  }
+}
+
+@immutable
+final class FinanceTimezoneIssue {
+  const FinanceTimezoneIssue({required this.code});
+
+  final FinanceTimezoneIssueCode code;
+
+  factory FinanceTimezoneIssue.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'code', 'field'});
+    _requiredLiteral(json, 'field', 'canonicalTimezone');
+    return FinanceTimezoneIssue(
+      code: _timezoneIssueCode(_requiredString(json, 'code')),
+    );
+  }
+}
+
+/// An explicit request to change where an account's months are drawn.
+///
+/// One phase, not the evaluate/confirm handshake a baseline needs (ADR 0028):
+/// no balance moves, because an operation keeps the local date it was captured
+/// with. The command id makes a retry after a lost answer replay the same
+/// correction rather than settle a second one.
+@immutable
+final class FinanceTimezoneCommand {
+  const FinanceTimezoneCommand._({
+    required this.commandId,
+    required this.accountId,
+    required this.canonicalTimezone,
+    required this.requestedAt,
+  });
+
+  factory FinanceTimezoneCommand({
+    required String commandId,
+    required String accountId,
+    required String canonicalTimezone,
+    required DateTime requestedAt,
+  }) {
+    return FinanceTimezoneCommand._(
+      commandId: commandId,
+      accountId: accountId,
+      canonicalTimezone: _validTimezone(canonicalTimezone),
+      requestedAt: _utcWireTimestamp(requestedAt),
+    );
+  }
+
+  final String commandId;
+  final String accountId;
+  final String canonicalTimezone;
+  final String requestedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'accountId': accountId,
+    'canonicalTimezone': canonicalTimezone,
+    'requestedAt': requestedAt,
+  };
+}
+
+@immutable
+final class FinanceTimezoneCorrected {
+  const FinanceTimezoneCorrected({
+    required this.accountId,
+    required this.canonicalTimezone,
+    required this.timezoneRevision,
+    required this.idempotentReplay,
+  });
+
+  final String accountId;
+  final String canonicalTimezone;
+  final int timezoneRevision;
+  final bool idempotentReplay;
+
+  factory FinanceTimezoneCorrected.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'idempotentReplay',
+      'accountId',
+      'canonicalTimezone',
+      'timezoneRevision',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    final revision = json['timezoneRevision'];
+    final replay = json['idempotentReplay'];
+    if (revision is! int || revision < 1 || replay is! bool) {
+      throw const FormatException('Invalid timezone correction.');
+    }
+    return FinanceTimezoneCorrected(
+      accountId: _requiredUuid(json, 'accountId'),
+      canonicalTimezone: _timezone(json, 'canonicalTimezone'),
+      timezoneRevision: revision,
+      idempotentReplay: replay,
     );
   }
 }
@@ -2492,6 +2598,13 @@ void validateOperationDraft(FinanceOperationDraft draft) {
   FinanceOperationDraft.fromJson(draft.toJson());
 }
 
+FinanceTimezoneIssueCode _timezoneIssueCode(String value) => switch (value) {
+  'TIMEZONE_UNCHANGED' => FinanceTimezoneIssueCode.timezoneUnchanged,
+  'TIMEZONE_BEHIND_RECORDED_OPERATIONS' =>
+    FinanceTimezoneIssueCode.timezoneBehindRecordedOperations,
+  _ => throw FormatException('Unsupported timezone issue code: $value'),
+};
+
 FinanceBaselineIssueCode _baselineIssueCode(String value) => switch (value) {
   'BASELINE_NOT_EARLIER' => FinanceBaselineIssueCode.baselineNotEarlier,
   'BASELINE_DATE_IN_FUTURE' => FinanceBaselineIssueCode.baselineDateInFuture,
@@ -2659,14 +2772,16 @@ String? _optionalTimestamp(Map<String, Object?> json, String key) {
 bool _hasTimezoneSuffix(String value) =>
     RegExp(r'(?:Z|[+-]\d{2}:\d{2})$').hasMatch(value);
 
-String _timezone(Map<String, Object?> json, String key) {
-  final value = _requiredString(json, key);
+String _timezone(Map<String, Object?> json, String key) =>
+    _validTimezone(_requiredString(json, key));
+
+String _validTimezone(String value) {
   if (value.isEmpty ||
       value.length > 128 ||
       value != value.trim() ||
       _containsControl(value) ||
       const {'Factory', 'localtime', 'posixrules'}.contains(value)) {
-    throw FormatException('Invalid $key.');
+    throw const FormatException('Invalid IANA timezone.');
   }
   return value;
 }

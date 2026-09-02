@@ -27,6 +27,14 @@ abstract interface class FinanceEntryRepositoryClient {
     FinanceBaselineCommitCommand command,
   );
 
+  /// Redraw where this account's months fall (ADR 0028).
+  ///
+  /// No commit preflight and no delivery outbox: nothing here moves money, so
+  /// there is no accepted financial write to replay (ADR 0009).
+  Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone(
+    FinanceTimezoneCommand command,
+  );
+
   Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
     PlannedCostDraft draft,
   );
@@ -218,6 +226,16 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
     return _authorized(
       (accessToken) =>
           _api.commitBaseline(accessToken: accessToken, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone(
+    FinanceTimezoneCommand command,
+  ) {
+    return _authorized(
+      (accessToken) =>
+          _api.correctTimezone(accessToken: accessToken, command: command),
     );
   }
 
