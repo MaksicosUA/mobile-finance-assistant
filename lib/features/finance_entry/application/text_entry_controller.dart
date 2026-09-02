@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_config.dart';
+import '../../../app/canonical_timezone.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/finance_entry_repository.dart';
 import '../domain/finance_entry_models.dart';
@@ -83,7 +83,7 @@ class TextEntryController extends Notifier<TextEntryState> {
     try {
       final capture = await ref
           .read(financeCaptureContextSourceProvider)
-          .capture(canonicalTimezone: configuredHomeApiTimezone);
+          .capture(canonicalTimezone: ref.read(canonicalTimezoneProvider));
       if (!_isCurrentRequest(requestGeneration)) return;
       final result = await _repository.parseOperationText(
         text: sentence,

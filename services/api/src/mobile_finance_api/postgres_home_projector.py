@@ -1026,7 +1026,7 @@ def _validate_profile(*, user: UserRow, account: FinanceAccountRow) -> None:
     except ValueError as error:
         raise HomeProjectionInvariantError("projection timezone is invalid") from error
     if (
-        user.timezone_revision != 1
+        user.timezone_revision < 1
         or canonical_timezone is None
         or canonical_timezone != opening_timezone
         or user.base_currency != account.currency

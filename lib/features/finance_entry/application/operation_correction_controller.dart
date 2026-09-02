@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_config.dart';
+import '../../../app/canonical_timezone.dart';
 import '../data/finance_entry_repository.dart';
 import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
@@ -251,7 +251,7 @@ class OperationCorrectionController extends Notifier<OperationCorrectionState> {
   ) async {
     final capture = await ref
         .read(financeCaptureContextSourceProvider)
-        .capture(canonicalTimezone: configuredHomeApiTimezone);
+        .capture(canonicalTimezone: ref.read(canonicalTimezoneProvider));
     final category = current.categories
         .where((item) => item.categoryId == current.categoryId)
         .firstOrNull;

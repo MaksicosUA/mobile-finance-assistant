@@ -76,6 +76,20 @@ final class HomeOfflineResult extends HomeRepositoryResult {
   final HomeSnapshot snapshot;
 }
 
+/// Home was read with a zone the account no longer uses (ADR 0028).
+///
+/// Carries the zone the server reports so the caller can adopt it and read
+/// again; nothing is shown to the user for this on its own.
+final class HomeTimezoneMismatchResult extends HomeRepositoryResult {
+  const HomeTimezoneMismatchResult({
+    required this.canonicalTimezone,
+    required this.requestId,
+  });
+
+  final String canonicalTimezone;
+  final String requestId;
+}
+
 final class HomeAuthExpiredResult extends HomeRepositoryResult {
   const HomeAuthExpiredResult({required this.requestId});
 

@@ -240,10 +240,18 @@ async def _get_home_response(
         home = HomeResponse.model_validate(raw_home)
         response = HomeV1Response.from_v2(home) if legacy_v1 else home
         content = response.model_dump_json(by_alias=True).encode("utf-8")
-    except HomeCanonicalTimezoneMismatch:
+    except HomeCanonicalTimezoneMismatch as mismatch:
+        # The zone is the caller's own account metadata behind their own
+        # bearer token, and naming it is what lets a client that is behind a
+        # correction recover on its own.
         return JSONResponse(
             status_code=409,
-            content={"detail": {"code": "CANONICAL_TIMEZONE_MISMATCH"}},
+            content={
+                "detail": {
+                    "code": "CANONICAL_TIMEZONE_MISMATCH",
+                    "canonicalTimezone": mismatch.canonical_timezone,
+                }
+            },
         )
     except Exception:
         # Return a sanitized response instead of chaining an exception whose

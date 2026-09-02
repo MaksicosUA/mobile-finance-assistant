@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
-from typing import Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -96,10 +95,11 @@ class PostgresFinanceAccountRepository:
             accounts = await _accounts(database=database, user_id=user_id)
         _require_single_account(accounts)
         _require_consistent_profile(user=user, accounts=accounts)
-        timezone_revision: Literal[0, 1] = 1 if accounts else 0
         return AccountListSnapshot(
             canonical_timezone=user.canonical_timezone,
-            timezone_revision=timezone_revision,
+            # The stored count, not a flag derived from "does an account
+            # exist": a corrected timezone reports the revision it reached.
+            timezone_revision=user.timezone_revision,
             accounts=tuple(_to_contract(account) for account in accounts),
         )
 
@@ -774,7 +774,7 @@ def _require_consistent_profile(
         or not account.is_default
         or account.currency != user.base_currency
         or user.canonical_timezone is None
-        or user.timezone_revision != 1
+        or user.timezone_revision < 1
         or account.opening_timezone != user.canonical_timezone
     ):
         raise AccountPersistenceUnavailable

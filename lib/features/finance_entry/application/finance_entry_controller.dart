@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/canonical_timezone.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/platform/finance_capture_context.dart';
 import '../../auth/application/auth_controller.dart';
@@ -86,16 +87,13 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
             return;
           }
           final account = value.account!;
-          if (value.canonicalTimezone != configuredHomeApiTimezone ||
-              account.openingTimezone != configuredHomeApiTimezone) {
-            state = FinanceEntryLoadFailure(
-              FinanceEntryFailure(
-                kind: FinanceEntryFailureKind.malformedResponse,
-                requestId: result.requestId,
-              ),
-            );
-            return;
-          }
+          // The account is where the canonical zone actually lives, and it is
+          // correctable (ADR 0028) — so this reads it rather than comparing it
+          // against a compile-time default and refusing to load. The two
+          // copies having to agree is enforced by the model itself.
+          ref
+              .read(canonicalTimezoneProvider.notifier)
+              .adopt(value.canonicalTimezone);
           state = FinanceOperationEditing(
             account: account,
             initialInput: _defaultOperationInput(
@@ -615,7 +613,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
   Future<FinanceCaptureContext> _captureTimeContext() {
     return ref
         .read(financeCaptureContextSourceProvider)
-        .capture(canonicalTimezone: configuredHomeApiTimezone);
+        .capture(canonicalTimezone: ref.read(canonicalTimezoneProvider));
   }
 
   void _applyLoadFailure(FinanceEntryFailure failure) {

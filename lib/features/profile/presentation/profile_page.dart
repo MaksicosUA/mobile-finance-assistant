@@ -20,6 +20,7 @@ class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({
     required this.onSignInRequested,
     required this.onCorrectOpeningDate,
+    required this.onCorrectTimezone,
     required this.onPlanCost,
     required this.onManageCategories,
     required this.onOperationHistory,
@@ -30,6 +31,7 @@ class ProfilePage extends ConsumerStatefulWidget {
 
   final Future<void> Function() onSignInRequested;
   final VoidCallback onCorrectOpeningDate;
+  final VoidCallback onCorrectTimezone;
   final VoidCallback onPlanCost;
   final VoidCallback onManageCategories;
   final VoidCallback onOperationHistory;
@@ -105,6 +107,21 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     value: _openingDateLabel(profile, l10n),
                     description: l10n.baselineSettingsDescription,
                     onPressed: widget.onCorrectOpeningDate,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: SettingsActionRow(
+                    key: const Key('profile-timezone'),
+                    icon: Icons.public_outlined,
+                    label: l10n.profileTimezoneSetting,
+                    // Beside the action for the same reason the opening date
+                    // is: reading it should not mean opening the screen that
+                    // changes it.
+                    value: profile?.account?.canonicalTimezone,
+                    description: l10n.timezoneSettingsDescription,
+                    onPressed: widget.onCorrectTimezone,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
@@ -313,12 +330,6 @@ class _Identity extends StatelessWidget {
                       key: const Key('profile-currency'),
                       label: l10n.baseCurrencySetting,
                       value: account.currency,
-                    ),
-                    Divider(height: 1, color: context.appColors.border),
-                    SettingsValueRow(
-                      key: const Key('profile-timezone'),
-                      label: l10n.profileTimezoneSetting,
-                      value: account.canonicalTimezone,
                     ),
                   ],
                 ),

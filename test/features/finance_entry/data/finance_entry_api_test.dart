@@ -38,6 +38,116 @@ void main() {
       },
     );
 
+    test('corrects the reporting timezone in one phase', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(200, const {
+          'schemaVersion': '1',
+          'idempotentReplay': false,
+          'accountId': '11111111-1111-4111-8111-111111111111',
+          'canonicalTimezone': 'Europe/Kyiv',
+          'timezoneRevision': 2,
+        }),
+      ]);
+      final api = _api(adapter);
+
+      final result = await api.correctTimezone(
+        accessToken: 'access-token',
+        command: _timezoneCommand(),
+      );
+
+      final settled =
+          (result as FinanceEntrySuccess<FinanceTimezoneCorrected>).value;
+      expect(settled.canonicalTimezone, 'Europe/Kyiv');
+      expect(settled.timezoneRevision, 2);
+      expect(adapter.requests.single.uri.path, '/api/v1/accounts/timezone');
+      expect(adapter.requests.single.data, {
+        'schemaVersion': '1',
+        'commandId': '22222222-2222-4222-8222-222222222222',
+        'accountId': '11111111-1111-4111-8111-111111111111',
+        'canonicalTimezone': 'Europe/Kyiv',
+        'requestedAt': '2026-09-02T10:30:00.000Z',
+      });
+    });
+
+    test('surfaces the reason a timezone correction was refused', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(422, const {
+          'detail': {
+            'code': 'TIMEZONE_REJECTED',
+            'issues': <Object?>[],
+            'timezoneIssues': [
+              {
+                'code': 'TIMEZONE_BEHIND_RECORDED_OPERATIONS',
+                'field': 'canonicalTimezone',
+              },
+            ],
+          },
+        }),
+      ]);
+
+      final failure = _failure(
+        await _api(adapter).correctTimezone(
+          accessToken: 'access-token',
+          command: _timezoneCommand(),
+        ),
+      );
+
+      expect(failure.code, FinanceEntryErrorCode.timezoneRejected);
+      expect(
+        failure.timezoneIssues.single.code,
+        FinanceTimezoneIssueCode.timezoneBehindRecordedOperations,
+      );
+      expect(failure.kind, FinanceEntryFailureKind.rejected);
+    });
+
+    test('a refusal from another contract is not accepted here', () async {
+      // Each route answers in its own code space. Reading a baseline refusal
+      // on this one would mean a response was routed somewhere it does not
+      // belong, which is a malformed answer, not a rejection to act on.
+      final adapter = _QueueAdapter([
+        _JsonResponse(422, const {
+          'detail': {
+            'code': 'BASELINE_REJECTED',
+            'issues': <Object?>[],
+            'baselineIssues': [
+              {'code': 'BASELINE_NOT_EARLIER', 'field': 'openingBalanceOn'},
+            ],
+          },
+        }),
+      ]);
+
+      final failure = _failure(
+        await _api(adapter).correctTimezone(
+          accessToken: 'access-token',
+          command: _timezoneCommand(),
+        ),
+      );
+
+      expect(failure.code, isNull);
+      expect(failure.timezoneIssues, isEmpty);
+    });
+
+    test('a rejection with no reason is not a rejection', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(422, const {
+          'detail': {
+            'code': 'TIMEZONE_REJECTED',
+            'issues': <Object?>[],
+            'timezoneIssues': <Object?>[],
+          },
+        }),
+      ]);
+
+      final failure = _failure(
+        await _api(adapter).correctTimezone(
+          accessToken: 'access-token',
+          command: _timezoneCommand(),
+        ),
+      );
+
+      expect(failure.code, isNull);
+    });
+
     test('surfaces the reason a baseline correction was refused', () async {
       final adapter = _QueueAdapter([
         _JsonResponse(
@@ -1152,6 +1262,13 @@ FinanceEntryApi _api(_QueueAdapter adapter) {
     requestIdFactory: () => 'req_finance_test',
   );
 }
+
+FinanceTimezoneCommand _timezoneCommand() => FinanceTimezoneCommand(
+  commandId: '22222222-2222-4222-8222-222222222222',
+  accountId: '11111111-1111-4111-8111-111111111111',
+  canonicalTimezone: 'Europe/Kyiv',
+  requestedAt: DateTime.utc(2026, 9, 2, 10, 30),
+);
 
 FinanceEntryFailure _failure<T>(FinanceEntryResult<T> result) =>
     (result as FinanceEntryFailureResult<T>).failure;

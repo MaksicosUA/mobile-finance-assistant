@@ -33,6 +33,11 @@ abstract interface class FinanceEntryApiClient {
     required FinanceBaselineCommitCommand command,
   });
 
+  Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone({
+    required String accessToken,
+    required FinanceTimezoneCommand command,
+  });
+
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation({
     required String accessToken,
     required FinanceOperationDraft draft,
@@ -322,6 +327,22 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       acceptedStatuses: const {200},
       contract: _ContractKind.baseline,
       parse: (json, statusCode) => _parseBaselineCommit(json, command: command),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone({
+    required String accessToken,
+    required FinanceTimezoneCommand command,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/v1/accounts/timezone',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200},
+      contract: _ContractKind.timezone,
+      parse: (json, statusCode) => FinanceTimezoneCorrected.fromJson(json),
     );
   }
 
@@ -1737,6 +1758,15 @@ FinanceBaselineCommit _parseBaselineCommit(
   );
 }
 
+List<FinanceTimezoneIssue> _timezoneIssues(Object? value) {
+  if (value is! List<Object?> || value.isEmpty || value.length > 4) {
+    throw const FormatException('Invalid timezone issues.');
+  }
+  return value
+      .map((item) => FinanceTimezoneIssue.fromJson(_object(item)))
+      .toList(growable: false);
+}
+
 List<FinanceBaselineIssue> _baselineIssues(Object? value) {
   if (value is! List<Object?> || value.length > 16) {
     throw const FormatException('Invalid baseline issues.');
@@ -1995,7 +2025,9 @@ FinanceEntryResult<T> _httpFailure<T>({
       FinanceEntryErrorCode.baselineRejected ||
       FinanceEntryErrorCode.operationRejected ||
       FinanceEntryErrorCode.plannedCostRejected ||
-      FinanceEntryErrorCode.goalRejected => FinanceEntryFailureKind.rejected,
+      FinanceEntryErrorCode.goalRejected ||
+      FinanceEntryErrorCode.timezoneRejected =>
+        FinanceEntryFailureKind.rejected,
       FinanceEntryErrorCode.malformedAccount ||
       FinanceEntryErrorCode.malformedOperation ||
       FinanceEntryErrorCode.malformedPlannedCost ||
@@ -2012,6 +2044,7 @@ FinanceEntryResult<T> _httpFailure<T>({
       baselineIssues: detail.baselineIssues,
       plannedCostIssues: detail.plannedCostIssues,
       goalIssues: detail.goalIssues,
+      timezoneIssues: detail.timezoneIssues,
     );
   }
   return _failure(kind: FinanceEntryFailureKind.unknown, requestId: requestId);
@@ -2065,6 +2098,7 @@ _ErrorDetail? _tryErrorDetail(
     final detail = _object(root['detail']);
     final rawCode = _requiredString(detail, 'code');
     final isBaselineRejection = rawCode == 'BASELINE_REJECTED';
+    final isTimezoneRejection = rawCode == 'TIMEZONE_REJECTED';
     // Contracts that submit no draft carry a code and no issue list at all.
     // The catalogue is one of them, and its keyword conflict adds the word and
     // the category that already owns it so the user can act on the refusal.
@@ -2075,9 +2109,10 @@ _ErrorDetail? _tryErrorDetail(
         contract == _ContractKind.category;
     _expectKeys(
       detail,
-      switch ((isBaselineRejection, isCodeOnly)) {
-        (true, _) => const {'code', 'issues', 'baselineIssues'},
-        (_, true) => const {'code'},
+      switch ((isBaselineRejection, isTimezoneRejection, isCodeOnly)) {
+        (true, _, _) => const {'code', 'issues', 'baselineIssues'},
+        (_, true, _) => const {'code', 'issues', 'timezoneIssues'},
+        (_, _, true) => const {'code'},
         _ => const {'code', 'issues'},
       },
       optional: contract == _ContractKind.category
@@ -2135,6 +2170,26 @@ _ErrorDetail? _tryErrorDetail(
         plannedCostIssues: plannedCostIssues,
       );
     }
+    if (contract == _ContractKind.timezone) {
+      // Timezone refusals are their own code space (ADR 0028), parsed into
+      // their own list rather than forced into FinanceIssue.
+      final timezoneIssues = _timezoneIssues(detail['timezoneIssues']);
+      final rejected = code == FinanceEntryErrorCode.timezoneRejected;
+      if (rejected != timezoneIssues.isNotEmpty ||
+          _issues(
+            detail['issues'] ?? const <Object?>[],
+            contract: _ContractKind.account,
+          ).isNotEmpty) {
+        throw const FormatException('Inconsistent timezone detail.');
+      }
+      return _ErrorDetail(
+        code: code,
+        issues: const <FinanceIssue>[],
+        baselineIssues: const <FinanceBaselineIssue>[],
+        plannedCostIssues: const <PlannedCostIssue>[],
+        timezoneIssues: timezoneIssues,
+      );
+    }
     final issueContract = contract == _ContractKind.operation
         ? _ContractKind.operation
         : _ContractKind.account;
@@ -2187,6 +2242,9 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     _ContractKind.profile => false,
     // Parsing proposes; it rejects nothing, because it decides nothing.
     _ContractKind.textEntry => false,
+    // A timezone refusal is its own code space (ADR 0028); this list is
+    // always empty on that contract.
+    _ContractKind.timezone => false,
     _ContractKind.account => const {
       FinanceIssueCode.accountAlreadyInitialized,
       FinanceIssueCode.openingBalanceDateInFuture,
@@ -2280,6 +2338,11 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
     _ContractKind.profile => const {
       FinanceEntryErrorCode.profileUnavailable,
     }.contains(code),
+    _ContractKind.timezone => const {
+      FinanceEntryErrorCode.malformedAccount,
+      FinanceEntryErrorCode.accountUnavailable,
+      FinanceEntryErrorCode.timezoneRejected,
+    }.contains(code),
     _ContractKind.textEntry => const {
       FinanceEntryErrorCode.textEntryUnavailable,
     }.contains(code),
@@ -2332,6 +2395,7 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'ACCOUNT_REJECTED' => FinanceEntryErrorCode.accountRejected,
   'ACCOUNT_UNAVAILABLE' => FinanceEntryErrorCode.accountUnavailable,
   'BASELINE_REJECTED' => FinanceEntryErrorCode.baselineRejected,
+  'TIMEZONE_REJECTED' => FinanceEntryErrorCode.timezoneRejected,
   'OPERATION_REJECTED' => FinanceEntryErrorCode.operationRejected,
   'OPERATION_NOT_FOUND' => FinanceEntryErrorCode.operationNotFound,
   'OPERATION_ALREADY_REVERSED' =>
@@ -2385,6 +2449,7 @@ FinanceEntryFailureResult<T> _failure<T>({
   List<FinanceBaselineIssue> baselineIssues = const [],
   List<PlannedCostIssue> plannedCostIssues = const [],
   List<SavingsGoalIssue> goalIssues = const [],
+  List<FinanceTimezoneIssue> timezoneIssues = const [],
 }) {
   return FinanceEntryFailureResult<T>(
     FinanceEntryFailure(
@@ -2395,6 +2460,7 @@ FinanceEntryFailureResult<T> _failure<T>({
       baselineIssues: baselineIssues,
       plannedCostIssues: plannedCostIssues,
       goalIssues: goalIssues,
+      timezoneIssues: timezoneIssues,
     ),
   );
 }
@@ -2572,6 +2638,7 @@ enum _ContractKind {
   textEntry,
   appRelease,
   budget,
+  timezone,
 }
 
 final class _ErrorDetail {
@@ -2581,6 +2648,7 @@ final class _ErrorDetail {
     required this.baselineIssues,
     required this.plannedCostIssues,
     this.goalIssues = const <SavingsGoalIssue>[],
+    this.timezoneIssues = const <FinanceTimezoneIssue>[],
   });
 
   final FinanceEntryErrorCode code;
@@ -2588,4 +2656,5 @@ final class _ErrorDetail {
   final List<FinanceBaselineIssue> baselineIssues;
   final List<PlannedCostIssue> plannedCostIssues;
   final List<SavingsGoalIssue> goalIssues;
+  final List<FinanceTimezoneIssue> timezoneIssues;
 }

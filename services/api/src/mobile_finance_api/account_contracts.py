@@ -259,7 +259,9 @@ class CommitAccountResponse(AccountApiModel):
 class ListAccountsResponse(AccountApiModel):
     schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
     canonical_timezone: TimezoneName | None = Field(alias="canonicalTimezone")
-    timezone_revision: Literal[0, 1] = Field(alias="timezoneRevision")
+    # A count of how many times the timezone has been settled, not a flag:
+    # correcting it raises the number (ADR 0028). Zero still means unset.
+    timezone_revision: int = Field(alias="timezoneRevision", ge=0)
     accounts: tuple[CommittedFinanceAccount, ...] = Field(max_length=1)
 
     @model_validator(mode="after")
@@ -268,8 +270,8 @@ class ListAccountsResponse(AccountApiModel):
             if self.canonical_timezone is not None or self.timezone_revision != 0:
                 raise ValueError("an empty account list requires an unset timezone")
             return self
-        if self.canonical_timezone is None or self.timezone_revision != 1:
-            raise ValueError("an initialized account list requires timezone revision 1")
+        if self.canonical_timezone is None or self.timezone_revision < 1:
+            raise ValueError("an initialized account list requires a settled timezone")
         account = self.accounts[0]
         if account.opening_timezone != self.canonical_timezone:
             raise ValueError("account and profile timezones are inconsistent")

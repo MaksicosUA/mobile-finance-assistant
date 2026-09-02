@@ -39,6 +39,8 @@ enum FinanceEntryErrorCode {
   recurrenceRejected,
   recurrenceNotFound,
   recurrencePersistenceUnavailable,
+  // Redrawing where an account's months fall (ADR 0028).
+  timezoneRejected,
   malformedGoalCommand,
   goalRejected,
   goalNotFound,
@@ -80,10 +82,12 @@ final class FinanceEntryFailure {
     List<FinanceBaselineIssue> baselineIssues = const [],
     List<PlannedCostIssue> plannedCostIssues = const [],
     List<SavingsGoalIssue> goalIssues = const [],
+    List<FinanceTimezoneIssue> timezoneIssues = const [],
   }) : issues = List.unmodifiable(issues),
        baselineIssues = List.unmodifiable(baselineIssues),
        plannedCostIssues = List.unmodifiable(plannedCostIssues),
-       goalIssues = List.unmodifiable(goalIssues);
+       goalIssues = List.unmodifiable(goalIssues),
+       timezoneIssues = List.unmodifiable(timezoneIssues);
 
   final FinanceEntryFailureKind kind;
   final String requestId;
@@ -92,6 +96,7 @@ final class FinanceEntryFailure {
   final List<FinanceBaselineIssue> baselineIssues;
   final List<PlannedCostIssue> plannedCostIssues;
   final List<SavingsGoalIssue> goalIssues;
+  final List<FinanceTimezoneIssue> timezoneIssues;
 }
 
 sealed class FinanceEntryResult<T> {

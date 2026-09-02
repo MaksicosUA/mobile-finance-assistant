@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_config.dart';
+import '../../../app/canonical_timezone.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../home/application/home_controller.dart';
 import '../data/finance_command_id.dart';
@@ -511,7 +511,7 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     try {
       final timeContext = await ref
           .read(financeCaptureContextSourceProvider)
-          .capture(canonicalTimezone: configuredHomeApiTimezone);
+          .capture(canonicalTimezone: ref.read(canonicalTimezoneProvider));
       if (!_isCurrentRequest(requestGeneration)) return;
       final operationCommandId = plannedCostOperationCommandId(
         plan.plannedCostId,

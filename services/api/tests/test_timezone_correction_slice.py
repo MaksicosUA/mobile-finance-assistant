@@ -9,6 +9,8 @@ operation is refused rather than allowed to self-heal overnight.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -17,7 +19,9 @@ from pydantic import ValidationError
 
 from mobile_finance_api.account_contracts import (
     AccountErrorDetail,
+    CommittedFinanceAccount,
     CorrectTimezoneCommand,
+    ListAccountsResponse,
     TimezoneIssue,
     correct_timezone_command_hash,
 )
@@ -25,15 +29,26 @@ from mobile_finance_api.account_core import (
     AccountCommandConflict,
     AccountCore,
     AccountPersistenceUnavailable,
+    AccountSetupSnapshot,
     TimezoneRejected,
     TimezoneWriteResult,
 )
 from mobile_finance_api.auth import AuthenticatedUser
+from mobile_finance_api.db_models import FinanceAccountRow, UserRow
 from mobile_finance_api.main import create_app
+from mobile_finance_api.postgres_finance_account_repository import (
+    _require_consistent_profile,
+)
+from mobile_finance_api.postgres_home_projector import (
+    HomeProjectionInvariantError,
+    _validate_profile,
+)
+from mobile_finance_api.repository import HomeCanonicalTimezoneMismatch
 
 _USER_ID = UUID("11111111-1111-4111-8111-111111111111")
 _ACCOUNT_ID = UUID("22222222-2222-4222-8222-222222222222")
 _COMMAND_ID = UUID("33333333-3333-4333-8333-333333333333")
+_CREATED_AT = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
 
 def _command(**changes: object) -> CorrectTimezoneCommand:
@@ -309,5 +324,194 @@ def test_an_anonymous_caller_is_refused() -> None:
         response = await _post(create_app(), _body(), authenticated=False)
 
         assert response.status_code == 401
+
+    asyncio.run(scenario())
+
+
+# --- what a corrected profile must still be able to do -------------------------
+#
+# The revision counts how many times the timezone has been settled, so after one
+# correction it is 2. Every read path that pinned it to exactly 1 refuses a
+# corrected profile: the account listing, the entry flow's setup snapshot, the
+# Home read, and — worst — the projector, which treats it as an invariant
+# violation and dead-letters the stream. Correcting the timezone once would
+# leave the account unreadable and Home frozen for good.
+
+
+def _settled_user(*, revision: int, timezone: str = "Europe/Lisbon") -> UserRow:
+    return UserRow(
+        id=_USER_ID,
+        email_normalized="someone@example.test",
+        password_hash="argon2",
+        display_name="Someone",
+        base_currency="EUR",
+        canonical_timezone=timezone,
+        timezone_revision=revision,
+        created_at=_CREATED_AT,
+        updated_at=_CREATED_AT,
+        disabled_at=None,
+    )
+
+
+def _settled_account(*, timezone: str = "Europe/Lisbon") -> FinanceAccountRow:
+    return FinanceAccountRow(
+        id=_ACCOUNT_ID,
+        user_id=_USER_ID,
+        command_id=_COMMAND_ID,
+        command_payload_hash=b"\x00" * 32,
+        schema_version="1",
+        name="Основной",
+        currency="EUR",
+        opening_balance=Decimal("0"),
+        opening_balance_on=date(2024, 1, 1),
+        opening_timezone=timezone,
+        status="active",
+        is_default=True,
+        confirmed_at=_CREATED_AT,
+        created_at=_CREATED_AT,
+    )
+
+
+def _committed_account(*, timezone: str = "Europe/Lisbon") -> CommittedFinanceAccount:
+    return CommittedFinanceAccount.model_validate(
+        {
+            "accountId": str(_ACCOUNT_ID),
+            "userId": str(_USER_ID),
+            "commandId": str(_COMMAND_ID),
+            "name": "Основной",
+            "currency": "EUR",
+            "openingBalance": "0",
+            "openingBalanceOn": "2024-01-01",
+            "openingTimezone": timezone,
+            "status": "active",
+            "isDefault": True,
+            "confirmedAt": "2026-09-01T12:00:00Z",
+            "createdAt": "2026-09-01T12:00:00Z",
+        }
+    )
+
+
+@pytest.mark.parametrize("revision", [1, 2, 7])
+def test_a_corrected_profile_still_lists_its_account(revision: int) -> None:
+    response = ListAccountsResponse(
+        canonical_timezone="Europe/Lisbon",
+        timezone_revision=revision,
+        accounts=(_committed_account(),),
+    )
+
+    assert response.timezone_revision == revision
+
+
+@pytest.mark.parametrize("revision", [1, 2, 7])
+def test_a_corrected_profile_can_still_record_an_operation(revision: int) -> None:
+    snapshot = AccountSetupSnapshot(
+        account_id=_ACCOUNT_ID,
+        canonical_timezone="Europe/Lisbon",
+        timezone_revision=revision,
+    )
+
+    assert snapshot.is_consistent
+
+
+@pytest.mark.parametrize("revision", [1, 2, 7])
+def test_a_corrected_profile_passes_the_repository_guard(revision: int) -> None:
+    _require_consistent_profile(
+        user=_settled_user(revision=revision),
+        accounts=(_settled_account(),),
+    )
+
+
+@pytest.mark.parametrize("revision", [1, 2, 7])
+def test_a_corrected_profile_does_not_dead_letter_the_projector(
+    revision: int,
+) -> None:
+    _validate_profile(
+        user=_settled_user(revision=revision),
+        account=_settled_account(),
+    )
+
+
+def test_an_unsettled_timezone_is_still_refused_everywhere() -> None:
+    """Relaxing "exactly one" to "at least one" must not accept zero."""
+
+    assert not AccountSetupSnapshot(
+        account_id=_ACCOUNT_ID,
+        canonical_timezone="Europe/Lisbon",
+        timezone_revision=0,
+    ).is_consistent
+    with pytest.raises(ValidationError):
+        ListAccountsResponse(
+            canonical_timezone="Europe/Lisbon",
+            timezone_revision=0,
+            accounts=(_committed_account(),),
+        )
+    with pytest.raises(AccountPersistenceUnavailable):
+        _require_consistent_profile(
+            user=_settled_user(revision=0),
+            accounts=(_settled_account(),),
+        )
+    with pytest.raises(HomeProjectionInvariantError):
+        _validate_profile(
+            user=_settled_user(revision=0),
+            account=_settled_account(),
+        )
+
+
+def test_the_two_copies_of_the_timezone_must_still_agree() -> None:
+    """Disagreement stays an invariant violation at every revision."""
+
+    with pytest.raises(AccountPersistenceUnavailable):
+        _require_consistent_profile(
+            user=_settled_user(revision=2, timezone="Europe/Lisbon"),
+            accounts=(_settled_account(timezone="Europe/Kyiv"),),
+        )
+    with pytest.raises(HomeProjectionInvariantError):
+        _validate_profile(
+            user=_settled_user(revision=2, timezone="Europe/Lisbon"),
+            account=_settled_account(timezone="Europe/Kyiv"),
+        )
+
+
+# --- how a client that is behind a correction gets back on its feet -----------
+
+
+class _MismatchingHomeRepository:
+    """Home refuses a stale zone rather than drawing the wrong month."""
+
+    def __init__(self, canonical_timezone: str) -> None:
+        self._canonical_timezone = canonical_timezone
+
+    async def get_home(self, **_: object) -> object:
+        raise HomeCanonicalTimezoneMismatch(self._canonical_timezone)
+
+
+def test_a_stale_home_request_is_told_which_zone_to_use() -> None:
+    """The 409 names the zone, so a phone left behind by a correction can
+    adopt it and retry instead of showing an error until something else
+    happens to read the account back."""
+
+    async def scenario() -> None:
+        app = create_app(
+            home_repository=_MismatchingHomeRepository("Europe/Kyiv"),
+            current_user_authenticator=_StaticAuthenticator(),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            for path in ("/api/v1/home", "/api/v2/home"):
+                response = await client.get(
+                    path,
+                    params={"period": "current_month", "timezone": "Europe/Lisbon"},
+                    headers={"Authorization": "Bearer synthetic-token"},
+                )
+
+                assert response.status_code == 409
+                assert response.json() == {
+                    "detail": {
+                        "code": "CANONICAL_TIMEZONE_MISMATCH",
+                        "canonicalTimezone": "Europe/Kyiv",
+                    }
+                }
 
     asyncio.run(scenario())

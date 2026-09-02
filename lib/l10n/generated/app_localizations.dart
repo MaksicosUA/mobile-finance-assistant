@@ -3134,6 +3134,108 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Сначала создайте счёт.'**
   String get budgetsAccountRequired;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Часовой пояс учёта'**
+  String get timezoneTitle;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сейчас {zone}'**
+  String timezoneCurrent(String zone);
+
+  /// Reporting timezone correction (ADR 0028): history is not re-filed.
+  ///
+  /// In ru, this message translates to:
+  /// **'Здесь решается, где проходит граница дня и месяца. Уже записанные операции остаются на своих датах — меняется только то, что считается «сегодня» и «этот месяц».'**
+  String get timezoneExplanation;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Поиск города или зоны'**
+  String get timezoneSearchField;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'ПОЯС ТЕЛЕФОНА'**
+  String get timezoneDeviceSection;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'ВСЕ ПОЯСА'**
+  String get timezoneAllSection;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Ничего не найдено'**
+  String get timezoneNothingFound;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Перенести учёт в {zone}?'**
+  String timezoneConfirmTitle(String zone);
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Суммы и даты уже записанных операций не изменятся. По-новому будут считаться только «сегодня» и границы месяца.'**
+  String get timezoneConfirmBody;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Перенести'**
+  String get timezoneConfirmAction;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Учёт ведётся в {zone}'**
+  String timezoneCorrected(String zone);
+
+  /// Reporting timezone correction (ADR 0028): TIMEZONE_UNCHANGED.
+  ///
+  /// In ru, this message translates to:
+  /// **'Учёт уже ведётся в этом поясе.'**
+  String get timezoneUnchangedError;
+
+  /// Reporting timezone correction (ADR 0028): TIMEZONE_BEHIND_RECORDED_OPERATIONS.
+  ///
+  /// In ru, this message translates to:
+  /// **'В этом поясе последняя запись оказалась бы в будущем, и её сумма пропала бы из баланса до завтра. Выберите пояс восточнее или попробуйте позже.'**
+  String get timezoneBehindOperationsError;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось изменить часовой пояс.'**
+  String get timezoneWriteError;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить счёт.'**
+  String get timezoneLoadError;
+
+  /// Reporting timezone correction (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала создайте счёт.'**
+  String get timezoneAccountRequired;
+
+  /// Profile action opening the reporting timezone screen (ADR 0028).
+  ///
+  /// In ru, this message translates to:
+  /// **'Где проходит граница дня и месяца'**
+  String get timezoneSettingsDescription;
 }
 
 class _AppLocalizationsDelegate

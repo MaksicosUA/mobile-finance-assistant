@@ -1288,6 +1288,11 @@ final class _FakeOperationDeliveryCoordinator
 final class _FakeFinanceEntryRepository
     implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone(
+    FinanceTimezoneCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets() =>
       throw UnimplementedError();
 

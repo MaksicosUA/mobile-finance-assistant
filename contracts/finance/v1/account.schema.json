@@ -638,10 +638,7 @@
           "title": "Canonicaltimezone"
         },
         "timezoneRevision": {
-          "enum": [
-            0,
-            1
-          ],
+          "minimum": 0,
           "title": "Timezonerevision",
           "type": "integer"
         },
