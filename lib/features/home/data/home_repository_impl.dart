@@ -276,6 +276,11 @@ final class NetworkHomeRepository
         );
       case HomeApiUnauthorizedFailure():
         return HomeAuthExpiredResult(requestId: apiResult.requestId);
+      case HomeApiTimezoneMismatchFailure(:final canonicalTimezone):
+        return HomeTimezoneMismatchResult(
+          canonicalTimezone: canonicalTimezone,
+          requestId: apiResult.requestId,
+        );
       case HomeApiThrottledFailure() || HomeApiServerFailure():
         return HomeFailureResult(
           type: HomeFailureType.serviceUnavailable,

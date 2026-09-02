@@ -43,6 +43,7 @@ from mobile_finance_api.postgres_home_projector import (
     HomeProjectionInvariantError,
     _validate_profile,
 )
+from mobile_finance_api.repository import HomeCanonicalTimezoneMismatch
 
 _USER_ID = UUID("11111111-1111-4111-8111-111111111111")
 _ACCOUNT_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -469,3 +470,48 @@ def test_the_two_copies_of_the_timezone_must_still_agree() -> None:
             user=_settled_user(revision=2, timezone="Europe/Lisbon"),
             account=_settled_account(timezone="Europe/Kyiv"),
         )
+
+
+# --- how a client that is behind a correction gets back on its feet -----------
+
+
+class _MismatchingHomeRepository:
+    """Home refuses a stale zone rather than drawing the wrong month."""
+
+    def __init__(self, canonical_timezone: str) -> None:
+        self._canonical_timezone = canonical_timezone
+
+    async def get_home(self, **_: object) -> object:
+        raise HomeCanonicalTimezoneMismatch(self._canonical_timezone)
+
+
+def test_a_stale_home_request_is_told_which_zone_to_use() -> None:
+    """The 409 names the zone, so a phone left behind by a correction can
+    adopt it and retry instead of showing an error until something else
+    happens to read the account back."""
+
+    async def scenario() -> None:
+        app = create_app(
+            home_repository=_MismatchingHomeRepository("Europe/Kyiv"),
+            current_user_authenticator=_StaticAuthenticator(),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            for path in ("/api/v1/home", "/api/v2/home"):
+                response = await client.get(
+                    path,
+                    params={"period": "current_month", "timezone": "Europe/Lisbon"},
+                    headers={"Authorization": "Bearer synthetic-token"},
+                )
+
+                assert response.status_code == 409
+                assert response.json() == {
+                    "detail": {
+                        "code": "CANONICAL_TIMEZONE_MISMATCH",
+                        "canonicalTimezone": "Europe/Kyiv",
+                    }
+                }
+
+    asyncio.run(scenario())

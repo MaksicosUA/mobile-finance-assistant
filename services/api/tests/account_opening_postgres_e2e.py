@@ -471,8 +471,13 @@ async def _exercise_http() -> tuple[
             headers=first.headers,
         )
         assert mismatch_home.status_code == 409
+        # The refusal names the zone the profile actually reports, so a client
+        # left behind by a correction can adopt it and retry (ADR 0028).
         assert mismatch_home.json() == {
-            "detail": {"code": "CANONICAL_TIMEZONE_MISMATCH"}
+            "detail": {
+                "code": "CANONICAL_TIMEZONE_MISMATCH",
+                "canonicalTimezone": "Europe/Berlin",
+            }
         }
         canonical_home = await client.get(
             "/api/v1/home",

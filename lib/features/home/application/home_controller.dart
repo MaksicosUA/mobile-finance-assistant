@@ -7,6 +7,7 @@ import '../../../core/network/api_config.dart';
 import '../../auth/application/auth_controller.dart';
 import '../data/home_api.dart';
 import '../data/home_cache.dart';
+import '../../../app/canonical_timezone.dart';
 import '../data/home_repository.dart';
 import '../data/home_repository_impl.dart';
 import '../data/home_session_store.dart';
@@ -63,6 +64,10 @@ enum _HomeRequestOutcome {
 }
 
 final homeRepositoryProvider = Provider<HomeRepository>((ref) {
+  // Watched unconditionally so the dependency is real rather than incidental:
+  // correcting the zone (ADR 0028) must rebuild this client, or Home keeps
+  // asking for months drawn where the user used to live.
+  final timezone = ref.watch(canonicalTimezoneProvider);
   if (isNetworkBackendConfigured) {
     final dio = Dio();
     ref.onDispose(() => dio.close(force: true));
@@ -70,7 +75,7 @@ final homeRepositoryProvider = Provider<HomeRepository>((ref) {
       api: HomeApi(
         dio: dio,
         baseUri: Uri.parse(configuredApiBaseUrl),
-        timezone: configuredHomeApiTimezone,
+        timezone: timezone,
       ),
       cache: ref.watch(homeCacheProvider),
       sessionProvider: ref.watch(homeSessionStoreProvider).readSession,
@@ -98,6 +103,7 @@ class HomeController extends Notifier<HomeState> {
   int? _activeRequestEpoch;
   var _reloadAfterInFlight = false;
   var _authRefreshAttempted = false;
+  var _timezoneAdoptionAttempted = false;
 
   int get _sessionEpoch => ref.read(authSessionEpochProvider);
 
@@ -108,6 +114,7 @@ class HomeController extends Notifier<HomeState> {
     // during login or account replacement.
     ref.watch(authSessionEpochProvider);
     _authRefreshAttempted = false;
+    _timezoneAdoptionAttempted = false;
     return const HomeLoading();
   }
 
@@ -296,6 +303,9 @@ class HomeController extends Notifier<HomeState> {
       return _HomeRequestOutcome.skipped;
     }
     _requestInFlight = true;
+    // Once per request: a later refresh may adopt again if the zone moves
+    // again, but one read never loops over a server that keeps disagreeing.
+    _timezoneAdoptionAttempted = false;
     final requestCompletion = Completer<void>();
     _requestCompletion = requestCompletion;
     final sessionEpoch = _sessionEpoch;
@@ -426,8 +436,86 @@ class HomeController extends Notifier<HomeState> {
           sessionEpoch: sessionEpoch,
           requestPreflight: requestPreflight,
         );
+      case HomeTimezoneMismatchResult(:final canonicalTimezone):
+        return await _adoptCanonicalTimezone(
+          canonicalTimezone,
+          retainedSnapshot: retainedSnapshot,
+          retainedUserName: retainedUserName,
+          forceRefresh: forceRefresh,
+          sessionEpoch: sessionEpoch,
+          requestPreflight: requestPreflight,
+        );
       case HomeRequestInterruptedResult():
         return _HomeRequestOutcome.interrupted;
+    }
+  }
+
+  /// Read Home again in the zone the server says this account now uses.
+  ///
+  /// The zone is correctable elsewhere (ADR 0028), and a client that missed the
+  /// correction would otherwise show an error until something happened to read
+  /// the account back. Adopting rebuilds the Home client, so the cached
+  /// snapshot — drawn against the old month boundaries — is dropped first.
+  ///
+  /// Once per request: if the retry disagrees again, something other than a
+  /// correction is wrong and the failure is shown rather than looped over.
+  Future<_HomeRequestOutcome> _adoptCanonicalTimezone(
+    String canonicalTimezone, {
+    required HomeSnapshot? retainedSnapshot,
+    required String? retainedUserName,
+    required bool forceRefresh,
+    required int sessionEpoch,
+    HomeRequestPreflight? requestPreflight,
+  }) async {
+    if (_timezoneAdoptionAttempted ||
+        canonicalTimezone == ref.read(canonicalTimezoneProvider)) {
+      _showFailure(
+        type: HomeFailureType.unknown,
+        requestId: 'req_local_timezone_mismatch',
+        retainedSnapshot: retainedSnapshot,
+        retainedUserName: retainedUserName,
+      );
+      return _HomeRequestOutcome.otherFailure;
+    }
+    _timezoneAdoptionAttempted = true;
+    await _invalidateCacheSafely();
+    if (sessionEpoch != _sessionEpoch) {
+      return _HomeRequestOutcome.sessionChanged;
+    }
+    ref.read(canonicalTimezoneProvider.notifier).adopt(canonicalTimezone);
+    if (!_requestAllowed(requestPreflight)) {
+      return _HomeRequestOutcome.interrupted;
+    }
+    final retryResult = await _fetchHome(
+      ref.read(homeRepositoryProvider),
+      forceRefresh: true,
+      requestPreflight: requestPreflight,
+    );
+    if (sessionEpoch != _sessionEpoch) {
+      return _HomeRequestOutcome.sessionChanged;
+    }
+    if (!_requestAllowed(requestPreflight)) {
+      return _HomeRequestOutcome.interrupted;
+    }
+    return await _applyResult(
+      retryResult,
+      retainedSnapshot: retainedSnapshot,
+      retainedUserName: retainedUserName,
+      forceRefresh: forceRefresh,
+      sessionEpoch: sessionEpoch,
+      requestPreflight: requestPreflight,
+    );
+  }
+
+  Future<void> _invalidateCacheSafely() async {
+    final repository = ref.read(homeRepositoryProvider);
+    if (repository case final HomeCacheInvalidator invalidator) {
+      try {
+        await invalidator.invalidateHomeCache();
+      } catch (_) {
+        // A replaceable cache that cannot be dropped is not worth failing a
+        // read over; the fresh response replaces it anyway.
+      }
     }
   }
 

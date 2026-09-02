@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile_finance_assistant/app/canonical_timezone.dart';
 import 'package:mobile_finance_assistant/features/home/application/home_controller.dart';
 import 'package:mobile_finance_assistant/features/home/application/home_session_recovery.dart';
 import 'package:mobile_finance_assistant/features/home/data/home_repository.dart';
@@ -400,6 +401,85 @@ void main() {
         expect(expiredSession.calls, 1);
       },
     );
+
+    // The zone is correctable elsewhere (ADR 0028). A client left behind by a
+    // correction must recover on its own, or Home shows an error until
+    // something else happens to read the account back.
+    test('adopts the zone the server names and reads again', () async {
+      final repository = _QueueHomeRepository([
+        const HomeTimezoneMismatchResult(
+          canonicalTimezone: 'Europe/Kyiv',
+          requestId: 'req_timezone_stale',
+        ),
+        HomeDataResult(loadHomeFixtureSnapshotSync('populated.json')),
+      ]);
+      final container = _container(repository);
+      addTearDown(container.dispose);
+
+      await container.read(homeControllerProvider.notifier).load();
+
+      expect(container.read(homeControllerProvider), isA<HomeReady>());
+      expect(container.read(canonicalTimezoneProvider), 'Europe/Kyiv');
+      expect(repository.calls, 2);
+      // The cached snapshot was drawn against the old month boundaries.
+      expect(repository.invalidations, 1);
+    });
+
+    test('stops after one adoption instead of looping', () async {
+      final repository = _QueueHomeRepository([
+        const HomeTimezoneMismatchResult(
+          canonicalTimezone: 'Europe/Kyiv',
+          requestId: 'req_timezone_stale',
+        ),
+        const HomeTimezoneMismatchResult(
+          canonicalTimezone: 'Europe/Lisbon',
+          requestId: 'req_timezone_stale_again',
+        ),
+      ]);
+      final container = _container(repository);
+      addTearDown(container.dispose);
+
+      await container.read(homeControllerProvider.notifier).load();
+
+      expect(container.read(homeControllerProvider), isA<HomeFailure>());
+      expect(repository.calls, 2);
+    });
+
+    test('a later refresh may adopt again', () async {
+      final snapshot = loadHomeFixtureSnapshotSync('populated.json');
+      final repository = _QueueHomeRepository([
+        const HomeTimezoneMismatchResult(
+          canonicalTimezone: 'Europe/Kyiv',
+          requestId: 'req_timezone_stale',
+        ),
+        HomeDataResult(snapshot),
+        const HomeTimezoneMismatchResult(
+          canonicalTimezone: 'Europe/Lisbon',
+          requestId: 'req_timezone_moved_again',
+        ),
+        HomeDataResult(snapshot),
+      ]);
+      final container = _container(repository);
+      addTearDown(container.dispose);
+
+      await container.read(homeControllerProvider.notifier).load();
+      await container.read(homeControllerProvider.notifier).refresh();
+
+      expect(container.read(canonicalTimezoneProvider), 'Europe/Lisbon');
+      expect(repository.calls, 4);
+    });
+
+    test('the Home client is rebuilt when the zone moves', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final before = container.read(homeRepositoryProvider);
+      container
+          .read(canonicalTimezoneProvider.notifier)
+          .adopt('Pacific/Auckland');
+
+      expect(container.read(homeRepositoryProvider), isNot(same(before)));
+    });
 
     test('retains prior snapshot when auth expires during refresh', () async {
       final snapshot = loadHomeFixtureSnapshotSync('populated.json');

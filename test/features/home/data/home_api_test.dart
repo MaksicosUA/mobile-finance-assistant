@@ -34,6 +34,93 @@ void main() {
     });
     expect(adapter.method, 'GET');
   });
+
+  // The zone is correctable (ADR 0028), so a client can be left behind by a
+  // correction made elsewhere and would otherwise show an error until
+  // something happened to read the account back.
+  test('a timezone refusal names the zone to adopt', () async {
+    final api = _apiRefusing(
+      409,
+      jsonEncode({
+        'detail': {
+          'code': 'CANONICAL_TIMEZONE_MISMATCH',
+          'canonicalTimezone': 'Europe/Kyiv',
+        },
+      }),
+    );
+
+    final result = await api.fetchHome(accessToken: 'synthetic-access-token');
+
+    expect(result, isA<HomeApiTimezoneMismatchFailure>());
+    expect(
+      (result as HomeApiTimezoneMismatchFailure).canonicalTimezone,
+      'Europe/Kyiv',
+    );
+  });
+
+  test('any other conflict stays an ordinary failure', () async {
+    for (final body in const [
+      '{"detail": {"code": "SOMETHING_ELSE"}}',
+      '{"detail": {"code": "CANONICAL_TIMEZONE_MISMATCH"}}',
+      '{"detail": {"code": "CANONICAL_TIMEZONE_MISMATCH",'
+          ' "canonicalTimezone": "localtime"}}',
+      'not json',
+      '',
+    ]) {
+      final result = await _apiRefusing(
+        409,
+        body,
+      ).fetchHome(accessToken: 'synthetic-access-token');
+
+      expect(result, isA<HomeApiOtherFailure>(), reason: body);
+    }
+  });
+
+  test('an error body is never mistaken for Home data', () async {
+    final result = await _apiRefusing(
+      503,
+      '{"detail": "Home temporarily unavailable"}',
+    ).fetchHome(accessToken: 'synthetic-access-token');
+
+    expect(result, isA<HomeApiServerFailure>());
+  });
+}
+
+HomeApi _apiRefusing(int statusCode, String body) {
+  final dio = Dio()..httpClientAdapter = _RefusingAdapter(statusCode, body);
+  addTearDown(() => dio.close(force: true));
+  return HomeApi(
+    dio: dio,
+    baseUri: Uri.parse('https://example.test/backend/'),
+    timezone: 'Europe/Lisbon',
+    requestIdFactory: () => 'req_home_refusal_test',
+  );
+}
+
+class _RefusingAdapter implements HttpClientAdapter {
+  _RefusingAdapter(this.statusCode, this.body);
+
+  final int statusCode;
+  final String body;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    return ResponseBody.fromString(
+      body,
+      statusCode,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+        Headers.contentLengthHeader: [utf8.encode(body).length.toString()],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 class _RecordingAdapter implements HttpClientAdapter {

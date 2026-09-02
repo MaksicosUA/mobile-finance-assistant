@@ -123,7 +123,7 @@ class PostgresHomeRepository:
             if profile.canonical_timezone is not None:
                 canonical_timezone = _validated_timezone(profile.canonical_timezone)
                 if canonical_timezone != timezone_name:
-                    raise HomeCanonicalTimezoneMismatch
+                    raise HomeCanonicalTimezoneMismatch(canonical_timezone)
             if accounts:
                 account = accounts[0]
                 if (

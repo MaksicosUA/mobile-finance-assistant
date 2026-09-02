@@ -43,7 +43,16 @@ class HomeRepository(Protocol):
 
 
 class HomeCanonicalTimezoneMismatch(Exception):
-    """The requested projection timezone differs from the financial profile."""
+    """The requested projection timezone differs from the financial profile.
+
+    Carries the zone the profile actually reports so a client that is behind a
+    correction (ADR 0028) can adopt it and retry, instead of showing an error
+    until something else happens to read the account back.
+    """
+
+    def __init__(self, canonical_timezone: str) -> None:
+        super().__init__("canonical timezone mismatch")
+        self.canonical_timezone = canonical_timezone
 
 
 class UnavailableHomeRepository:

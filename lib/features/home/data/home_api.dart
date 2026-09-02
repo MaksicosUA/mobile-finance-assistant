@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../app/canonical_timezone.dart';
 import 'home_dto.dart';
 
 typedef HomeRequestIdFactory = String Function();
@@ -80,6 +81,21 @@ final class HomeApiServerFailure extends HomeApiFailure {
   final int statusCode;
 }
 
+/// The account draws its months somewhere else than this client believes.
+///
+/// The zone is correctable (ADR 0028), so a client can be left behind by a
+/// correction made elsewhere. The server names the zone it holds, which is
+/// what lets the caller adopt it and retry rather than showing an error.
+@immutable
+final class HomeApiTimezoneMismatchFailure extends HomeApiFailure {
+  const HomeApiTimezoneMismatchFailure({
+    required super.requestId,
+    required this.canonicalTimezone,
+  });
+
+  final String canonicalTimezone;
+}
+
 @immutable
 final class HomeApiMalformedFailure extends HomeApiFailure {
   const HomeApiMalformedFailure({required super.requestId});
@@ -131,6 +147,8 @@ final class HomeApi implements HomeApiClient {
   static const String _correlationHeader = 'X-Correlation-ID';
   static const Duration _maximumTimeout = Duration(minutes: 1);
   static const int _maximumResponseBytes = 1024 * 1024;
+  // A refusal is a code and a zone name. Anything larger is not one.
+  static const int _maximumErrorBytes = 4 * 1024;
 
   final Dio _dio;
   final Uri _endpoint;
@@ -175,7 +193,9 @@ final class HomeApi implements HomeApiClient {
           responseType: ResponseType.bytes,
           followRedirects: false,
           maxRedirects: 0,
-          receiveDataWhenStatusError: false,
+          // Only so a 409 can name the zone to adopt. Error bodies are read,
+          // never logged, and only the timezone refusal is parsed.
+          receiveDataWhenStatusError: true,
           validateStatus: (status) => status == 200 || status == 304,
         ),
       );
@@ -276,10 +296,42 @@ final class HomeApi implements HomeApiClient {
         ),
       );
     }
+    if (statusCode == 409) {
+      final zone = _canonicalTimezoneRefusal(response);
+      if (zone != null) {
+        return HomeApiTimezoneMismatchFailure(
+          requestId: requestId,
+          canonicalTimezone: zone,
+        );
+      }
+    }
     if (statusCode != null && statusCode >= 500 && statusCode <= 599) {
       return HomeApiServerFailure(requestId: requestId, statusCode: statusCode);
     }
     return HomeApiOtherFailure(requestId: requestId, statusCode: statusCode);
+  }
+
+  /// The zone named by a timezone refusal, or null for any other 409.
+  String? _canonicalTimezoneRefusal(Response<Object?>? response) {
+    final bytes = response?.data;
+    if (bytes is! List<int> ||
+        bytes.isEmpty ||
+        bytes.length > _maximumErrorBytes) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(utf8.decode(bytes, allowMalformed: false));
+      if (decoded is! Map<String, Object?>) return null;
+      final detail = decoded['detail'];
+      if (detail is! Map<String, Object?> ||
+          detail['code'] != 'CANONICAL_TIMEZONE_MISMATCH') {
+        return null;
+      }
+      final zone = detail['canonicalTimezone'];
+      return zone is String && isUsableTimezoneName(zone) ? zone : null;
+    } on Object {
+      return null;
+    }
   }
 }
 
