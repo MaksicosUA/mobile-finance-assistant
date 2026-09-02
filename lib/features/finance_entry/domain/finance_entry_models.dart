@@ -260,14 +260,16 @@ final class FinanceAccountSetup {
     required this.timezoneRevision,
     required List<FinanceAccount> accounts,
   }) : accounts = List.unmodifiable(accounts) {
-    if (accounts.length > 1 || timezoneRevision < 0 || timezoneRevision > 1) {
+    // The revision counts how many times the timezone has been settled, and
+    // it is correctable (ADR 0028), so it climbs. Zero still means unset.
+    if (accounts.length > 1 || timezoneRevision < 0) {
       throw const FormatException('Invalid Finance account setup.');
     }
     if (accounts.isEmpty) {
       if (canonicalTimezone != null || timezoneRevision != 0) {
         throw const FormatException('Invalid empty Finance account setup.');
       }
-    } else if (canonicalTimezone == null || timezoneRevision != 1) {
+    } else if (canonicalTimezone == null || timezoneRevision < 1) {
       throw const FormatException('Invalid initialized Finance account setup.');
     } else if (accounts.single.openingTimezone != canonicalTimezone) {
       throw const FormatException('Inconsistent Finance account timezone.');

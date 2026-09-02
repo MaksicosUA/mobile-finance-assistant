@@ -114,13 +114,13 @@ class AccountSetupSnapshot:
     def is_consistent(self) -> bool:
         if self.account_id is None:
             return self.canonical_timezone is None and self.timezone_revision == 0
-        return self.canonical_timezone is not None and self.timezone_revision == 1
+        return self.canonical_timezone is not None and self.timezone_revision >= 1
 
 
 @dataclass(frozen=True, slots=True)
 class AccountListSnapshot:
     canonical_timezone: str | None
-    timezone_revision: Literal[0, 1]
+    timezone_revision: int
     accounts: tuple[CommittedFinanceAccount, ...]
 
 
