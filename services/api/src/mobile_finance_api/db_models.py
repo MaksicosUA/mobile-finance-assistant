@@ -965,6 +965,290 @@ class FinanceBudgetRow(Base):
     )
 
 
+class FinanceTransferRow(Base):
+    """One movement of money between two wallets of the same person.
+
+    An entity of its own rather than a third `operation_type`, for the same
+    reason a reversal is its own row (ADR 0023): every existing read would
+    otherwise have to learn to exclude it from income, expense, net flow, the
+    trend, the category breakdown and every budget, and missing one of them is
+    a silently wrong total. Here the default is exclusion and only the balance
+    opts in.
+
+    **Both sides carry their own amount**, because that is what the person
+    actually witnessed: 100 € left one wallet and 108 $ arrived in the other.
+    No rate is stored — it is implied by the two amounts, and a stored copy is
+    a second answer that can disagree with the first (ADR 0029).
+    """
+
+    __tablename__ = "finance_transfers"
+    __table_args__ = (
+        CheckConstraint(
+            "schema_version = '1'",
+            name="ck_finance_transfers_schema_version",
+        ),
+        CheckConstraint(
+            "from_account_id <> to_account_id",
+            name="ck_finance_transfers_distinct_wallets",
+        ),
+        CheckConstraint(
+            "from_amount > 0 AND to_amount > 0",
+            name="ck_finance_transfers_positive_amounts",
+        ),
+        CheckConstraint(
+            "from_amount NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric) AND "
+            "to_amount NOT IN "
+            "('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_finance_transfers_finite_amounts",
+        ),
+        CheckConstraint(
+            "from_currency ~ '^[A-Z]{3}$' AND to_currency ~ '^[A-Z]{3}$'",
+            name="ck_finance_transfers_currency_shape",
+        ),
+        CheckConstraint(
+            "occurred_on BETWEEN DATE '1900-01-01' AND DATE '2100-12-31'",
+            name="ck_finance_transfers_occurred_on_range",
+        ),
+        CheckConstraint(
+            "status = 'confirmed'",
+            name="ck_finance_transfers_v1_status",
+        ),
+        CheckConstraint(
+            "octet_length(command_payload_hash) = 32",
+            name="ck_finance_transfers_payload_hash_length",
+        ),
+        CheckConstraint(
+            "captured_timezone = btrim(captured_timezone) AND "
+            "captured_timezone <> '' AND "
+            "captured_timezone !~ '[[:cntrl:]]' AND "
+            "captured_timezone NOT IN ('Factory', 'localtime', 'posixrules')",
+            name="ck_finance_transfers_captured_timezone",
+        ),
+        # Each side's currency must be the currency of the wallet it names.
+        # The same composite key every other money table uses, so a transfer
+        # cannot invent a currency a wallet does not hold.
+        ForeignKeyConstraint(
+            ["from_account_id", "user_id", "from_currency"],
+            [
+                "finance_accounts.id",
+                "finance_accounts.user_id",
+                "finance_accounts.currency",
+            ],
+            name="fk_finance_transfers_from_account_currency",
+        ),
+        ForeignKeyConstraint(
+            ["to_account_id", "user_id", "to_currency"],
+            [
+                "finance_accounts.id",
+                "finance_accounts.user_id",
+                "finance_accounts.currency",
+            ],
+            name="fk_finance_transfers_to_account_currency",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "command_id",
+            name="uq_finance_transfers_user_command",
+        ),
+        UniqueConstraint(
+            "id",
+            "user_id",
+            name="uq_finance_transfers_id_user",
+        ),
+        Index("ix_finance_transfers_user_occurred_on", "user_id", "occurred_on"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    from_account_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    from_amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    from_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    to_account_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    to_amount: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    to_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    captured_timezone: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: The local date the money moved, frozen at capture like every other
+    #: authoritative date (ADR 0007).
+    occurred_on: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceTransferAuditRow(Base):
+    __tablename__ = "finance_transfer_audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type = 'transfer_confirmed' AND actor_type = 'user'",
+            name="ck_finance_transfer_audit_event_type",
+        ),
+        CheckConstraint(
+            "octet_length(payload_hash) = 32",
+            name="ck_finance_transfer_audit_hash_length",
+        ),
+        ForeignKeyConstraint(
+            ["transfer_id", "user_id"],
+            ["finance_transfers.id", "finance_transfers.user_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "transfer_id",
+            "command_id",
+            name="uq_finance_transfer_audit_transfer_command",
+        ),
+        Index("ix_finance_transfer_audit_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    transfer_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
+class FinanceTransferOutboxEventRow(Base):
+    """Identifier-only Home invalidation for a transfer.
+
+    Its own table for the reason every other one has: `finance_outbox_events`
+    pins a single aggregate type, and the projector dead-letters event types it
+    does not know (ADR 0012).
+    """
+
+    __tablename__ = "finance_transfer_outbox_events"
+    __table_args__ = (
+        CheckConstraint(
+            "aggregate_type = 'finance_transfer'",
+            name="ck_finance_transfer_outbox_aggregate_type",
+        ),
+        CheckConstraint(
+            "event_type = 'finance.transfer.accepted.v1'",
+            name="ck_finance_transfer_outbox_event_type",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0",
+            name="ck_finance_transfer_outbox_attempt_count",
+        ),
+        CheckConstraint(
+            "validation_failure_count >= 0 "
+            "AND validation_failure_count <= attempt_count",
+            name="ck_finance_transfer_outbox_validation_failure_count",
+        ),
+        CheckConstraint(
+            "(published_at IS NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NOT NULL) OR "
+            "(published_at IS NOT NULL AND dead_lettered_at IS NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NULL "
+            "AND failure_code IS NULL) OR "
+            "(published_at IS NULL AND dead_lettered_at IS NOT NULL "
+            "AND next_attempt_at IS NULL AND last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract')",
+            name="ck_finance_transfer_outbox_delivery_state",
+        ),
+        CheckConstraint(
+            "(last_failed_at IS NULL AND failure_code IS NULL) OR "
+            "(last_failed_at IS NOT NULL "
+            "AND failure_code = 'invalid_outbox_contract' "
+            "AND validation_failure_count > 0)",
+            name="ck_finance_transfer_outbox_failure_metadata",
+        ),
+        CheckConstraint(
+            "(next_attempt_at IS NULL OR next_attempt_at >= created_at) "
+            "AND (last_failed_at IS NULL OR last_failed_at >= created_at) "
+            "AND (dead_lettered_at IS NULL OR "
+            "(last_failed_at IS NOT NULL "
+            "AND dead_lettered_at >= last_failed_at)) "
+            "AND (published_at IS NULL OR published_at >= created_at) "
+            "AND (last_failed_at IS NULL OR next_attempt_at IS NULL OR "
+            "next_attempt_at > last_failed_at) "
+            "AND (published_at IS NULL OR last_failed_at IS NULL OR "
+            "published_at >= last_failed_at)",
+            name="ck_finance_transfer_outbox_operational_timestamps",
+        ),
+        ForeignKeyConstraint(
+            ["aggregate_id", "user_id"],
+            ["finance_transfers.id", "finance_transfers.user_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "aggregate_id",
+            "command_id",
+            name="uq_finance_transfer_outbox_aggregate_command",
+        ),
+        Index(
+            "ix_finance_transfer_outbox_pending_ready",
+            "next_attempt_at",
+            "created_at",
+            "id",
+            postgresql_where=text("published_at IS NULL AND dead_lettered_at IS NULL"),
+        ),
+        Index(
+            "ix_finance_transfer_outbox_dead_lettered",
+            "dead_lettered_at",
+            "created_at",
+            "id",
+            postgresql_where=text("dead_lettered_at IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    aggregate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    aggregate_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    command_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    attempt_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    validation_failure_count: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_failed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    failure_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
 class FinanceBudgetAuditRow(Base):
     """Append-only record of every ceiling that was set, changed or removed."""
 
