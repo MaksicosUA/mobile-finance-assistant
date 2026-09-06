@@ -364,21 +364,32 @@ class PostgresFinanceAccountRepository:
 
         async with self._session_factory() as database:
             async with database.begin():
-                # Both rows are locked because both carry the timezone and the
-                # projector refuses to run while they disagree (ADR 0028).
+                # Every row that carries the timezone is locked, because the
+                # projector refuses to run while any of them disagree, and a
+                # user may hold several wallets (ADR 0028, ADR 0029).
                 user = await database.scalar(
                     select(UserRow)
                     .where(UserRow.id == user_id, UserRow.disabled_at.is_(None))
                     .with_for_update()
                 )
-                account = await database.scalar(
-                    select(FinanceAccountRow)
-                    .where(
-                        FinanceAccountRow.id == command.account_id,
-                        FinanceAccountRow.user_id == user_id,
-                        FinanceAccountRow.status == "active",
+                wallets = (
+                    await database.scalars(
+                        select(FinanceAccountRow)
+                        .where(
+                            FinanceAccountRow.user_id == user_id,
+                            FinanceAccountRow.status == "active",
+                        )
+                        .order_by(FinanceAccountRow.created_at)
+                        .with_for_update()
                     )
-                    .with_for_update()
+                ).all()
+                account = next(
+                    (
+                        candidate
+                        for candidate in wallets
+                        if candidate.id == command.account_id
+                    ),
+                    None,
                 )
                 if user is None or account is None:
                     raise AccountPersistenceUnavailable
@@ -418,13 +429,16 @@ class PostgresFinanceAccountRepository:
                 # operation in the future, and a future-dated operation is
                 # excluded from the balance until the day catches up. Refused
                 # rather than letting a confirmed amount vanish for hours.
+                #
+                # Across every wallet, because the correction moves every
+                # wallet's months: asking only about the one named in the
+                # command would hide money in the others.
                 local_today = created_at.astimezone(
                     ZoneInfo(command.canonical_timezone)
                 ).date()
                 latest = await _latest_operation_on(
                     database=database,
                     user_id=user_id,
-                    account_id=command.account_id,
                 )
                 if latest is not None and latest > local_today:
                     raise TimezoneRejected(
@@ -436,7 +450,8 @@ class PostgresFinanceAccountRepository:
                         )
                     )
 
-                account.opening_timezone = command.canonical_timezone
+                for wallet in wallets:
+                    wallet.opening_timezone = command.canonical_timezone
                 user.canonical_timezone = command.canonical_timezone
                 user.timezone_revision = user.timezone_revision + 1
                 user.updated_at = created_at
@@ -597,11 +612,11 @@ async def _latest_operation_on(
     *,
     database: AsyncSession,
     user_id: UUID,
-    account_id: UUID,
 ) -> date | None:
+    """The last local date this user has recorded, in any wallet."""
+
     latest: date | None = await database.scalar(
         select(func.max(FinanceOperationRow.occurred_on)).where(
-            FinanceOperationRow.account_id == account_id,
             FinanceOperationRow.user_id == user_id,
         )
     )
