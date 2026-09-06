@@ -13,8 +13,11 @@ from decimal import Decimal
 from uuid import UUID
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
+from mobile_finance_api.auth import AuthenticatedUser
+from mobile_finance_api.main import create_app
 from mobile_finance_api.transfer_contracts import (
     CommittedTransfer,
     TransferDraft,
@@ -24,7 +27,9 @@ from mobile_finance_api.transfer_contracts import (
     transfer_draft_hash,
 )
 from mobile_finance_api.transfer_core import (
+    TransferCommandConflict,
     TransferCore,
+    TransferPersistenceUnavailable,
     TransferRejected,
     TransferWalletSnapshot,
     TransferWriteResult,
@@ -319,3 +324,169 @@ def test_confirming_before_the_capture_is_refused() -> None:
     assert [issue.code for issue in rejection.value.issues] == [
         "CONFIRMATION_BEFORE_CAPTURE"
     ]
+
+
+# --- over HTTP ----------------------------------------------------------------
+
+
+class _StaticAuthenticator:
+    async def authenticate(self, access_token: str) -> AuthenticatedUser:
+        del access_token
+        return AuthenticatedUser(subject=str(_USER_ID), display_name="Synthetic")
+
+
+def _application(repository: object):  # type: ignore[no-untyped-def]
+    return create_app(
+        transfer_core=TransferCore(repository=repository),  # type: ignore[arg-type]
+        current_user_authenticator=_StaticAuthenticator(),
+    )
+
+
+async def _post(app: object, path: str, body: dict[str, object], *, auth: bool = True):  # type: ignore[no-untyped-def]
+    headers = {"Authorization": "Bearer synthetic-token"} if auth else {}
+    async with AsyncClient(
+        transport=ASGITransport(app=app),  # type: ignore[arg-type]
+        base_url="http://test",
+    ) as client:
+        return await client.post(path, json=body, headers=headers)
+
+
+def _commit_body(draft: TransferDraft, **changes: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "schemaVersion": "1",
+        "draft": draft.model_dump(mode="json", by_alias=True),
+        "draftHash": transfer_draft_hash(draft),
+        "confirmedAt": "2026-09-06T18:00:00Z",
+    }
+    body.update(changes)
+    return body
+
+
+def test_a_reviewed_transfer_answers_a_hash() -> None:
+    async def scenario() -> None:
+        response = await _post(
+            _application(_Repository()),
+            "/api/v1/transfers/evaluate",
+            {"draft": _draft().model_dump(mode="json", by_alias=True)},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["decision"] == "NEEDS_CONFIRMATION"
+        assert response.json()["draftHash"] == transfer_draft_hash(_draft())
+
+    asyncio.run(scenario())
+
+
+def test_a_confirmed_transfer_answers_201_and_a_replay_answers_200() -> None:
+    async def scenario() -> None:
+        draft = _draft()
+        created = await _post(
+            _application(_Repository()),
+            "/api/v1/transfers/commit",
+            _commit_body(draft),
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["transfer"]["toAmount"] == "108"
+
+        replayed = await _post(
+            _application(
+                _Repository(
+                    replay=TransferWriteResult(
+                        transfer=_committed(draft), idempotent_replay=True
+                    )
+                )
+            ),
+            "/api/v1/transfers/commit",
+            _commit_body(draft),
+        )
+        assert replayed.status_code == 200, replayed.text
+        assert replayed.json()["idempotentReplay"] is True
+
+    asyncio.run(scenario())
+
+
+def test_a_changed_draft_is_not_the_draft_that_was_reviewed() -> None:
+    async def scenario() -> None:
+        response = await _post(
+            _application(_Repository()),
+            "/api/v1/transfers/commit",
+            _commit_body(_draft(), draftHash="0" * 64),
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == {
+            "code": "CONFIRMATION_MISMATCH",
+            "issues": [],
+        }
+
+    asyncio.run(scenario())
+
+
+def test_a_reused_identity_with_other_content_is_a_conflict() -> None:
+    class _Conflicting(_Repository):
+        async def replay_transfer(self, **_: object) -> TransferWriteResult | None:
+            raise TransferCommandConflict
+
+    async def scenario() -> None:
+        response = await _post(
+            _application(_Conflicting()),
+            "/api/v1/transfers/commit",
+            _commit_body(_draft()),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "COMMAND_CONFLICT"
+
+    asyncio.run(scenario())
+
+
+def test_a_rejection_is_typed_and_names_its_field() -> None:
+    async def scenario() -> None:
+        draft = _draft(occurredOn="2026-09-07")
+        response = await _post(
+            _application(_Repository()),
+            "/api/v1/transfers/commit",
+            _commit_body(draft),
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == {
+            "code": "TRANSFER_REJECTED",
+            "issues": [{"code": "FUTURE_OCCURRED_DATE", "field": "occurredOn"}],
+        }
+
+    asyncio.run(scenario())
+
+
+def test_a_persistence_failure_is_redacted() -> None:
+    class _Broken(_Repository):
+        async def get_transfer_wallets(self, **_: object):  # type: ignore[no-untyped-def]
+            raise TransferPersistenceUnavailable
+
+    async def scenario() -> None:
+        response = await _post(
+            _application(_Broken()),
+            "/api/v1/transfers/evaluate",
+            {"draft": _draft().model_dump(mode="json", by_alias=True)},
+        )
+
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "TRANSFER_PERSISTENCE_UNAVAILABLE"
+        # No amount and no wallet identifier escapes with the refusal.
+        assert "108" not in response.text
+
+    asyncio.run(scenario())
+
+
+def test_an_anonymous_caller_is_refused() -> None:
+    async def scenario() -> None:
+        response = await _post(
+            _application(_Repository()),
+            "/api/v1/transfers/evaluate",
+            {"draft": _draft().model_dump(mode="json", by_alias=True)},
+            auth=False,
+        )
+
+        assert response.status_code == 401
+
+    asyncio.run(scenario())

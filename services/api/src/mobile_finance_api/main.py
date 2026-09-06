@@ -61,6 +61,8 @@ from .repository import (
 )
 from .text_entry_routes import router as text_entry_router
 from .timezones import validated_iana_timezone
+from .transfer_core import TransferCore, UnavailableTransferRepository
+from .transfer_routes import router as transfer_router
 
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _CACHE_HEADERS = {
@@ -281,6 +283,7 @@ def create_app(
     account_core: AccountCore | None = None,
     finance_core: FinanceCore | None = None,
     budget_core: BudgetCore | None = None,
+    transfer_core: TransferCore | None = None,
     planned_cost_core: PlannedCostCore | None = None,
     planned_cost_recurrence_core: PlannedCostRecurrenceCore | None = None,
     goal_core: GoalCore | None = None,
@@ -351,6 +354,11 @@ def create_app(
         budget_core
         if budget_core is not None
         else BudgetCore(repository=UnavailableBudgetRepository())
+    )
+    application.state.transfer_core = (
+        transfer_core
+        if transfer_core is not None
+        else TransferCore(repository=UnavailableTransferRepository())
     )
     application.state.planned_cost_recurrence_core = (
         planned_cost_recurrence_core
@@ -435,6 +443,7 @@ def create_app(
     application.include_router(planned_cost_recurrence_router)
     application.include_router(goal_router)
     application.include_router(budget_router)
+    application.include_router(transfer_router)
     application.include_router(category_router)
     application.include_router(analytics_router)
     application.include_router(profile_router)

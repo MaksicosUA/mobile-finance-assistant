@@ -35,7 +35,9 @@ from .postgres_planned_cost_recurrence_repository import (
 )
 from .postgres_planned_cost_repository import PostgresPlannedCostRepository
 from .postgres_profile_repository import PostgresProfileRepository
+from .postgres_transfer_repository import PostgresTransferRepository
 from .tokens import AccessTokenCodec
+from .transfer_core import TransferCore
 
 settings = require_runtime_settings()
 engine, session_factory = create_database(settings.database_url)
@@ -73,6 +75,9 @@ app = create_app(
     ),
     budget_core=BudgetCore(
         repository=PostgresBudgetRepository(session_factory=session_factory),
+    ),
+    transfer_core=TransferCore(
+        repository=PostgresTransferRepository(session_factory=session_factory),
     ),
     planned_cost_core=PlannedCostCore(
         repository=PostgresPlannedCostRepository(

@@ -84,6 +84,40 @@ class TransferRepository(Protocol):
     ) -> TransferWriteResult: ...
 
 
+class UnavailableTransferRepository:
+    """Fail-closed default until a deployment configures a data adapter."""
+
+    async def get_transfer_wallets(
+        self,
+        *,
+        user_id: UUID,
+        account_ids: tuple[UUID, ...],
+    ) -> tuple[TransferWalletSnapshot, ...]:
+        del user_id, account_ids
+        raise TransferPersistenceUnavailable
+
+    async def replay_transfer(
+        self,
+        *,
+        user_id: UUID,
+        command_id: UUID,
+        payload_hash: bytes,
+    ) -> TransferWriteResult | None:
+        del user_id, command_id, payload_hash
+        raise TransferPersistenceUnavailable
+
+    async def commit_transfer(
+        self,
+        *,
+        user_id: UUID,
+        draft: TransferDraft,
+        payload_hash: bytes,
+        confirmed_at: datetime,
+    ) -> TransferWriteResult:
+        del user_id, draft, payload_hash, confirmed_at
+        raise TransferPersistenceUnavailable
+
+
 class TransferCore:
     def __init__(
         self,
