@@ -185,15 +185,18 @@ def test_account_evaluation_uses_the_canonical_timezone_calendar() -> None:
     asyncio.run(scenario())
 
 
-def test_account_evaluation_rejects_unsupported_currency_and_second_setup() -> None:
+def test_a_second_account_is_a_wallet_rather_than_a_refusal() -> None:
+    """A later account is a wallet in another currency (ADR 0029).
+
+    It used to be `ACCOUNT_ALREADY_INITIALIZED`, and a non-euro currency used
+    to be `UNSUPPORTED_CURRENCY`. Nothing is converted, so neither refusal is
+    honest any more — but a wallet may not introduce a second reporting
+    timezone, because months must not depend on which wallet is read.
+    """
+
     async def scenario() -> None:
         repository = _MemoryAccountRepository()
         core = AccountCore(repository=repository, clock=lambda: _NOW)
-        unsupported = await core.evaluate(
-            user_id=_USER_ID,
-            draft=_draft(currency="USD"),
-        )
-        assert [issue.code for issue in unsupported.issues] == ["UNSUPPORTED_CURRENCY"]
 
         draft = _draft()
         evaluated = await core.evaluate(user_id=_USER_ID, draft=draft)
@@ -203,12 +206,27 @@ def test_account_evaluation_rejects_unsupported_currency_and_second_setup() -> N
             expected_draft_hash=str(evaluated.draft_hash),
             confirmed_at=datetime(2026, 7, 27, 12, 1, tzinfo=UTC),
         )
-        initialized = await core.evaluate(
+
+        wallet = await core.evaluate(
             user_id=_USER_ID,
-            draft=_draft(commandId="55555555-5555-4555-8555-555555555555"),
+            draft=_draft(
+                commandId="55555555-5555-4555-8555-555555555555",
+                currency="UAH",
+            ),
         )
-        assert [issue.code for issue in initialized.issues] == [
-            "ACCOUNT_ALREADY_INITIALIZED"
+        assert wallet.issues == ()
+        assert wallet.decision == "NEEDS_CONFIRMATION"
+
+        elsewhere = await core.evaluate(
+            user_id=_USER_ID,
+            draft=_draft(
+                commandId="66666666-6666-4666-8666-666666666666",
+                currency="UAH",
+                canonicalTimezone="Europe/Kyiv",
+            ),
+        )
+        assert [issue.code for issue in elsewhere.issues] == [
+            "PROFILE_TIMEZONE_MISMATCH"
         ]
 
     asyncio.run(scenario())
@@ -420,13 +438,13 @@ def test_account_api_errors_are_no_store_and_redacted() -> None:
             assert unauthenticated.status_code == 401
             _assert_private_response(unauthenticated)
 
-            unsupported = _draft(currency="USD")
+            ahead = _draft(openingBalanceOn="2030-01-01")
             rejected = await client.post(
                 "/api/v1/accounts/commit",
                 json={
                     "schemaVersion": "1",
-                    "draft": unsupported.model_dump(mode="json", by_alias=True),
-                    "draftHash": account_draft_hash(unsupported),
+                    "draft": ahead.model_dump(mode="json", by_alias=True),
+                    "draftHash": account_draft_hash(ahead),
                     "confirmedAt": "2026-07-27T12:01:00Z",
                 },
                 headers=headers,
@@ -435,7 +453,12 @@ def test_account_api_errors_are_no_store_and_redacted() -> None:
             assert rejected.json() == {
                 "detail": {
                     "code": "ACCOUNT_REJECTED",
-                    "issues": [{"code": "UNSUPPORTED_CURRENCY", "field": "currency"}],
+                    "issues": [
+                        {
+                            "code": "OPENING_BALANCE_DATE_IN_FUTURE",
+                            "field": "openingBalanceOn",
+                        }
+                    ],
                 }
             }
             assert "1250" not in rejected.text

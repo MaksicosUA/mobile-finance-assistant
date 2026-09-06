@@ -26,6 +26,7 @@ from mobile_finance_api.db_models import (
     FinanceAccountAuditRow,
     FinanceAccountOutboxEventRow,
     FinanceAccountRow,
+    FinanceCategoryRow,
     HomeProjectionSnapshotRow,
     UserRow,
 )
@@ -62,15 +63,18 @@ def _account_draft(
     *,
     command_id: str = "11111111-1111-4111-8111-111111111111",
     name: str = "Synthetic primary account",
+    currency: str = "EUR",
+    opening_balance: str = "-125.50",
+    canonical_timezone: str = "Europe/Berlin",
 ) -> dict[str, object]:
     return {
         "schemaVersion": "1",
         "commandId": command_id,
         "name": name,
-        "currency": "EUR",
-        "openingBalance": "-125.50",
+        "currency": currency,
+        "openingBalance": opening_balance,
         "openingBalanceOn": OPENING_ON,
-        "canonicalTimezone": "Europe/Berlin",
+        "canonicalTimezone": canonical_timezone,
     }
 
 
@@ -444,25 +448,62 @@ async def _exercise_http() -> tuple[
         assert exact_after_invalid.json()["idempotentReplay"] is True
         assert exact_after_invalid.json()["account"]["accountId"] == first_account_id
 
-        second_command = _account_draft(
+        # A later account is a wallet in another currency, not a refusal
+        # (ADR 0029). Nothing is converted, so the two balances never meet.
+        wallet_command = _account_draft(
             command_id="22222222-2222-4222-8222-222222222222",
+            name="Synthetic hryvnia wallet",
+            currency="UAH",
+            opening_balance="1200.00",
         )
-        second_command_hash = account_draft_hash(
-            AccountDraft.model_validate(second_command)
-        )
-        second_attempt = await client.post(
+        wallet_hash = account_draft_hash(AccountDraft.model_validate(wallet_command))
+        wallet = await client.post(
             "/api/v1/accounts/commit",
             json=_account_commit(
-                draft=second_command,
-                draft_hash=second_command_hash,
+                draft=wallet_command,
+                draft_hash=wallet_hash,
                 confirmed_at=confirmed_at,
             ),
             headers=first.headers,
         )
-        assert second_attempt.status_code == 409
-        assert second_attempt.json()["detail"] == {
-            "code": "ACCOUNT_ALREADY_INITIALIZED",
-            "issues": [],
+        assert wallet.status_code == 201, wallet.text
+        wallet_body = wallet.json()
+        assert wallet_body["account"]["currency"] == "UAH"
+        assert wallet_body["account"]["isDefault"] is False
+        # The profile was settled by the first account and is not settled again.
+        assert wallet_body["canonicalTimezone"] == "Europe/Berlin"
+        assert wallet_body["timezoneRevision"] == 1
+
+        listed = await client.get("/api/v1/accounts", headers=first.headers)
+        assert listed.status_code == 200, listed.text
+        wallets = listed.json()["accounts"]
+        assert len(wallets) == 2
+        assert sum(1 for item in wallets if item["isDefault"]) == 1
+        assert {item["currency"] for item in wallets} == {"EUR", "UAH"}
+
+        # A wallet may not introduce a second reporting timezone: months must
+        # not depend on which wallet is read (ADR 0028).
+        elsewhere_command = _account_draft(
+            command_id="66666666-6666-4666-8666-666666666666",
+            currency="PLN",
+            opening_balance="0",
+            canonical_timezone="Europe/Kyiv",
+        )
+        elsewhere = await client.post(
+            "/api/v1/accounts/commit",
+            json=_account_commit(
+                draft=elsewhere_command,
+                draft_hash=account_draft_hash(
+                    AccountDraft.model_validate(elsewhere_command)
+                ),
+                confirmed_at=confirmed_at,
+            ),
+            headers=first.headers,
+        )
+        assert elsewhere.status_code == 422, elsewhere.text
+        assert elsewhere.json()["detail"] == {
+            "code": "ACCOUNT_REJECTED",
+            "issues": [{"code": "PROFILE_TIMEZONE_MISMATCH", "field": "account"}],
         }
 
         mismatch_home = await client.get(
@@ -575,23 +616,45 @@ async def _exercise_http() -> tuple[
             assert profile.timezone_revision == 0
 
         async with session_factory() as database:
+            # Two users with one account each, plus the hryvnia wallet: a
+            # wallet is an ordinary account and writes the same audit row and
+            # the same identifier-only invalidation (ADR 0029).
             assert (
                 await database.scalar(
                     select(func.count()).select_from(FinanceAccountRow)
                 )
-                == 2
+                == 3
             )
             assert (
                 await database.scalar(
                     select(func.count()).select_from(FinanceAccountAuditRow)
                 )
-                == 2
+                == 3
             )
             assert (
                 await database.scalar(
                     select(func.count()).select_from(FinanceAccountOutboxEventRow)
                 )
-                == 2
+                == 3
+            )
+            # The catalogue belongs to the person and is seeded once, with the
+            # first account. A wallet must not double it.
+            seeded = await database.scalar(
+                select(func.count())
+                .select_from(FinanceCategoryRow)
+                .where(FinanceCategoryRow.user_id == first.user_id)
+            )
+            assert seeded is not None and seeded > 0
+            assert (
+                await database.scalar(
+                    select(func.count())
+                    .select_from(FinanceCategoryRow)
+                    .where(
+                        FinanceCategoryRow.user_id == first.user_id,
+                        FinanceCategoryRow.name == "Продукты",
+                    )
+                )
+                == 1
             )
             assert (
                 await database.scalar(

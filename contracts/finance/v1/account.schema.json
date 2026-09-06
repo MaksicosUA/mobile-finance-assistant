@@ -133,7 +133,8 @@
           "enum": [
             "ACCOUNT_ALREADY_INITIALIZED",
             "OPENING_BALANCE_DATE_IN_FUTURE",
-            "UNSUPPORTED_CURRENCY"
+            "UNSUPPORTED_CURRENCY",
+            "PROFILE_TIMEZONE_MISMATCH"
           ],
           "title": "Code",
           "type": "string"
@@ -645,7 +646,7 @@
           "items": {
             "$ref": "#/$defs/CommittedFinanceAccount"
           },
-          "maxItems": 1,
+          "maxItems": 64,
           "title": "Accounts",
           "type": "array"
         }

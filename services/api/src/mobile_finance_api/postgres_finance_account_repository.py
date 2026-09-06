@@ -18,7 +18,6 @@ from .account_contracts import (
     TimezoneIssue,
 )
 from .account_core import (
-    AccountAlreadyInitialized,
     AccountCommandConflict,
     AccountListSnapshot,
     AccountPersistenceUnavailable,
@@ -190,18 +189,31 @@ class PostgresFinanceAccountRepository:
                         ),
                     )
 
-                account_exists = await database.scalar(
-                    select(FinanceAccountRow.id)
-                    .where(FinanceAccountRow.user_id == user_id)
-                    .limit(1)
+                # The first account bootstraps the profile; every later one is
+                # a wallet added to a profile that already exists (ADR 0029).
+                # They differ in exactly three things: the timezone, the base
+                # currency, and the seeded catalogue — all of which are the
+                # profile's, and are settled once.
+                is_first_account = (
+                    await database.scalar(
+                        select(FinanceAccountRow.id)
+                        .where(FinanceAccountRow.user_id == user_id)
+                        .limit(1)
+                    )
+                    is None
                 )
-                if account_exists is not None:
-                    raise AccountAlreadyInitialized
-                if (
-                    user.canonical_timezone is not None
-                    or user.timezone_revision != 0
-                    or user.base_currency != draft.currency
+                if is_first_account:
+                    if (
+                        user.canonical_timezone is not None
+                        or user.timezone_revision != 0
+                    ):
+                        raise AccountPersistenceUnavailable
+                elif (
+                    user.canonical_timezone != draft.canonical_timezone
+                    or user.timezone_revision < 1
                 ):
+                    # Months must not depend on which wallet is read, so a
+                    # wallet cannot introduce a second zone (ADR 0028).
                     raise AccountPersistenceUnavailable
 
                 account = FinanceAccountRow(
@@ -216,13 +228,17 @@ class PostgresFinanceAccountRepository:
                     opening_balance_on=draft.opening_balance_on,
                     opening_timezone=draft.canonical_timezone,
                     status="active",
-                    is_default=True,
+                    is_default=is_first_account,
                     confirmed_at=confirmed_at,
                     created_at=created_at,
                 )
-                user.canonical_timezone = draft.canonical_timezone
-                user.timezone_revision = 1
-                user.updated_at = created_at
+                if is_first_account:
+                    # The first wallet decides where this profile reports, and
+                    # what a screen naming no wallet means.
+                    user.canonical_timezone = draft.canonical_timezone
+                    user.timezone_revision = 1
+                    user.base_currency = draft.currency
+                    user.updated_at = created_at
                 database.add(account)
                 # The mappings deliberately expose no ORM relationships. Flush
                 # the account and profile before inserting strongly-FK children.
@@ -262,25 +278,31 @@ class PostgresFinanceAccountRepository:
                         ),
                     ]
                 )
-                # Seeded in the same transaction as the account, so a user never
-                # faces an empty picker and a failure leaves neither (ADR 0020).
-                categories = seeded_category_rows(
-                    user_id=user_id, created_at=created_at
-                )
-                database.add_all(categories)
-                # Flushed before the keywords below: nothing relates the two
-                # mappers, so the unit of work is free to order the keyword
-                # inserts first, and the composite foreign key then refuses
-                # them because their category does not exist yet.
-                await database.flush()
-                # Their starting vocabulary goes in the same transaction, so a
-                # new account can read a sentence from its first day instead of
-                # matching nothing until every word is taught by hand.
-                database.add_all(
-                    seeded_category_keyword_rows(
-                        categories=categories, created_at=created_at
+                # The catalogue belongs to the person, not to a wallet: the
+                # same «Продукты» whichever wallet paid (ADR 0029). It is
+                # seeded once, with the first account.
+                if is_first_account:
+                    # Seeded in the same transaction as the account, so a user
+                    # never faces an empty picker and a failure leaves neither
+                    # (ADR 0020).
+                    categories = seeded_category_rows(
+                        user_id=user_id, created_at=created_at
                     )
-                )
+                    database.add_all(categories)
+                    # Flushed before the keywords below: nothing relates the two
+                    # mappers, so the unit of work is free to order the keyword
+                    # inserts first, and the composite foreign key then refuses
+                    # them because their category does not exist yet.
+                    await database.flush()
+                    # Their starting vocabulary goes in the same transaction, so
+                    # a new account can read a sentence from its first day
+                    # instead of matching nothing until every word is taught by
+                    # hand.
+                    database.add_all(
+                        seeded_category_keyword_rows(
+                            categories=categories, created_at=created_at
+                        )
+                    )
             return _write_result(
                 user=user,
                 account=account,
@@ -757,7 +779,6 @@ async def _accounts(
         select(FinanceAccountRow)
         .where(FinanceAccountRow.user_id == user_id)
         .order_by(FinanceAccountRow.created_at.asc(), FinanceAccountRow.id.asc())
-        .limit(2)
     )
     return tuple(result.all())
 
