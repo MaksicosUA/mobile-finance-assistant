@@ -1894,6 +1894,7 @@ enum OperationParseGap {
   ambiguousAmount,
   dateNotUnderstood,
   categoryNotMatched,
+  currencyNotUnderstood,
 }
 
 /// What one written sentence appears to mean.
@@ -1973,6 +1974,7 @@ List<OperationParseGap> _parseGaps(Object? raw) {
       'AMBIGUOUS_AMOUNT' => OperationParseGap.ambiguousAmount,
       'DATE_NOT_UNDERSTOOD' => OperationParseGap.dateNotUnderstood,
       'CATEGORY_NOT_MATCHED' => OperationParseGap.categoryNotMatched,
+      'CURRENCY_NOT_UNDERSTOOD' => OperationParseGap.currencyNotUnderstood,
       _ => null,
     };
     if (gap != null) gaps.add(gap);

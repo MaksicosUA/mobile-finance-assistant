@@ -1820,4 +1820,13 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get timezoneSettingsDescription => 'Где проходит граница дня и месяца';
+
+  @override
+  String get entrySentenceGapCurrency =>
+      'Валюту не разобрал — впишите сумму сами.';
+
+  @override
+  String entrySentenceCurrencyMismatch(String parsed, String account) {
+    return 'Сумма в $parsed, а счёт в $account — не подставил её.';
+  }
 }
