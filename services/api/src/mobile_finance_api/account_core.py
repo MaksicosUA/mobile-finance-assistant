@@ -128,7 +128,7 @@ class AccountListSnapshot:
 class AccountWriteResult:
     account: CommittedFinanceAccount
     canonical_timezone: str
-    timezone_revision: Literal[1]
+    timezone_revision: int
     idempotent_replay: bool
 
 

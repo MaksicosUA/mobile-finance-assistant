@@ -216,6 +216,7 @@ final class FinanceAccount {
     required this.openingBalance,
     required this.openingBalanceOn,
     required this.openingTimezone,
+    required this.isDefault,
     required this.confirmedAt,
     required this.createdAt,
   });
@@ -228,6 +229,9 @@ final class FinanceAccount {
   final String openingBalance;
   final String openingBalanceOn;
   final String openingTimezone;
+
+  /// Whether this is the wallet a screen means when it names none (ADR 0029).
+  final bool isDefault;
   final String confirmedAt;
   final String createdAt;
 
@@ -246,7 +250,8 @@ final class FinanceAccount {
       'confirmedAt',
       'createdAt',
     });
-    if (json['status'] != 'active' || json['isDefault'] != true) {
+    final isDefault = json['isDefault'];
+    if (json['status'] != 'active' || isDefault is! bool) {
       throw const FormatException('Invalid Finance account state.');
     }
     return FinanceAccount(
@@ -258,6 +263,7 @@ final class FinanceAccount {
       openingBalance: _signedMoney(json, 'openingBalance'),
       openingBalanceOn: _date(json, 'openingBalanceOn'),
       openingTimezone: _timezone(json, 'openingTimezone'),
+      isDefault: isDefault,
       confirmedAt: _timestamp(json, 'confirmedAt'),
       createdAt: _timestamp(json, 'createdAt'),
     );
@@ -273,17 +279,28 @@ final class FinanceAccountSetup {
   }) : accounts = List.unmodifiable(accounts) {
     // The revision counts how many times the timezone has been settled, and
     // it is correctable (ADR 0028), so it climbs. Zero still means unset.
-    if (accounts.length > 1 || timezoneRevision < 0) {
+    if (timezoneRevision < 0) {
       throw const FormatException('Invalid Finance account setup.');
     }
     if (accounts.isEmpty) {
       if (canonicalTimezone != null || timezoneRevision != 0) {
         throw const FormatException('Invalid empty Finance account setup.');
       }
-    } else if (canonicalTimezone == null || timezoneRevision < 1) {
+      return;
+    }
+    if (canonicalTimezone == null || timezoneRevision < 1) {
       throw const FormatException('Invalid initialized Finance account setup.');
-    } else if (accounts.single.openingTimezone != canonicalTimezone) {
-      throw const FormatException('Inconsistent Finance account timezone.');
+    }
+    // A user may hold several wallets, one currency each, and exactly one of
+    // them is the default (ADR 0029).
+    if (accounts.where((account) => account.isDefault).length != 1) {
+      throw const FormatException('Invalid Finance wallet set.');
+    }
+    // Months must not depend on which wallet is read (ADR 0028).
+    for (final account in accounts) {
+      if (account.openingTimezone != canonicalTimezone) {
+        throw const FormatException('Inconsistent Finance account timezone.');
+      }
     }
   }
 
@@ -292,7 +309,11 @@ final class FinanceAccountSetup {
   final List<FinanceAccount> accounts;
 
   bool get isInitialized => accounts.isNotEmpty;
-  FinanceAccount? get account => accounts.isEmpty ? null : accounts.single;
+
+  /// The wallet a screen means when it names none.
+  FinanceAccount? get account => accounts.isEmpty
+      ? null
+      : accounts.firstWhere((candidate) => candidate.isDefault);
 }
 
 @immutable

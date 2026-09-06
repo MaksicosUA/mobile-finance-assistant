@@ -78,10 +78,9 @@ class PostgresFinanceAccountRepository:
         async with self._session_factory() as database:
             user = await _active_user(database=database, user_id=user_id)
             accounts = await _accounts(database=database, user_id=user_id)
-        _require_single_account(accounts)
         _require_consistent_profile(user=user, accounts=accounts)
         snapshot = AccountSetupSnapshot(
-            account_id=accounts[0].id if accounts else None,
+            account_id=_default_account(accounts).id if accounts else None,
             canonical_timezone=user.canonical_timezone,
             timezone_revision=user.timezone_revision,
         )
@@ -93,7 +92,6 @@ class PostgresFinanceAccountRepository:
         async with self._session_factory() as database:
             user = await _active_user(database=database, user_id=user_id)
             accounts = await _accounts(database=database, user_id=user_id)
-        _require_single_account(accounts)
         _require_consistent_profile(user=user, accounts=accounts)
         return AccountListSnapshot(
             canonical_timezone=user.canonical_timezone,
@@ -749,9 +747,13 @@ async def _accounts(
     return tuple(result.all())
 
 
-def _require_single_account(accounts: Sequence[FinanceAccountRow]) -> None:
-    if len(accounts) > 1:
-        raise AccountPersistenceUnavailable
+def _default_account(accounts: Sequence[FinanceAccountRow]) -> FinanceAccountRow:
+    """The wallet a screen means when it names no wallet at all (ADR 0029)."""
+
+    for account in accounts:
+        if account.is_default:
+            return account
+    raise AccountPersistenceUnavailable
 
 
 def _require_consistent_profile(
@@ -759,6 +761,13 @@ def _require_consistent_profile(
     user: UserRow,
     accounts: Sequence[FinanceAccountRow],
 ) -> None:
+    """Check the whole set of wallets, not the first row that came back.
+
+    A user may hold several accounts, one currency each (ADR 0029). Exactly one
+    of them is the default, and the profile's base currency follows that one:
+    it is what a screen naming no wallet reports.
+    """
+
     if not accounts:
         if (
             user.base_currency != "EUR"
@@ -767,14 +776,33 @@ def _require_consistent_profile(
         ):
             raise AccountPersistenceUnavailable
         return
-    account = accounts[0]
+    if sum(1 for account in accounts if account.is_default) != 1:
+        raise AccountPersistenceUnavailable
+    if (
+        user.canonical_timezone is None
+        or user.timezone_revision < 1
+        or _default_account(accounts).currency != user.base_currency
+    ):
+        raise AccountPersistenceUnavailable
+    for account in accounts:
+        _require_consistent_account(user=user, account=account)
+
+
+def _require_consistent_account(
+    *,
+    user: UserRow,
+    account: FinanceAccountRow,
+) -> None:
+    """One wallet against its owner.
+
+    Months must not depend on which wallet is read, so every wallet carries the
+    same canonical timezone the user does (ADR 0028, ADR 0029).
+    """
+
     if (
         account.user_id != user.id
         or account.status != "active"
-        or not account.is_default
-        or account.currency != user.base_currency
         or user.canonical_timezone is None
-        or user.timezone_revision < 1
         or account.opening_timezone != user.canonical_timezone
     ):
         raise AccountPersistenceUnavailable
@@ -787,7 +815,12 @@ def _write_result(
     idempotent_replay: bool,
     opening_balance_on: date | None = None,
 ) -> AccountWriteResult:
-    _require_consistent_profile(user=user, accounts=(account,))
+    # This checks the wallet that was just written, not the whole set: a
+    # non-default wallet is a real account, and the set is checked where it is
+    # read (ADR 0029).
+    _require_consistent_account(user=user, account=account)
+    if user.timezone_revision < 1:
+        raise AccountPersistenceUnavailable
     timezone = user.canonical_timezone
     if timezone is None:  # pragma: no cover - guarded above
         raise AccountPersistenceUnavailable
@@ -828,7 +861,7 @@ def _to_contract(
         ),
         opening_timezone=account.opening_timezone,
         status=account.status,  # type: ignore[arg-type]
-        is_default=account.is_default,  # type: ignore[arg-type]
+        is_default=account.is_default,
         confirmed_at=account.confirmed_at,
         created_at=account.created_at,
     )

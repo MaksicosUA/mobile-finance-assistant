@@ -455,6 +455,7 @@ FinanceAccount _account() => const FinanceAccount(
   openingBalance: '100.00',
   openingBalanceOn: '2026-07-01',
   openingTimezone: 'Europe/Berlin',
+  isDefault: true,
   confirmedAt: '2026-07-01T08:00:00Z',
   createdAt: '2026-07-01T08:00:00Z',
 );

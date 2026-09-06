@@ -486,6 +486,7 @@ FinanceAccount _account(String openingBalanceOn) => FinanceAccount(
   openingBalance: '100.00',
   openingBalanceOn: openingBalanceOn,
   openingTimezone: configuredHomeApiTimezone,
+  isDefault: true,
   confirmedAt: '2026-07-10T10:00:00.000Z',
   createdAt: '2026-07-10T10:00:00.000Z',
 );

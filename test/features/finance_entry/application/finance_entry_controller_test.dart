@@ -1195,6 +1195,7 @@ FinanceAccount _account() => const FinanceAccount(
   openingBalance: '10.00',
   openingBalanceOn: '2026-07-01',
   openingTimezone: configuredHomeApiTimezone,
+  isDefault: true,
   confirmedAt: '2026-07-01T08:00:00.000Z',
   createdAt: '2026-07-01T08:00:01.000Z',
 );

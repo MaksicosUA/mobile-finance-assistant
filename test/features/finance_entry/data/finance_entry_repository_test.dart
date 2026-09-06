@@ -544,6 +544,7 @@ FinanceEntrySuccess<FinanceBaselineCommit> _successBaselineCommit(
         openingBalance: '0.00',
         openingBalanceOn: draft.openingBalanceOn,
         openingTimezone: 'Europe/Berlin',
+        isDefault: true,
         confirmedAt: command.confirmedAt,
         createdAt: '2026-07-29T12:00:01.000Z',
       ),

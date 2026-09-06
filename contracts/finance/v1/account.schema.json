@@ -390,7 +390,6 @@
           "type": "string"
         },
         "isDefault": {
-          "const": true,
           "title": "Isdefault",
           "type": "boolean"
         },

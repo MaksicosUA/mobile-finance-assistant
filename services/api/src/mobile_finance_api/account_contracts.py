@@ -236,7 +236,9 @@ class CommittedFinanceAccount(AccountApiModel):
     opening_balance_on: AccountDate = Field(alias="openingBalanceOn")
     opening_timezone: TimezoneName = Field(alias="openingTimezone")
     status: Literal["active"]
-    is_default: Literal[True] = Field(alias="isDefault")
+    # A user may hold several wallets and exactly one of them is the default —
+    # the one a screen means when it names no wallet (ADR 0029).
+    is_default: bool = Field(alias="isDefault")
     confirmed_at: UtcTimestamp = Field(alias="confirmedAt")
     created_at: UtcTimestamp = Field(alias="createdAt")
 

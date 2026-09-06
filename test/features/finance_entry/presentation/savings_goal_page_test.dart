@@ -474,6 +474,7 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
                   openingBalance: '100.00',
                   openingBalanceOn: '2026-07-10',
                   openingTimezone: configuredHomeApiTimezone,
+                  isDefault: true,
                   confirmedAt: '2026-07-10T10:00:00.000Z',
                   createdAt: '2026-07-10T10:00:00.000Z',
                 ),
