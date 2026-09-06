@@ -188,13 +188,66 @@ def test_a_numeral_case_the_table_does_not_list_is_a_gap() -> None:
         ("Потратил 500 евро", "EUR"),
         ("Получил 500 долларов", "USD"),
         ("Потратил 500 рублей", "RUB"),
+        ("Потратил 500 гривен", "UAH"),
+        ("Потратил 500 грн", "UAH"),
+        ("Потратил 500 ₴", "UAH"),
+        ("Потратил 500 злотых", "PLN"),
+        ("Потратил 500 фунтов", "GBP"),
+        ("Потратил 500 франков", "CHF"),
+        ("Потратил 500 тенге", "KZT"),
+        ("Потратил 500 лари", "GEL"),
         ("Потратил 500", "EUR"),
     ],
 )
 def test_currency_is_read_or_defaults(text: str, code: str) -> None:
-    # An unsupported currency is still reported honestly: Finance Core is the
-    # thing that refuses it, and it already does.
+    # Every currency the parser knows reports its own code. Nothing quietly
+    # becomes euro: the euro default is only for a sentence that names no
+    # currency at all.
     assert _parse(text).currency == code
+    assert "CURRENCY_NOT_UNDERSTOOD" not in _parse(text).gaps
+
+
+@pytest.mark.parametrize(
+    ("text", "code"),
+    [
+        # "руб" sits inside "рубашку", and the match used to fire from there.
+        ("Купил рубашку за 3000 гривен", "UAH"),
+        ("Купил рубашку за 3000", "EUR"),
+        # So does "евро" inside "еврочехол".
+        ("Купил еврочехол за 40 долларов", "USD"),
+    ],
+)
+def test_a_currency_word_is_read_from_a_word_start(text: str, code: str) -> None:
+    """A currency word inside another word is not a currency.
+
+    The same rule the category keywords use (ADR 0020): a stem matches from a
+    word start, so a shirt is not roubles.
+    """
+
+    assert _parse(text).currency == code
+
+
+@pytest.mark.parametrize("text", ["Потратил 120 ₦", "Получил 500 ¥", "Отдал 40 ₡"])
+def test_a_currency_symbol_it_cannot_name_is_a_gap(text: str) -> None:
+    """A currency sign the table does not know is reported, never assumed.
+
+    An unknown sign and no sign at all used to be the same thing, and the
+    euro default applied to both. ¥ is here because it names two currencies:
+    a symbol that cannot be resolved is not resolved.
+    """
+
+    parsed = _parse(text)
+
+    assert "CURRENCY_NOT_UNDERSTOOD" in parsed.gaps
+    # The amount was read perfectly well. Only the currency is missing.
+    assert parsed.amount is not None
+
+
+def test_a_sentence_with_no_currency_is_not_a_gap() -> None:
+    parsed = _parse("Потратил 12,50 на продукты")
+
+    assert parsed.currency == "EUR"
+    assert "CURRENCY_NOT_UNDERSTOOD" not in parsed.gaps
 
 
 @pytest.mark.parametrize(

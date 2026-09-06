@@ -53,6 +53,7 @@ ParseGap = Literal[
     "AMBIGUOUS_AMOUNT",
     "DATE_NOT_UNDERSTOOD",
     "CATEGORY_NOT_MATCHED",
+    "CURRENCY_NOT_UNDERSTOOD",
 ]
 
 TextEntryErrorCode = Literal["TEXT_ENTRY_UNAVAILABLE"]
