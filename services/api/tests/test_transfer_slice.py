@@ -17,6 +17,11 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
 from mobile_finance_api.auth import AuthenticatedUser
+from mobile_finance_api.home_projection import (
+    ProjectionAccount,
+    ProjectionTransfer,
+    build_current_home_revision,
+)
 from mobile_finance_api.main import create_app
 from mobile_finance_api.transfer_contracts import (
     CommittedTransfer,
@@ -490,3 +495,92 @@ def test_an_anonymous_caller_is_refused() -> None:
         assert response.status_code == 401
 
     asyncio.run(scenario())
+
+
+# --- what a transfer does to a balance ----------------------------------------
+
+
+def _account() -> ProjectionAccount:
+    return ProjectionAccount(
+        account_id=_EURO,
+        user_id=_USER_ID,
+        currency="EUR",
+        opening_balance=Decimal("1000.00"),
+        opening_balance_on=_BASELINE,
+        opening_timezone="Europe/Berlin",
+        status="active",
+        is_default=True,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+def _projection_transfer(
+    *,
+    from_account: UUID = _EURO,
+    to_account: UUID = _DOLLARS,
+    from_amount: str = "100.00",
+    to_amount: str = "108.00",
+    occurred_on: date = date(2026, 9, 6),
+) -> ProjectionTransfer:
+    return ProjectionTransfer(
+        transfer_id=UUID("66666666-6666-4666-8666-666666666666"),
+        user_id=_USER_ID,
+        from_account_id=from_account,
+        from_amount=Decimal(from_amount),
+        to_account_id=to_account,
+        to_amount=Decimal(to_amount),
+        occurred_on=occurred_on,
+        created_at=_CAPTURED_AT,
+    )
+
+
+def _revision(*transfers: ProjectionTransfer):  # type: ignore[no-untyped-def]
+    return build_current_home_revision(
+        account=_account(),
+        operations=(),
+        generated_at=datetime(2026, 9, 6, 20, 0, tzinfo=UTC),
+        transfers=transfers,
+    )
+
+
+def test_money_leaving_a_wallet_lowers_its_balance() -> None:
+    assert _revision(_projection_transfer()).balance_amount == Decimal("900.00")
+
+
+def test_money_arriving_raises_it_by_what_arrived() -> None:
+    """Not by what left: nothing is converted, and the two are different
+    numbers on purpose."""
+
+    revision = _revision(_projection_transfer(from_account=_DOLLARS, to_account=_EURO))
+
+    assert revision.balance_amount == Decimal("1108.00")
+
+
+def test_a_transfer_is_neither_income_nor_expense() -> None:
+    revision = _revision(_projection_transfer())
+
+    assert revision.month_income == 0
+    assert revision.month_expense == 0
+    assert revision.month_net_flow == 0
+
+
+def test_the_month_delta_follows_the_balance_and_not_the_net_flow() -> None:
+    """Otherwise Home shows a balance that fell and a delta that did not."""
+
+    revision = _revision(_projection_transfer())
+
+    assert revision.balance_delta_amount == Decimal("-100.00")
+
+
+def test_a_transfer_between_two_other_wallets_does_nothing_here() -> None:
+    other = UUID("77777777-7777-4777-8777-777777777777")
+    revision = _revision(_projection_transfer(from_account=other, to_account=_DOLLARS))
+
+    assert revision.balance_amount == Decimal("1000.00")
+    assert revision.balance_delta_amount == 0
+
+
+def test_a_transfer_before_the_wallet_existed_does_not_count() -> None:
+    revision = _revision(_projection_transfer(occurred_on=date(2025, 12, 31)))
+
+    assert revision.balance_amount == Decimal("1000.00")

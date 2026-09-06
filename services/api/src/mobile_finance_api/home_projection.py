@@ -253,6 +253,26 @@ class ProjectionGoal:
 
 
 @dataclass(frozen=True, slots=True)
+class ProjectionTransfer:
+    """One movement between two of the user's wallets (ADR 0029).
+
+    Carries both amounts because nothing is converted; which one applies
+    depends on which side of it the wallet being projected is on. It satisfies
+    the same shape operations do — an `occurred_on` and a `created_at` — so the
+    one eligibility window covers both.
+    """
+
+    transfer_id: UUID
+    user_id: UUID
+    from_account_id: UUID
+    from_amount: Decimal
+    to_account_id: UUID
+    to_amount: Decimal
+    occurred_on: date
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectionGoalContribution:
     """One immutable ledger entry earmarking money for a goal (ADR 0019)."""
 
@@ -346,6 +366,7 @@ def build_current_home_revision(
     planned_costs: tuple[ProjectionPlannedCost, ...] = (),
     goals: tuple[ProjectionGoal, ...] = (),
     goal_contributions: tuple[ProjectionGoalContribution, ...] = (),
+    transfers: tuple[ProjectionTransfer, ...] = (),
 ) -> ProjectedHomeRevision:
     """Build one schema-v2 projection from authoritative source facts."""
 
@@ -360,6 +381,7 @@ def build_current_home_revision(
             planned_costs=planned_costs,
             goals=goals,
             goal_contributions=goal_contributions,
+            transfers=transfers,
         )
 
 
@@ -371,6 +393,7 @@ def _build_current_home_revision(
     planned_costs: tuple[ProjectionPlannedCost, ...],
     goals: tuple[ProjectionGoal, ...],
     goal_contributions: tuple[ProjectionGoalContribution, ...],
+    transfers: tuple[ProjectionTransfer, ...],
 ) -> ProjectedHomeRevision:
 
     generated_at = _aware_utc(generated_at)
@@ -413,9 +436,35 @@ def _build_current_home_revision(
         cutoff_local_date=cutoff_local_date,
     )
 
-    balance_amount = account.opening_balance + sum(
-        (_signed_amount(operation) for operation in effective),
+    # A transfer moves money without being income or expense (ADR 0029), so it
+    # reaches the balance and nothing else: not the month totals, not the net
+    # flow, not the trend, not a category breakdown.
+    allocated_transfers = tuple(
+        transfer
+        for transfer in transfers
+        if account.account_id in (transfer.from_account_id, transfer.to_account_id)
+        and _aware_utc(transfer.created_at) <= data_as_of
+    )
+    effective_transfers = effective_operations(
+        allocated_transfers,
+        opening_balance_on=account.opening_balance_on,
+        cutoff_local_date=cutoff_local_date,
+    )
+    transferred = sum(
+        (
+            _transfer_delta(transfer, account_id=account.account_id)
+            for transfer in effective_transfers
+        ),
         start=Decimal(0),
+    )
+
+    balance_amount = (
+        account.opening_balance
+        + sum(
+            (_signed_amount(operation) for operation in effective),
+            start=Decimal(0),
+        )
+        + transferred
     )
     month_operations = period_operations(
         effective,
@@ -440,6 +489,19 @@ def _build_current_home_revision(
         start=Decimal(0),
     )
     month_net_flow = month_income - month_expense
+    # What the balance actually did this month. It is the net flow plus what was
+    # transferred in or out: showing "+240" beside a balance that fell by 500
+    # because money moved to another wallet would be two answers to one
+    # question on one card.
+    month_transferred = sum(
+        (
+            _transfer_delta(transfer, account_id=account.account_id)
+            for transfer in effective_transfers
+            if transfer.occurred_on >= period_start
+        ),
+        start=Decimal(0),
+    )
+    balance_month_change = month_net_flow + month_transferred
 
     warnings: list[ProjectedWarning] = []
     balance_delta_percent: Decimal | None
@@ -458,13 +520,24 @@ def _build_current_home_revision(
             )
         )
     else:
-        balance_at_month_start = account.opening_balance + sum(
-            (
-                _signed_amount(operation)
-                for operation in effective
-                if operation.occurred_on < period_start
-            ),
-            start=Decimal(0),
+        balance_at_month_start = (
+            account.opening_balance
+            + sum(
+                (
+                    _signed_amount(operation)
+                    for operation in effective
+                    if operation.occurred_on < period_start
+                ),
+                start=Decimal(0),
+            )
+            + sum(
+                (
+                    _transfer_delta(transfer, account_id=account.account_id)
+                    for transfer in effective_transfers
+                    if transfer.occurred_on < period_start
+                ),
+                start=Decimal(0),
+            )
         )
         if balance_at_month_start == 0:
             balance_delta_percent = None
@@ -477,7 +550,7 @@ def _build_current_home_revision(
         else:
             try:
                 balance_delta_percent = (
-                    month_net_flow / abs(balance_at_month_start) * Decimal(100)
+                    balance_month_change / abs(balance_at_month_start) * Decimal(100)
                 ).quantize(_PERCENT_SCALE, rounding=ROUND_HALF_EVEN)
             except InvalidOperation as error:
                 raise HomeProjectionInvariantError(
@@ -597,7 +670,7 @@ def _build_current_home_revision(
         data_as_of=data_as_of,
         base_currency=account.currency,
         balance_amount=_finite(balance_amount),
-        balance_delta_amount=_finite(month_net_flow),
+        balance_delta_amount=_finite(balance_month_change),
         balance_delta_percent=(
             None if balance_delta_percent is None else _finite(balance_delta_percent)
         ),
@@ -806,6 +879,16 @@ def _validated_operation(
         status=operation.status,
         created_at=created_at,
     )
+
+
+def _transfer_delta(transfer: ProjectionTransfer, *, account_id: UUID) -> Decimal:
+    """What one transfer did to this wallet: what arrived, or what left."""
+
+    if transfer.to_account_id == account_id:
+        return transfer.to_amount
+    if transfer.from_account_id == account_id:
+        return -transfer.from_amount
+    return Decimal(0)  # pragma: no cover - allocation filters these out
 
 
 def _signed_amount(operation: ProjectionOperation) -> Decimal:
