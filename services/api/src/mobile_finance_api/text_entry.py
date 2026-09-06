@@ -37,13 +37,18 @@ ParseGapCode = Literal[
     "DATE_NOT_UNDERSTOOD",
     # No category of this direction is named in the sentence.
     "CATEGORY_NOT_MATCHED",
+    # A currency sign is written that this parser cannot name. Reported rather
+    # than quietly replaced by the default, because an unknown currency and an
+    # unstated one are not the same thing.
+    "CURRENCY_NOT_UNDERSTOOD",
 ]
 
 #: The longest sentence accepted. A phrase is one operation, not a paragraph.
 MAX_TEXT_LENGTH = 280
 
-#: What an unstated currency is assumed to be. Finance Core is the authority
-#: that accepts or refuses a currency; this is only the proposal's default.
+#: What a sentence that names **no** currency at all is assumed to mean. It is
+#: never applied to a sentence that does name one: an unreadable currency is a
+#: gap, because assuming euro there writes a wrong amount confidently.
 DEFAULT_CURRENCY = "EUR"
 
 #: The shortest keyword allowed. Below this a keyword stops describing a
@@ -107,7 +112,8 @@ def parse_operation_text(
     # The date is cut out before looking for money, so "03.08" cannot be read
     # as the numbers 3 and 8.
     without_date = _blank_span(haystack, date_span)
-    amount, currency, amount_gap = _find_amount(without_date)
+    currency = _find_currency(without_date)
+    amount, amount_gap = _find_amount(without_date, currency)
     category_id, category_text = _find_category(
         haystack, original=original, direction=direction, categories=categories
     )
@@ -115,6 +121,8 @@ def parse_operation_text(
     gaps: list[ParseGapCode] = []
     if amount_gap is not None:
         gaps.append(amount_gap)
+    if not currency.understood:
+        gaps.append("CURRENCY_NOT_UNDERSTOOD")
     if not date_understood:
         gaps.append("DATE_NOT_UNDERSTOOD")
     if category_id is None:
@@ -123,7 +131,7 @@ def parse_operation_text(
     return ParsedOperation(
         operation_type=direction,
         amount=amount,
-        currency=currency,
+        currency=currency.code,
         occurred_on=occurred_on,
         source_expression=expression,
         category_id=category_id,
@@ -340,17 +348,93 @@ def _calendar_date(
 
 # --- money -------------------------------------------------------------------
 
-_CURRENCIES: tuple[tuple[str, str], ...] = (
-    ("€", "EUR"),
-    ("eur", "EUR"),
-    ("евро", "EUR"),
-    ("$", "USD"),
-    ("usd", "USD"),
-    ("доллар", "USD"),
-    ("₽", "RUB"),
-    ("руб", "RUB"),
-    ("рубл", "RUB"),
-)
+#: Currency words, matched as **whole words** and never as a prefix.
+#:
+#: Every inflection is written out instead of matching a stem the way category
+#: keywords do (ADR 0020). A keyword that fires from inside a word costs a
+#: wrong label; a currency that does costs a wrong amount — "рубашку" starts
+#: with "руб", and "Франкфурт" with "франк".
+_CURRENCY_WORDS: dict[str, str] = {
+    "евро": "EUR",
+    "eur": "EUR",
+    "доллар": "USD",
+    "доллара": "USD",
+    "долларов": "USD",
+    "долларам": "USD",
+    "долларах": "USD",
+    "бакс": "USD",
+    "баксов": "USD",
+    "usd": "USD",
+    "рубль": "RUB",
+    "рубля": "RUB",
+    "рублей": "RUB",
+    "рублям": "RUB",
+    "рублях": "RUB",
+    "руб": "RUB",
+    "rub": "RUB",
+    "гривна": "UAH",
+    "гривны": "UAH",
+    "гривне": "UAH",
+    "гривну": "UAH",
+    "гривен": "UAH",
+    "гривень": "UAH",
+    "грн": "UAH",
+    "uah": "UAH",
+    "злотый": "PLN",
+    "злотых": "PLN",
+    "злотые": "PLN",
+    "злотого": "PLN",
+    "pln": "PLN",
+    "фунт": "GBP",
+    "фунта": "GBP",
+    "фунтов": "GBP",
+    "фунтам": "GBP",
+    "gbp": "GBP",
+    "франк": "CHF",
+    "франка": "CHF",
+    "франков": "CHF",
+    "франкам": "CHF",
+    "chf": "CHF",
+    "тенге": "KZT",
+    "kzt": "KZT",
+    "лари": "GEL",
+    "gel": "GEL",
+    "лира": "TRY",
+    "лиры": "TRY",
+    "лир": "TRY",
+    "try": "TRY",
+    "шекель": "ILS",
+    "шекеля": "ILS",
+    "шекелей": "ILS",
+    "ils": "ILS",
+    "юань": "CNY",
+    "юаня": "CNY",
+    "юаней": "CNY",
+    "cny": "CNY",
+    "иена": "JPY",
+    "иены": "JPY",
+    "иен": "JPY",
+    "jpy": "JPY",
+    "czk": "CZK",
+}
+
+#: Currency signs, matched anywhere, because they are not word characters.
+#:
+#: A sign that names more than one currency is deliberately absent — ¥ is both
+#: the yen and the yuan, and guessing between them is the failure this whole
+#: change exists to stop. It is reported as unreadable instead.
+_CURRENCY_SIGNS: dict[str, str] = {
+    "€": "EUR",
+    "$": "USD",
+    "₽": "RUB",
+    "₴": "UAH",
+    "£": "GBP",
+    "₸": "KZT",
+    "₾": "GEL",
+    "₺": "TRY",
+    "₪": "ILS",
+    "₹": "INR",
+}
 
 # The thousands separator may be a space or a non-breaking space; both are
 # written as escapes because an invisible character in a pattern is a
@@ -470,6 +554,17 @@ _SPOKEN_HALVES: dict[str, Decimal] = {
 
 
 @dataclass(frozen=True, slots=True)
+class _Currency:
+    """What the sentence says about currency, and whether that could be read."""
+
+    code: str
+    #: Where the marker sits, used to break a tie between two amounts.
+    span: tuple[int, int] | None
+    #: False when a currency sign is present that this table cannot name.
+    understood: bool
+
+
+@dataclass(frozen=True, slots=True)
 class _AmountCandidate:
     """One thing in the sentence that could be the amount, and where it is."""
 
@@ -538,8 +633,8 @@ def _spoken_amounts(haystack: str) -> list[_AmountCandidate]:
 
 def _find_amount(
     haystack: str,
-) -> tuple[Decimal | None, str, ParseGapCode | None]:
-    currency, currency_span = _find_currency(haystack)
+    currency: _Currency,
+) -> tuple[Decimal | None, ParseGapCode | None]:
     candidates = _digit_amounts(haystack)
     # Digits win outright. A written number is unambiguous evidence, and
     # reading "купил два кофе за 300" as two candidates would turn a sentence
@@ -547,16 +642,16 @@ def _find_amount(
     if not candidates:
         candidates = _spoken_amounts(haystack)
     if not candidates:
-        return None, currency, "AMOUNT_NOT_FOUND"
+        return None, "AMOUNT_NOT_FOUND"
 
     chosen = candidates[0] if len(candidates) == 1 else None
-    if chosen is None and currency_span is not None:
-        chosen = _nearest_to_currency(candidates, currency_span)
+    if chosen is None and currency.span is not None:
+        chosen = _nearest_to_currency(candidates, currency.span)
     if chosen is None:
         # Several numbers and nothing to tell them apart. Guessing here writes
         # the wrong amount confidently; a gap costs one correction.
-        return None, currency, "AMBIGUOUS_AMOUNT"
-    return chosen.value, currency, None
+        return None, "AMBIGUOUS_AMOUNT"
+    return chosen.value, None
 
 
 def _digit_amounts(haystack: str) -> list[_AmountCandidate]:
@@ -571,17 +666,26 @@ def _digit_amounts(haystack: str) -> list[_AmountCandidate]:
     return candidates
 
 
-def _find_currency(haystack: str) -> tuple[str, tuple[int, int] | None]:
+def _find_currency(haystack: str) -> _Currency:
     best: tuple[int, int, str] | None = None
-    for token, code in _CURRENCIES:
-        index = haystack.find(token)
-        if index < 0:
-            continue
-        if best is None or index < best[0]:
-            best = (index, index + len(token), code)
+    for match in _WORD.finditer(haystack):
+        code = _CURRENCY_WORDS.get(match.group())
+        if code is not None and (best is None or match.start() < best[0]):
+            best = (match.start(), match.end(), code)
+    for index, character in enumerate(haystack):
+        code = _CURRENCY_SIGNS.get(character)
+        if code is not None and (best is None or index < best[0]):
+            best = (index, index + 1, code)
+
+    # A sign this table cannot name is always reported, even beside one it can:
+    # a sentence naming two currencies is not one this parser should resolve.
+    understood = not any(
+        unicodedata.category(character) == "Sc" and character not in _CURRENCY_SIGNS
+        for character in haystack
+    )
     if best is None:
-        return DEFAULT_CURRENCY, None
-    return best[2], (best[0], best[1])
+        return _Currency(code=DEFAULT_CURRENCY, span=None, understood=understood)
+    return _Currency(code=best[2], span=(best[0], best[1]), understood=understood)
 
 
 def _nearest_to_currency(

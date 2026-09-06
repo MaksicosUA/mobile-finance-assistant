@@ -117,6 +117,90 @@ void main() {
     );
   });
 
+  // Issue 0007: the parser read the currency and nothing looked at what it
+  // said, so «250 долларов» filled 250 into a field labelled € and confirmed
+  // €250. The amount is the field this product exists to get right.
+  testWidgets('an amount in another currency is not typed into this account', (
+    tester,
+  ) async {
+    final repository = _FakeRepository(
+      proposal: _proposal(amount: '250.00', currency: 'USD'),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'Потратил 250 долларов на подписки',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    expect(_amountText(tester), isEmpty);
+    // Named on both sides, so the refusal is actionable rather than mysterious.
+    expect(find.textContaining('Сумма в USD, а счёт в EUR'), findsOneWidget);
+  });
+
+  testWidgets('a currency the parser could not name is not filled either', (
+    tester,
+  ) async {
+    final repository = _FakeRepository(
+      proposal: _proposal(
+        amount: '500.00',
+        gaps: const [OperationParseGap.currencyNotUnderstood],
+      ),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'Потратил 500 ¥',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    expect(_amountText(tester), isEmpty);
+    expect(find.textContaining('Валюту не разобрал'), findsOneWidget);
+  });
+
+  testWidgets('the account own currency still fills the amount', (
+    tester,
+  ) async {
+    final repository = _FakeRepository(
+      proposal: _proposal(amount: '12.50', currency: 'EUR'),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'Потратил 12,50 на продукты',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    expect(_amountText(tester), '12.50');
+    expect(find.textContaining('не подставил'), findsNothing);
+  });
+
+  testWidgets('a refused currency still leaves the date and category read', (
+    tester,
+  ) async {
+    // Only the amount is in the wrong unit. Throwing away what was read
+    // correctly would make the refusal cost more than it saves.
+    final repository = _FakeRepository(
+      proposal: _proposal(amount: '250.00', currency: 'USD'),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'Потратил 250 долларов на продукты вчера',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Продукты'), findsWidgets);
+  });
+
   testWidgets('a failed parse says so and leaves the form usable', (
     tester,
   ) async {
@@ -256,16 +340,24 @@ Future<void> _pumpPage(
   await tester.pumpAndSettle();
 }
 
+String _amountText(WidgetTester tester) =>
+    tester
+        .widget<TextFormField>(find.byKey(const Key('operation-amount')))
+        .controller
+        ?.text ??
+    '';
+
 void _ignore() {}
 
 OperationProposal _proposal({
   String? amount = '12.50',
+  String currency = 'EUR',
   List<OperationParseGap> gaps = const [],
 }) {
   return OperationProposal(
     type: FinanceOperationType.expense,
     amount: amount,
-    currency: 'EUR',
+    currency: currency,
     occurredOn: '2026-07-28',
     sourceExpression: 'вчера',
     categoryId: _groceriesId,

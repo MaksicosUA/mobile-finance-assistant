@@ -1689,5 +1689,21 @@
   "timezoneSettingsDescription": "Где проходит граница дня и месяца",
   "@timezoneSettingsDescription": {
     "description": "Profile action opening the reporting timezone screen (ADR 0028)."
+  },
+  "entrySentenceGapCurrency": "Валюту не разобрал — впишите сумму сами.",
+  "@entrySentenceGapCurrency": {
+    "description": "Entry by sentence: a currency sign the parser cannot name (issue 0007)."
+  },
+  "entrySentenceCurrencyMismatch": "Сумма в {parsed}, а счёт в {account} — не подставил её.",
+  "@entrySentenceCurrencyMismatch": {
+    "description": "Entry by sentence: the sentence named a currency this account does not hold (issue 0007).",
+    "placeholders": {
+      "parsed": {
+        "type": "String"
+      },
+      "account": {
+        "type": "String"
+      }
+    }
   }
 }

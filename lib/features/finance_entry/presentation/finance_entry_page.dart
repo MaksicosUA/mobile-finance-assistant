@@ -451,8 +451,16 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
       _type = proposal.type;
       // A missing amount leaves whatever is already typed alone: the parser
       // reporting a gap must not erase the user's own correction.
+      //
+      // So does an amount this account cannot hold. «250 долларов» typed into
+      // a field labelled € and confirmed is a wrong number recorded as fact,
+      // and it is the reason this check exists: the parser reads the currency
+      // and nothing used to look at what it said.
       final amount = proposal.amount;
-      if (amount != null) _amountController.text = amount;
+      if (amount != null &&
+          _proposalFitsAccount(proposal, widget.state.account.currency)) {
+        _amountController.text = amount;
+      }
       final occurredOn = DateTime.tryParse('${proposal.occurredOn}T00:00:00Z');
       if (occurredOn != null) _occurredOn = occurredOn;
       // Categories are typed by direction, so one chosen while the entry was
@@ -501,6 +509,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
             focusNode: _sentenceFocus,
             state: textEntry,
             enabled: !widget.state.isSubmitting,
+            accountCurrency: widget.state.account.currency,
             onParse: () => ref
                 .read(textEntryControllerProvider.notifier)
                 .parse(_sentenceController.text),
@@ -1225,12 +1234,23 @@ class _Intro extends StatelessWidget {
 /// The sentence is read on the server and comes back as a proposal; nothing
 /// here records anything. What it fills in stays editable, and the ordinary
 /// confirmation below is still what writes the operation (ADR 0022).
+/// Whether an amount read from a sentence belongs in this account's field.
+///
+/// One account holds one currency, so an amount in another one has nowhere
+/// honest to go until a wallet holds it (ADR 0029). Typing it in anyway is
+/// how «250 долларов» became €250 (issue 0007).
+bool _proposalFitsAccount(OperationProposal proposal, String accountCurrency) {
+  return proposal.currency == accountCurrency &&
+      !proposal.gaps.contains(OperationParseGap.currencyNotUnderstood);
+}
+
 class _SentenceField extends StatelessWidget {
   const _SentenceField({
     required this.controller,
     required this.focusNode,
     required this.state,
     required this.enabled,
+    required this.accountCurrency,
     required this.onParse,
   });
 
@@ -1238,6 +1258,10 @@ class _SentenceField extends StatelessWidget {
   final FocusNode focusNode;
   final TextEntryState state;
   final bool enabled;
+
+  /// The currency this account keeps — the one thing about a proposal only
+  /// the screen knows, and the parser cannot.
+  final String accountCurrency;
   final VoidCallback onParse;
 
   @override
@@ -1287,19 +1311,42 @@ class _SentenceField extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           _StatusMessage(
             key: const Key('operation-sentence-result'),
-            icon: parsed.proposal.gaps.isEmpty
+            icon:
+                parsed.proposal.gaps.isEmpty &&
+                    _currencyIsUsable(parsed.proposal)
                 ? Icons.check_circle_outline_rounded
                 : Icons.info_outline_rounded,
             // A gap is not a failure: it names the one field the parser
             // refused to guess, so the user knows what to look at.
-            message: [
-              l10n.entrySentenceFilled,
-              for (final gap in parsed.proposal.gaps) _gapMessage(l10n, gap),
-            ].join(' '),
+            message: _sentenceMessages(l10n, parsed.proposal).join(' '),
           ),
         ],
       ],
     );
+  }
+
+  /// Whether the amount may be typed into this account's field at all.
+  ///
+  /// One account holds one currency, so an amount in another one has no
+  /// honest place to go until a wallet holds it (ADR 0029).
+  bool _currencyIsUsable(OperationProposal proposal) =>
+      _proposalFitsAccount(proposal, accountCurrency);
+
+  /// What to tell the user about a sentence that was read.
+  ///
+  /// The parser's own gaps, plus the one thing only this screen knows: whether
+  /// the currency it read is the currency this account keeps.
+  List<String> _sentenceMessages(
+    AppLocalizations l10n,
+    OperationProposal proposal,
+  ) {
+    return [
+      l10n.entrySentenceFilled,
+      for (final gap in proposal.gaps) _gapMessage(l10n, gap),
+      if (!proposal.gaps.contains(OperationParseGap.currencyNotUnderstood) &&
+          proposal.currency != accountCurrency)
+        l10n.entrySentenceCurrencyMismatch(proposal.currency, accountCurrency),
+    ];
   }
 
   String _gapMessage(AppLocalizations l10n, OperationParseGap gap) {
@@ -1308,6 +1355,7 @@ class _SentenceField extends StatelessWidget {
       OperationParseGap.ambiguousAmount => l10n.entrySentenceGapAmbiguous,
       OperationParseGap.dateNotUnderstood => l10n.entrySentenceGapDate,
       OperationParseGap.categoryNotMatched => l10n.entrySentenceGapCategory,
+      OperationParseGap.currencyNotUnderstood => l10n.entrySentenceGapCurrency,
     };
   }
 }

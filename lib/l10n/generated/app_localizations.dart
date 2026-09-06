@@ -3236,6 +3236,18 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Где проходит граница дня и месяца'**
   String get timezoneSettingsDescription;
+
+  /// Entry by sentence: a currency sign the parser cannot name (issue 0007).
+  ///
+  /// In ru, this message translates to:
+  /// **'Валюту не разобрал — впишите сумму сами.'**
+  String get entrySentenceGapCurrency;
+
+  /// Entry by sentence: the sentence named a currency this account does not hold (issue 0007).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сумма в {parsed}, а счёт в {account} — не подставил её.'**
+  String entrySentenceCurrencyMismatch(String parsed, String account);
 }
 
 class _AppLocalizationsDelegate
