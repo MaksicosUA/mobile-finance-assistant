@@ -190,7 +190,12 @@ class AccountIssue(AccountApiModel):
     code: Literal[
         "ACCOUNT_ALREADY_INITIALIZED",
         "OPENING_BALANCE_DATE_IN_FUTURE",
+        # Kept for installed clients. Nothing raises it any more: a wallet may
+        # hold any ISO-4217-shaped currency, and none of them is converted
+        # (ADR 0029).
         "UNSUPPORTED_CURRENCY",
+        # A later wallet may not introduce a second reporting timezone.
+        "PROFILE_TIMEZONE_MISMATCH",
     ]
     field: Literal["account", "openingBalanceOn", "currency"]
 
@@ -236,7 +241,9 @@ class CommittedFinanceAccount(AccountApiModel):
     opening_balance_on: AccountDate = Field(alias="openingBalanceOn")
     opening_timezone: TimezoneName = Field(alias="openingTimezone")
     status: Literal["active"]
-    is_default: Literal[True] = Field(alias="isDefault")
+    # A user may hold several wallets and exactly one of them is the default —
+    # the one a screen means when it names no wallet (ADR 0029).
+    is_default: bool = Field(alias="isDefault")
     confirmed_at: UtcTimestamp = Field(alias="confirmedAt")
     created_at: UtcTimestamp = Field(alias="createdAt")
 
@@ -262,7 +269,10 @@ class ListAccountsResponse(AccountApiModel):
     # A count of how many times the timezone has been settled, not a flag:
     # correcting it raises the number (ADR 0028). Zero still means unset.
     timezone_revision: int = Field(alias="timezoneRevision", ge=0)
-    accounts: tuple[CommittedFinanceAccount, ...] = Field(max_length=1)
+    # A user may hold several wallets, one currency each (ADR 0029). The bound
+    # is generous rather than meaningful: it exists so a malformed answer is
+    # refused, not to say how many wallets a person may keep.
+    accounts: tuple[CommittedFinanceAccount, ...] = Field(max_length=64)
 
     @model_validator(mode="after")
     def setup_state_is_consistent(self) -> Self:
@@ -272,9 +282,12 @@ class ListAccountsResponse(AccountApiModel):
             return self
         if self.canonical_timezone is None or self.timezone_revision < 1:
             raise ValueError("an initialized account list requires a settled timezone")
-        account = self.accounts[0]
-        if account.opening_timezone != self.canonical_timezone:
-            raise ValueError("account and profile timezones are inconsistent")
+        if sum(1 for account in self.accounts if account.is_default) != 1:
+            raise ValueError("exactly one wallet is the default")
+        # Months must not depend on which wallet is read (ADR 0028).
+        for account in self.accounts:
+            if account.opening_timezone != self.canonical_timezone:
+                raise ValueError("account and profile timezones are inconsistent")
         return self
 
 

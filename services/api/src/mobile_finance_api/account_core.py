@@ -128,7 +128,7 @@ class AccountListSnapshot:
 class AccountWriteResult:
     account: CommittedFinanceAccount
     canonical_timezone: str
-    timezone_revision: Literal[1]
+    timezone_revision: int
     idempotent_replay: bool
 
 
@@ -321,11 +321,10 @@ class AccountCore:
         snapshot = await self._repository.get_setup_snapshot(user_id=user_id)
         if not snapshot.is_consistent:
             raise AccountPersistenceUnavailable
-        issues = list(_draft_issues(draft=draft, today_utc=now))
-        if snapshot.initialized:
-            issues.append(
-                AccountIssue(code="ACCOUNT_ALREADY_INITIALIZED", field="account")
-            )
+        issues = [
+            *_draft_issues(draft=draft, today_utc=now),
+            *_profile_issues(draft=draft, snapshot=snapshot),
+        ]
         if issues:
             return EvaluateAccountResponse(
                 decision="REJECT",
@@ -371,9 +370,15 @@ class AccountCore:
             )
             return existing
 
-        issues = _draft_issues(
-            draft=draft,
-            today_utc=_aware_utc(self._clock()),
+        # Re-checked here and not only at evaluation: a rejection must be a
+        # rejection at both phases, or a stale draft settles a wallet the
+        # review would have refused.
+        snapshot = await self._repository.get_setup_snapshot(user_id=user_id)
+        if not snapshot.is_consistent:
+            raise AccountPersistenceUnavailable
+        issues = (
+            *_draft_issues(draft=draft, today_utc=_aware_utc(self._clock())),
+            *_profile_issues(draft=draft, snapshot=snapshot),
         )
         if issues:
             raise AccountRejected(issues)
@@ -544,7 +549,9 @@ def _validate_write_result(
         or account.opening_timezone != draft.canonical_timezone
         or account.confirmed_at != confirmed_at
         or result.canonical_timezone != account.opening_timezone
-        or result.timezone_revision != 1
+        # At least one: a wallet opened after the timezone was corrected finds
+        # a higher revision, and does not settle it again (ADR 0028).
+        or result.timezone_revision < 1
     ):
         raise AccountPersistenceUnavailable
 
@@ -598,14 +605,32 @@ def _baseline_issues(
     return tuple(issues)
 
 
+def _profile_issues(
+    *,
+    draft: AccountDraft,
+    snapshot: AccountSetupSnapshot,
+) -> tuple[AccountIssue, ...]:
+    """What a draft may not do to a profile that already exists.
+
+    An initialized profile is no longer a refusal: a later account is a wallet
+    in another currency (ADR 0029). What it may not do is introduce a second
+    reporting timezone, because months must not depend on which wallet is read
+    (ADR 0028).
+    """
+
+    if snapshot.initialized and draft.canonical_timezone != (
+        snapshot.canonical_timezone
+    ):
+        return (AccountIssue(code="PROFILE_TIMEZONE_MISMATCH", field="account"),)
+    return ()
+
+
 def _draft_issues(
     *,
     draft: AccountDraft,
     today_utc: datetime,
 ) -> tuple[AccountIssue, ...]:
     issues: list[AccountIssue] = []
-    if draft.currency != "EUR":
-        issues.append(AccountIssue(code="UNSUPPORTED_CURRENCY", field="currency"))
     timezone = ZoneInfo(draft.canonical_timezone)
     if draft.opening_balance_on > today_utc.astimezone(timezone).date():
         issues.append(

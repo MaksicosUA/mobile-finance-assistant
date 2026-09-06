@@ -18,7 +18,6 @@ from .account_contracts import (
     TimezoneIssue,
 )
 from .account_core import (
-    AccountAlreadyInitialized,
     AccountCommandConflict,
     AccountListSnapshot,
     AccountPersistenceUnavailable,
@@ -78,10 +77,9 @@ class PostgresFinanceAccountRepository:
         async with self._session_factory() as database:
             user = await _active_user(database=database, user_id=user_id)
             accounts = await _accounts(database=database, user_id=user_id)
-        _require_single_account(accounts)
         _require_consistent_profile(user=user, accounts=accounts)
         snapshot = AccountSetupSnapshot(
-            account_id=accounts[0].id if accounts else None,
+            account_id=_default_account(accounts).id if accounts else None,
             canonical_timezone=user.canonical_timezone,
             timezone_revision=user.timezone_revision,
         )
@@ -93,7 +91,6 @@ class PostgresFinanceAccountRepository:
         async with self._session_factory() as database:
             user = await _active_user(database=database, user_id=user_id)
             accounts = await _accounts(database=database, user_id=user_id)
-        _require_single_account(accounts)
         _require_consistent_profile(user=user, accounts=accounts)
         return AccountListSnapshot(
             canonical_timezone=user.canonical_timezone,
@@ -192,18 +189,31 @@ class PostgresFinanceAccountRepository:
                         ),
                     )
 
-                account_exists = await database.scalar(
-                    select(FinanceAccountRow.id)
-                    .where(FinanceAccountRow.user_id == user_id)
-                    .limit(1)
+                # The first account bootstraps the profile; every later one is
+                # a wallet added to a profile that already exists (ADR 0029).
+                # They differ in exactly three things: the timezone, the base
+                # currency, and the seeded catalogue — all of which are the
+                # profile's, and are settled once.
+                is_first_account = (
+                    await database.scalar(
+                        select(FinanceAccountRow.id)
+                        .where(FinanceAccountRow.user_id == user_id)
+                        .limit(1)
+                    )
+                    is None
                 )
-                if account_exists is not None:
-                    raise AccountAlreadyInitialized
-                if (
-                    user.canonical_timezone is not None
-                    or user.timezone_revision != 0
-                    or user.base_currency != draft.currency
+                if is_first_account:
+                    if (
+                        user.canonical_timezone is not None
+                        or user.timezone_revision != 0
+                    ):
+                        raise AccountPersistenceUnavailable
+                elif (
+                    user.canonical_timezone != draft.canonical_timezone
+                    or user.timezone_revision < 1
                 ):
+                    # Months must not depend on which wallet is read, so a
+                    # wallet cannot introduce a second zone (ADR 0028).
                     raise AccountPersistenceUnavailable
 
                 account = FinanceAccountRow(
@@ -218,13 +228,17 @@ class PostgresFinanceAccountRepository:
                     opening_balance_on=draft.opening_balance_on,
                     opening_timezone=draft.canonical_timezone,
                     status="active",
-                    is_default=True,
+                    is_default=is_first_account,
                     confirmed_at=confirmed_at,
                     created_at=created_at,
                 )
-                user.canonical_timezone = draft.canonical_timezone
-                user.timezone_revision = 1
-                user.updated_at = created_at
+                if is_first_account:
+                    # The first wallet decides where this profile reports, and
+                    # what a screen naming no wallet means.
+                    user.canonical_timezone = draft.canonical_timezone
+                    user.timezone_revision = 1
+                    user.base_currency = draft.currency
+                    user.updated_at = created_at
                 database.add(account)
                 # The mappings deliberately expose no ORM relationships. Flush
                 # the account and profile before inserting strongly-FK children.
@@ -264,25 +278,31 @@ class PostgresFinanceAccountRepository:
                         ),
                     ]
                 )
-                # Seeded in the same transaction as the account, so a user never
-                # faces an empty picker and a failure leaves neither (ADR 0020).
-                categories = seeded_category_rows(
-                    user_id=user_id, created_at=created_at
-                )
-                database.add_all(categories)
-                # Flushed before the keywords below: nothing relates the two
-                # mappers, so the unit of work is free to order the keyword
-                # inserts first, and the composite foreign key then refuses
-                # them because their category does not exist yet.
-                await database.flush()
-                # Their starting vocabulary goes in the same transaction, so a
-                # new account can read a sentence from its first day instead of
-                # matching nothing until every word is taught by hand.
-                database.add_all(
-                    seeded_category_keyword_rows(
-                        categories=categories, created_at=created_at
+                # The catalogue belongs to the person, not to a wallet: the
+                # same «Продукты» whichever wallet paid (ADR 0029). It is
+                # seeded once, with the first account.
+                if is_first_account:
+                    # Seeded in the same transaction as the account, so a user
+                    # never faces an empty picker and a failure leaves neither
+                    # (ADR 0020).
+                    categories = seeded_category_rows(
+                        user_id=user_id, created_at=created_at
                     )
-                )
+                    database.add_all(categories)
+                    # Flushed before the keywords below: nothing relates the two
+                    # mappers, so the unit of work is free to order the keyword
+                    # inserts first, and the composite foreign key then refuses
+                    # them because their category does not exist yet.
+                    await database.flush()
+                    # Their starting vocabulary goes in the same transaction, so
+                    # a new account can read a sentence from its first day
+                    # instead of matching nothing until every word is taught by
+                    # hand.
+                    database.add_all(
+                        seeded_category_keyword_rows(
+                            categories=categories, created_at=created_at
+                        )
+                    )
             return _write_result(
                 user=user,
                 account=account,
@@ -366,21 +386,32 @@ class PostgresFinanceAccountRepository:
 
         async with self._session_factory() as database:
             async with database.begin():
-                # Both rows are locked because both carry the timezone and the
-                # projector refuses to run while they disagree (ADR 0028).
+                # Every row that carries the timezone is locked, because the
+                # projector refuses to run while any of them disagree, and a
+                # user may hold several wallets (ADR 0028, ADR 0029).
                 user = await database.scalar(
                     select(UserRow)
                     .where(UserRow.id == user_id, UserRow.disabled_at.is_(None))
                     .with_for_update()
                 )
-                account = await database.scalar(
-                    select(FinanceAccountRow)
-                    .where(
-                        FinanceAccountRow.id == command.account_id,
-                        FinanceAccountRow.user_id == user_id,
-                        FinanceAccountRow.status == "active",
+                wallets = (
+                    await database.scalars(
+                        select(FinanceAccountRow)
+                        .where(
+                            FinanceAccountRow.user_id == user_id,
+                            FinanceAccountRow.status == "active",
+                        )
+                        .order_by(FinanceAccountRow.created_at)
+                        .with_for_update()
                     )
-                    .with_for_update()
+                ).all()
+                account = next(
+                    (
+                        candidate
+                        for candidate in wallets
+                        if candidate.id == command.account_id
+                    ),
+                    None,
                 )
                 if user is None or account is None:
                     raise AccountPersistenceUnavailable
@@ -420,13 +451,16 @@ class PostgresFinanceAccountRepository:
                 # operation in the future, and a future-dated operation is
                 # excluded from the balance until the day catches up. Refused
                 # rather than letting a confirmed amount vanish for hours.
+                #
+                # Across every wallet, because the correction moves every
+                # wallet's months: asking only about the one named in the
+                # command would hide money in the others.
                 local_today = created_at.astimezone(
                     ZoneInfo(command.canonical_timezone)
                 ).date()
                 latest = await _latest_operation_on(
                     database=database,
                     user_id=user_id,
-                    account_id=command.account_id,
                 )
                 if latest is not None and latest > local_today:
                     raise TimezoneRejected(
@@ -438,7 +472,8 @@ class PostgresFinanceAccountRepository:
                         )
                     )
 
-                account.opening_timezone = command.canonical_timezone
+                for wallet in wallets:
+                    wallet.opening_timezone = command.canonical_timezone
                 user.canonical_timezone = command.canonical_timezone
                 user.timezone_revision = user.timezone_revision + 1
                 user.updated_at = created_at
@@ -599,11 +634,11 @@ async def _latest_operation_on(
     *,
     database: AsyncSession,
     user_id: UUID,
-    account_id: UUID,
 ) -> date | None:
+    """The last local date this user has recorded, in any wallet."""
+
     latest: date | None = await database.scalar(
         select(func.max(FinanceOperationRow.occurred_on)).where(
-            FinanceOperationRow.account_id == account_id,
             FinanceOperationRow.user_id == user_id,
         )
     )
@@ -744,14 +779,17 @@ async def _accounts(
         select(FinanceAccountRow)
         .where(FinanceAccountRow.user_id == user_id)
         .order_by(FinanceAccountRow.created_at.asc(), FinanceAccountRow.id.asc())
-        .limit(2)
     )
     return tuple(result.all())
 
 
-def _require_single_account(accounts: Sequence[FinanceAccountRow]) -> None:
-    if len(accounts) > 1:
-        raise AccountPersistenceUnavailable
+def _default_account(accounts: Sequence[FinanceAccountRow]) -> FinanceAccountRow:
+    """The wallet a screen means when it names no wallet at all (ADR 0029)."""
+
+    for account in accounts:
+        if account.is_default:
+            return account
+    raise AccountPersistenceUnavailable
 
 
 def _require_consistent_profile(
@@ -759,6 +797,13 @@ def _require_consistent_profile(
     user: UserRow,
     accounts: Sequence[FinanceAccountRow],
 ) -> None:
+    """Check the whole set of wallets, not the first row that came back.
+
+    A user may hold several accounts, one currency each (ADR 0029). Exactly one
+    of them is the default, and the profile's base currency follows that one:
+    it is what a screen naming no wallet reports.
+    """
+
     if not accounts:
         if (
             user.base_currency != "EUR"
@@ -767,14 +812,33 @@ def _require_consistent_profile(
         ):
             raise AccountPersistenceUnavailable
         return
-    account = accounts[0]
+    if sum(1 for account in accounts if account.is_default) != 1:
+        raise AccountPersistenceUnavailable
+    if (
+        user.canonical_timezone is None
+        or user.timezone_revision < 1
+        or _default_account(accounts).currency != user.base_currency
+    ):
+        raise AccountPersistenceUnavailable
+    for account in accounts:
+        _require_consistent_account(user=user, account=account)
+
+
+def _require_consistent_account(
+    *,
+    user: UserRow,
+    account: FinanceAccountRow,
+) -> None:
+    """One wallet against its owner.
+
+    Months must not depend on which wallet is read, so every wallet carries the
+    same canonical timezone the user does (ADR 0028, ADR 0029).
+    """
+
     if (
         account.user_id != user.id
         or account.status != "active"
-        or not account.is_default
-        or account.currency != user.base_currency
         or user.canonical_timezone is None
-        or user.timezone_revision < 1
         or account.opening_timezone != user.canonical_timezone
     ):
         raise AccountPersistenceUnavailable
@@ -787,7 +851,12 @@ def _write_result(
     idempotent_replay: bool,
     opening_balance_on: date | None = None,
 ) -> AccountWriteResult:
-    _require_consistent_profile(user=user, accounts=(account,))
+    # This checks the wallet that was just written, not the whole set: a
+    # non-default wallet is a real account, and the set is checked where it is
+    # read (ADR 0029).
+    _require_consistent_account(user=user, account=account)
+    if user.timezone_revision < 1:
+        raise AccountPersistenceUnavailable
     timezone = user.canonical_timezone
     if timezone is None:  # pragma: no cover - guarded above
         raise AccountPersistenceUnavailable
@@ -828,7 +897,7 @@ def _to_contract(
         ),
         opening_timezone=account.opening_timezone,
         status=account.status,  # type: ignore[arg-type]
-        is_default=account.is_default,  # type: ignore[arg-type]
+        is_default=account.is_default,
         confirmed_at=account.confirmed_at,
         created_at=account.created_at,
     )

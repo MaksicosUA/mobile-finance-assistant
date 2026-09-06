@@ -198,7 +198,7 @@ class FinanceAccountRow(Base):
             name="ck_finance_accounts_name",
         ),
         CheckConstraint(
-            "currency = 'EUR'",
+            "currency ~ '^[A-Z]{3}$'",
             name="ck_finance_accounts_v1_currency",
         ),
         CheckConstraint(
@@ -218,7 +218,10 @@ class FinanceAccountRow(Base):
             name="ck_finance_accounts_opening_timezone",
         ),
         CheckConstraint(
-            "status = 'active' AND is_default IS TRUE",
+            # A wallet that is not the default one is a real account
+            # (ADR 0029); only exactly-one-default is still enforced, by the
+            # partial unique index below.
+            "status = 'active'",
             name="ck_finance_accounts_v1_state",
         ),
         CheckConstraint(
@@ -495,7 +498,7 @@ class FinanceOperationRow(Base):
             name="ck_finance_operations_positive_finite_amount",
         ),
         CheckConstraint(
-            "currency = 'EUR'",
+            "currency ~ '^[A-Z]{3}$'",
             name="ck_finance_operations_v1_currency",
         ),
         CheckConstraint(
@@ -880,7 +883,7 @@ class FinanceBudgetRow(Base):
             name="ck_finance_budgets_positive_finite_limit",
         ),
         CheckConstraint(
-            "currency = 'EUR'",
+            "currency ~ '^[A-Z]{3}$'",
             name="ck_finance_budgets_v1_currency",
         ),
         CheckConstraint(
@@ -1044,7 +1047,7 @@ class PlannedCostRecurrenceRow(Base):
             name="ck_planned_cost_recurrences_positive_finite_amount",
         ),
         CheckConstraint(
-            "currency = 'EUR'",
+            "currency ~ '^[A-Z]{3}$'",
             name="ck_planned_cost_recurrences_v1_currency",
         ),
         CheckConstraint(
@@ -1242,7 +1245,7 @@ class PlannedCostRow(Base):
             name="ck_planned_costs_positive_finite_amount",
         ),
         CheckConstraint(
-            "currency = 'EUR'",
+            "currency ~ '^[A-Z]{3}$'",
             name="ck_planned_costs_v1_currency",
         ),
         CheckConstraint(
@@ -2030,7 +2033,7 @@ class FinanceGoalRow(Base):
             name="ck_finance_goals_monthly_contribution",
         ),
         CheckConstraint(
-            "currency = 'EUR'",
+            "currency ~ '^[A-Z]{3}$'",
             name="ck_finance_goals_v1_currency",
         ),
         CheckConstraint(
@@ -2145,7 +2148,7 @@ class FinanceGoalContributionRow(Base):
             name="ck_finance_goal_contributions_direction",
         ),
         CheckConstraint(
-            "currency = 'EUR'",
+            "currency ~ '^[A-Z]{3}$'",
             name="ck_finance_goal_contributions_v1_currency",
         ),
         CheckConstraint(

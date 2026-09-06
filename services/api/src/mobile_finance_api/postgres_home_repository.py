@@ -113,11 +113,15 @@ class PostgresHomeRepository:
             month_end = local_date.replace(
                 day=calendar.monthrange(local_date.year, local_date.month)[1]
             )
-            if accounts and (
-                len(accounts) != 1
-                or accounts[0].status != "active"
-                or not accounts[0].is_default
-            ):
+            # Home draws the default wallet; the others are read beside it,
+            # never summed into it, because adding across currencies needs a
+            # rate and there is none (ADR 0029).
+            defaults = [
+                candidate
+                for candidate in accounts
+                if candidate.is_default and candidate.status == "active"
+            ]
+            if accounts and len(defaults) != 1:
                 raise RuntimeError("Authoritative account state is inconsistent")
             canonical_timezone: str | None = None
             if profile.canonical_timezone is not None:
@@ -125,15 +129,22 @@ class PostgresHomeRepository:
                 if canonical_timezone != timezone_name:
                     raise HomeCanonicalTimezoneMismatch(canonical_timezone)
             if accounts:
-                account = accounts[0]
+                account = defaults[0]
                 if (
                     profile.timezone_revision < 1
                     or canonical_timezone is None
-                    or _validated_timezone(account.opening_timezone)
-                    != canonical_timezone
                     or account.currency != profile.base_currency
                 ):
                     raise RuntimeError("Authoritative account profile is inconsistent")
+                # Months must not depend on which wallet is read (ADR 0028).
+                for candidate in accounts:
+                    if (
+                        _validated_timezone(candidate.opening_timezone)
+                        != canonical_timezone
+                    ):
+                        raise RuntimeError(
+                            "Authoritative account profile is inconsistent"
+                        )
             elif profile.timezone_revision != 0 or canonical_timezone is not None:
                 raise RuntimeError("Empty financial profile is inconsistent")
 

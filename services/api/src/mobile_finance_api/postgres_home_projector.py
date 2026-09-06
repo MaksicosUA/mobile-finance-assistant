@@ -1025,11 +1025,13 @@ def _validate_profile(*, user: UserRow, account: FinanceAccountRow) -> None:
         opening_timezone = validated_iana_timezone_key(account.opening_timezone)
     except ValueError as error:
         raise HomeProjectionInvariantError("projection timezone is invalid") from error
+    # The account's own currency is what its projection reports (ADR 0029), so
+    # it is not checked against the profile's base currency: that one follows
+    # the default wallet, and a wallet in another currency is not a fault.
     if (
         user.timezone_revision < 1
         or canonical_timezone is None
         or canonical_timezone != opening_timezone
-        or user.base_currency != account.currency
         or account.user_id != user.id
     ):
         raise HomeProjectionInvariantError(
