@@ -38,6 +38,16 @@ abstract interface class FinanceEntryApiClient {
     required FinanceTimezoneCommand command,
   });
 
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer({
+    required String accessToken,
+    required FinanceTransferDraft draft,
+  });
+
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer({
+    required String accessToken,
+    required FinanceTransferCommitCommand command,
+  });
+
   Future<FinanceEntryResult<FinanceOperationEvaluation>> evaluateOperation({
     required String accessToken,
     required FinanceOperationDraft draft,
@@ -343,6 +353,38 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
       acceptedStatuses: const {200},
       contract: _ContractKind.timezone,
       parse: (json, statusCode) => FinanceTimezoneCorrected.fromJson(json),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer({
+    required String accessToken,
+    required FinanceTransferDraft draft,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/v1/transfers/evaluate',
+      accessToken: accessToken,
+      body: <String, Object?>{'draft': draft.toJson()},
+      acceptedStatuses: const {200},
+      contract: _ContractKind.transfer,
+      parse: (json, statusCode) => FinanceTransferEvaluation.fromJson(json),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer({
+    required String accessToken,
+    required FinanceTransferCommitCommand command,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/v1/transfers/commit',
+      accessToken: accessToken,
+      body: command.toJson(),
+      acceptedStatuses: const {200, 201},
+      contract: _ContractKind.transfer,
+      parse: (json, statusCode) => FinanceTransferCommitted.fromJson(json),
     );
   }
 
@@ -2245,6 +2287,8 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     // A timezone refusal is its own code space (ADR 0028); this list is
     // always empty on that contract.
     _ContractKind.timezone => false,
+    // So is a transfer refusal (ADR 0029).
+    _ContractKind.transfer => false,
     _ContractKind.account => const {
       FinanceIssueCode.accountAlreadyInitialized,
       FinanceIssueCode.openingBalanceDateInFuture,
@@ -2343,6 +2387,11 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
       FinanceEntryErrorCode.accountUnavailable,
       FinanceEntryErrorCode.timezoneRejected,
     }.contains(code),
+    _ContractKind.transfer => const {
+      FinanceEntryErrorCode.malformedTransfer,
+      FinanceEntryErrorCode.transferRejected,
+      FinanceEntryErrorCode.transferPersistenceUnavailable,
+    }.contains(code),
     _ContractKind.textEntry => const {
       FinanceEntryErrorCode.textEntryUnavailable,
     }.contains(code),
@@ -2396,6 +2445,10 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
   'ACCOUNT_UNAVAILABLE' => FinanceEntryErrorCode.accountUnavailable,
   'BASELINE_REJECTED' => FinanceEntryErrorCode.baselineRejected,
   'TIMEZONE_REJECTED' => FinanceEntryErrorCode.timezoneRejected,
+  'MALFORMED_TRANSFER' => FinanceEntryErrorCode.malformedTransfer,
+  'TRANSFER_REJECTED' => FinanceEntryErrorCode.transferRejected,
+  'TRANSFER_PERSISTENCE_UNAVAILABLE' =>
+    FinanceEntryErrorCode.transferPersistenceUnavailable,
   'OPERATION_REJECTED' => FinanceEntryErrorCode.operationRejected,
   'OPERATION_NOT_FOUND' => FinanceEntryErrorCode.operationNotFound,
   'OPERATION_ALREADY_REVERSED' =>
@@ -2639,6 +2692,7 @@ enum _ContractKind {
   appRelease,
   budget,
   timezone,
+  transfer,
 }
 
 final class _ErrorDetail {

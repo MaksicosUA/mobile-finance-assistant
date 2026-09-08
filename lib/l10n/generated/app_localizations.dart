@@ -3254,6 +3254,150 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'ДРУГИЕ КОШЕЛЬКИ'**
   String get otherWalletsTitle;
+
+  /// Transfer between wallets (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Перевод между счетами'**
+  String get transferTitle;
+
+  /// Profile action opening the transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Перевод между счетами'**
+  String get transferSettingsAction;
+
+  /// Profile action subtitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Переложить деньги из одного кошелька в другой'**
+  String get transferSettingsDescription;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Откуда'**
+  String get transferFromField;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Куда'**
+  String get transferToField;
+
+  /// Transfer screen: the amount that left the source wallet.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сколько ушло'**
+  String get transferFromAmountField;
+
+  /// Transfer screen: the amount that arrived in the target wallet.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сколько пришло'**
+  String get transferToAmountField;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Когда'**
+  String get transferDateField;
+
+  /// Transfer screen: the rate the two amounts imply, shown and never stored (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Курс: 1 {from} = {rate} {to}'**
+  String transferRateLabel(String from, String rate, String to);
+
+  /// Transfer screen: why no rate is fetched (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Курс не берётся из интернета — он следует из двух сумм, которые вы ввели.'**
+  String get transferRateHint;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Продолжить'**
+  String get transferReviewAction;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Перевести'**
+  String get transferConfirmAction;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Изменить'**
+  String get transferEditAction;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Перевод записан'**
+  String get transferAcceptedTitle;
+
+  /// Transfer screen: what left and what arrived.
+  ///
+  /// In ru, this message translates to:
+  /// **'{fromAmount} → {toAmount}'**
+  String transferAcceptedBody(String fromAmount, String toAmount);
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Для перевода нужен второй кошелёк в другой валюте.'**
+  String get transferSecondWalletRequired;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить счета.'**
+  String get transferLoadError;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось выполнить перевод.'**
+  String get transferWriteError;
+
+  /// Transfer screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите два разных кошелька.'**
+  String get transferSameWalletError;
+
+  /// Transfer refusal (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Кошелёк недоступен.'**
+  String get transferIssueWalletUnavailable;
+
+  /// Transfer refusal (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Валюта суммы не совпадает с валютой кошелька.'**
+  String get transferIssueCurrencyMismatch;
+
+  /// Transfer refusal (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Деньги не могли уйти раньше, чем кошелёк появился.'**
+  String get transferIssueBeforeBaseline;
+
+  /// Transfer refusal (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Дата перевода в будущем.'**
+  String get transferIssueFutureDate;
+
+  /// Transfer refusal (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Подтверждение раньше самой записи.'**
+  String get transferIssueConfirmationBeforeCapture;
 }
 
 class _AppLocalizationsDelegate

@@ -41,6 +41,10 @@ enum FinanceEntryErrorCode {
   recurrencePersistenceUnavailable,
   // Redrawing where an account's months fall (ADR 0028).
   timezoneRejected,
+  // Moving money between two wallets (ADR 0029).
+  malformedTransfer,
+  transferRejected,
+  transferPersistenceUnavailable,
   malformedGoalCommand,
   goalRejected,
   goalNotFound,
@@ -83,7 +87,9 @@ final class FinanceEntryFailure {
     List<PlannedCostIssue> plannedCostIssues = const [],
     List<SavingsGoalIssue> goalIssues = const [],
     List<FinanceTimezoneIssue> timezoneIssues = const [],
+    List<FinanceTransferIssue> transferIssues = const [],
   }) : issues = List.unmodifiable(issues),
+       transferIssues = List.unmodifiable(transferIssues),
        baselineIssues = List.unmodifiable(baselineIssues),
        plannedCostIssues = List.unmodifiable(plannedCostIssues),
        goalIssues = List.unmodifiable(goalIssues),
@@ -97,6 +103,7 @@ final class FinanceEntryFailure {
   final List<PlannedCostIssue> plannedCostIssues;
   final List<SavingsGoalIssue> goalIssues;
   final List<FinanceTimezoneIssue> timezoneIssues;
+  final List<FinanceTransferIssue> transferIssues;
 }
 
 sealed class FinanceEntryResult<T> {

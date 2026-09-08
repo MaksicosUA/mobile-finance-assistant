@@ -534,6 +534,16 @@ class _FailingListRepository extends _FakeRepository {
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer(
+    FinanceTransferDraft draft,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer(
+    FinanceTransferCommitCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone(
     FinanceTimezoneCommand command,
   ) => throw UnimplementedError();

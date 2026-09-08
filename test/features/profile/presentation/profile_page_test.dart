@@ -169,6 +169,16 @@ void main() {
     // Block independence: losing the identity must not take the actions,
     // appearance, sign-out, or the version down with it.
     expect(find.byKey(const Key('profile-categories')), findsOneWidget);
+    // Scrolled to: the screen gained a transfer action and sign-out sits
+    // below the fold now.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('profile-sign-out')),
+      160,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('profile-page')),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.byKey(const Key('profile-sign-out')), findsOneWidget);
     // The action still works, it just cannot say what the date currently is.
     expect(find.textContaining('Сейчас'), findsNothing);
@@ -297,6 +307,7 @@ Future<void> _pumpPage(
             onOperationHistory: onOperationHistory ?? () {},
             onBudgets: () {},
             onCorrectTimezone: onCorrectTimezone ?? () {},
+            onTransfer: () {},
             onSignOut: onSignOut ?? () async {},
           ),
         ),

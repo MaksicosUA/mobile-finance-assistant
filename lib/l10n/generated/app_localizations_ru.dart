@@ -1832,4 +1832,86 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get otherWalletsTitle => 'ДРУГИЕ КОШЕЛЬКИ';
+
+  @override
+  String get transferTitle => 'Перевод между счетами';
+
+  @override
+  String get transferSettingsAction => 'Перевод между счетами';
+
+  @override
+  String get transferSettingsDescription =>
+      'Переложить деньги из одного кошелька в другой';
+
+  @override
+  String get transferFromField => 'Откуда';
+
+  @override
+  String get transferToField => 'Куда';
+
+  @override
+  String get transferFromAmountField => 'Сколько ушло';
+
+  @override
+  String get transferToAmountField => 'Сколько пришло';
+
+  @override
+  String get transferDateField => 'Когда';
+
+  @override
+  String transferRateLabel(String from, String rate, String to) {
+    return 'Курс: 1 $from = $rate $to';
+  }
+
+  @override
+  String get transferRateHint =>
+      'Курс не берётся из интернета — он следует из двух сумм, которые вы ввели.';
+
+  @override
+  String get transferReviewAction => 'Продолжить';
+
+  @override
+  String get transferConfirmAction => 'Перевести';
+
+  @override
+  String get transferEditAction => 'Изменить';
+
+  @override
+  String get transferAcceptedTitle => 'Перевод записан';
+
+  @override
+  String transferAcceptedBody(String fromAmount, String toAmount) {
+    return '$fromAmount → $toAmount';
+  }
+
+  @override
+  String get transferSecondWalletRequired =>
+      'Для перевода нужен второй кошелёк в другой валюте.';
+
+  @override
+  String get transferLoadError => 'Не удалось загрузить счета.';
+
+  @override
+  String get transferWriteError => 'Не удалось выполнить перевод.';
+
+  @override
+  String get transferSameWalletError => 'Выберите два разных кошелька.';
+
+  @override
+  String get transferIssueWalletUnavailable => 'Кошелёк недоступен.';
+
+  @override
+  String get transferIssueCurrencyMismatch =>
+      'Валюта суммы не совпадает с валютой кошелька.';
+
+  @override
+  String get transferIssueBeforeBaseline =>
+      'Деньги не могли уйти раньше, чем кошелёк появился.';
+
+  @override
+  String get transferIssueFutureDate => 'Дата перевода в будущем.';
+
+  @override
+  String get transferIssueConfirmationBeforeCapture =>
+      'Подтверждение раньше самой записи.';
 }
