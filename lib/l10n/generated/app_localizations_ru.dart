@@ -1829,4 +1829,142 @@ class AppLocalizationsRu extends AppLocalizations {
   String entrySentenceCurrencyMismatch(String parsed, String account) {
     return 'Сумма в $parsed, а счёт в $account — не подставил её.';
   }
+
+  @override
+  String get otherWalletsTitle => 'ДРУГИЕ КОШЕЛЬКИ';
+
+  @override
+  String get transferTitle => 'Перевод между счетами';
+
+  @override
+  String get transferSettingsAction => 'Перевод между счетами';
+
+  @override
+  String get transferSettingsDescription =>
+      'Переложить деньги из одного кошелька в другой';
+
+  @override
+  String get transferFromField => 'Откуда';
+
+  @override
+  String get transferToField => 'Куда';
+
+  @override
+  String get transferFromAmountField => 'Сколько ушло';
+
+  @override
+  String get transferToAmountField => 'Сколько пришло';
+
+  @override
+  String get transferDateField => 'Когда';
+
+  @override
+  String transferRateLabel(String from, String rate, String to) {
+    return 'Курс: 1 $from = $rate $to';
+  }
+
+  @override
+  String get transferRateHint =>
+      'Курс не берётся из интернета — он следует из двух сумм, которые вы ввели.';
+
+  @override
+  String get transferReviewAction => 'Продолжить';
+
+  @override
+  String get transferConfirmAction => 'Перевести';
+
+  @override
+  String get transferEditAction => 'Изменить';
+
+  @override
+  String get transferAcceptedTitle => 'Перевод записан';
+
+  @override
+  String transferAcceptedBody(String fromAmount, String toAmount) {
+    return '$fromAmount → $toAmount';
+  }
+
+  @override
+  String get transferSecondWalletRequired =>
+      'Для перевода нужен второй кошелёк в другой валюте.';
+
+  @override
+  String get transferLoadError => 'Не удалось загрузить счета.';
+
+  @override
+  String get transferWriteError => 'Не удалось выполнить перевод.';
+
+  @override
+  String get transferSameWalletError => 'Выберите два разных кошелька.';
+
+  @override
+  String get transferIssueWalletUnavailable => 'Кошелёк недоступен.';
+
+  @override
+  String get transferIssueCurrencyMismatch =>
+      'Валюта суммы не совпадает с валютой кошелька.';
+
+  @override
+  String get transferIssueBeforeBaseline =>
+      'Деньги не могли уйти раньше, чем кошелёк появился.';
+
+  @override
+  String get transferIssueFutureDate => 'Дата перевода в будущем.';
+
+  @override
+  String get transferIssueConfirmationBeforeCapture =>
+      'Подтверждение раньше самой записи.';
+
+  @override
+  String get walletTitle => 'Новый кошелёк';
+
+  @override
+  String get walletSettingsAction => 'Открыть кошелёк';
+
+  @override
+  String get walletSettingsDescription =>
+      'Счёт в другой валюте — деньги не конвертируются';
+
+  @override
+  String get walletNameField => 'Название';
+
+  @override
+  String get walletCurrencyField => 'Валюта';
+
+  @override
+  String get walletOpeningBalanceField => 'Сколько сейчас на нём';
+
+  @override
+  String get walletOpeningDateField => 'С какого числа';
+
+  @override
+  String get walletCurrencySearch => 'Поиск валюты';
+
+  @override
+  String get walletCurrencyHeld => 'Уже есть';
+
+  @override
+  String get walletExplanation =>
+      'Деньги между кошельками не конвертируются. Каждый живёт в своей валюте, а перевод записывается двумя суммами.';
+
+  @override
+  String get walletReviewAction => 'Продолжить';
+
+  @override
+  String get walletConfirmAction => 'Открыть';
+
+  @override
+  String get walletOpenedTitle => 'Кошелёк открыт';
+
+  @override
+  String get walletAccountRequired => 'Сначала создайте основной счёт.';
+
+  @override
+  String get walletLoadError => 'Не удалось загрузить счета.';
+
+  @override
+  String get walletWriteError => 'Не удалось открыть кошелёк.';
+
+  @override
+  String get operationWalletField => 'Кошелёк';
 }

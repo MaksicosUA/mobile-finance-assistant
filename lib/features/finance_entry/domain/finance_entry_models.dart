@@ -361,6 +361,269 @@ final class FinanceTimezoneIssue {
   }
 }
 
+/// Why a transfer between two wallets was refused (ADR 0029).
+enum FinanceTransferIssueCode {
+  walletUnavailable,
+  walletCurrencyMismatch,
+  transferBeforeWalletBaseline,
+  futureOccurredDate,
+  confirmationBeforeCapture,
+}
+
+@immutable
+final class FinanceTransferIssue {
+  const FinanceTransferIssue({required this.code, required this.field});
+
+  final FinanceTransferIssueCode code;
+  final String field;
+
+  factory FinanceTransferIssue.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'code', 'field'});
+    final field = _requiredString(json, 'field');
+    if (!const {
+      'fromAccountId',
+      'toAccountId',
+      'occurredOn',
+      'confirmedAt',
+    }.contains(field)) {
+      throw const FormatException('Invalid transfer issue field.');
+    }
+    return FinanceTransferIssue(
+      code: _transferIssueCode(_requiredString(json, 'code')),
+      field: field,
+    );
+  }
+}
+
+/// One proposed movement between two of a user's wallets.
+///
+/// Two amounts and no rate: the rate follows from the pair and is never sent
+/// or stored (ADR 0029).
+@immutable
+final class FinanceTransferDraft {
+  const FinanceTransferDraft({
+    required this.commandId,
+    required this.fromAccountId,
+    required this.fromAmount,
+    required this.fromCurrency,
+    required this.toAccountId,
+    required this.toAmount,
+    required this.toCurrency,
+    required this.capturedAt,
+    required this.capturedTimezone,
+    required this.occurredOn,
+  });
+
+  final String commandId;
+  final String fromAccountId;
+  final String fromAmount;
+  final String fromCurrency;
+  final String toAccountId;
+  final String toAmount;
+  final String toCurrency;
+  final String capturedAt;
+  final String capturedTimezone;
+  final String occurredOn;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'commandId': commandId,
+    'fromAccountId': fromAccountId,
+    'fromAmount': fromAmount,
+    'fromCurrency': fromCurrency,
+    'toAccountId': toAccountId,
+    'toAmount': toAmount,
+    'toCurrency': toCurrency,
+    'capturedAt': capturedAt,
+    'capturedTimezone': capturedTimezone,
+    'occurredOn': occurredOn,
+  };
+
+  factory FinanceTransferDraft.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'commandId',
+      'fromAccountId',
+      'fromAmount',
+      'fromCurrency',
+      'toAccountId',
+      'toAmount',
+      'toCurrency',
+      'capturedAt',
+      'capturedTimezone',
+      'occurredOn',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    return FinanceTransferDraft(
+      commandId: _requiredUuid(json, 'commandId'),
+      fromAccountId: _requiredUuid(json, 'fromAccountId'),
+      fromAmount: _positiveMoney(json, 'fromAmount'),
+      fromCurrency: _currency(json, 'fromCurrency'),
+      toAccountId: _requiredUuid(json, 'toAccountId'),
+      toAmount: _positiveMoney(json, 'toAmount'),
+      toCurrency: _currency(json, 'toCurrency'),
+      capturedAt: _timestamp(json, 'capturedAt'),
+      capturedTimezone: _timezone(json, 'capturedTimezone'),
+      occurredOn: _date(json, 'occurredOn'),
+    );
+  }
+}
+
+sealed class FinanceTransferEvaluation {
+  const FinanceTransferEvaluation();
+
+  /// Parsed here rather than in the API layer, because the checks that make a
+  /// draft trustworthy are private to this file.
+  factory FinanceTransferEvaluation.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'decision',
+      'draft',
+      'draftHash',
+      'issues',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    final draft = FinanceTransferDraft.fromJson(_asObject(json['draft']));
+    final rawIssues = json['issues'];
+    if (rawIssues is! List<Object?> || rawIssues.length > 8) {
+      throw const FormatException('Invalid transfer issues.');
+    }
+    final issues = rawIssues
+        .map((item) => FinanceTransferIssue.fromJson(_asObject(item)))
+        .toList(growable: false);
+    final hash = json['draftHash'];
+    switch (_requiredString(json, 'decision')) {
+      case 'NEEDS_CONFIRMATION':
+        if (issues.isNotEmpty || hash is! String) {
+          throw const FormatException('Inconsistent transfer evaluation.');
+        }
+        return FinanceTransferNeedsConfirmation(
+          draft: draft,
+          draftHash: validateDraftHash(hash),
+        );
+      case 'REJECT':
+        if (issues.isEmpty || hash != null) {
+          throw const FormatException('Inconsistent transfer rejection.');
+        }
+        return FinanceTransferRejected(issues: issues);
+      default:
+        throw const FormatException('Unsupported transfer decision.');
+    }
+  }
+}
+
+@immutable
+final class FinanceTransferNeedsConfirmation extends FinanceTransferEvaluation {
+  const FinanceTransferNeedsConfirmation({
+    required this.draft,
+    required this.draftHash,
+  });
+
+  final FinanceTransferDraft draft;
+  final String draftHash;
+}
+
+@immutable
+final class FinanceTransferRejected extends FinanceTransferEvaluation {
+  FinanceTransferRejected({required List<FinanceTransferIssue> issues})
+    : issues = List.unmodifiable(issues);
+
+  final List<FinanceTransferIssue> issues;
+}
+
+@immutable
+final class FinanceTransferCommitCommand {
+  const FinanceTransferCommitCommand._({
+    required this.draft,
+    required this.draftHash,
+    required this.confirmedAt,
+  });
+
+  factory FinanceTransferCommitCommand.fromReview({
+    required FinanceTransferNeedsConfirmation review,
+    required DateTime confirmedAt,
+  }) {
+    return FinanceTransferCommitCommand._(
+      draft: review.draft,
+      draftHash: validateDraftHash(review.draftHash),
+      confirmedAt: _utcWireTimestamp(confirmedAt),
+    );
+  }
+
+  final FinanceTransferDraft draft;
+  final String draftHash;
+  final String confirmedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'schemaVersion': '1',
+    'draft': draft.toJson(),
+    'draftHash': draftHash,
+    'confirmedAt': confirmedAt,
+  };
+}
+
+@immutable
+final class FinanceTransferCommitted {
+  const FinanceTransferCommitted({
+    required this.transferId,
+    required this.idempotentReplay,
+    required this.fromAmount,
+    required this.fromCurrency,
+    required this.toAmount,
+    required this.toCurrency,
+    required this.occurredOn,
+  });
+
+  final String transferId;
+  final bool idempotentReplay;
+  final String fromAmount;
+  final String fromCurrency;
+  final String toAmount;
+  final String toCurrency;
+  final String occurredOn;
+
+  factory FinanceTransferCommitted.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {
+      'schemaVersion',
+      'decision',
+      'idempotentReplay',
+      'transfer',
+    });
+    _requiredLiteral(json, 'schemaVersion', '1');
+    _requiredLiteral(json, 'decision', 'ACCEPT');
+    final replay = json['idempotentReplay'];
+    if (replay is! bool) {
+      throw const FormatException('Invalid transfer receipt.');
+    }
+    final transfer = _asObject(json['transfer']);
+    _expectKeys(transfer, const {
+      'transferId',
+      'userId',
+      'commandId',
+      'fromAccountId',
+      'fromAmount',
+      'fromCurrency',
+      'toAccountId',
+      'toAmount',
+      'toCurrency',
+      'occurredOn',
+      'status',
+      'confirmedAt',
+      'createdAt',
+    });
+    _requiredLiteral(transfer, 'status', 'confirmed');
+    return FinanceTransferCommitted(
+      transferId: _requiredUuid(transfer, 'transferId'),
+      idempotentReplay: replay,
+      fromAmount: _positiveMoney(transfer, 'fromAmount'),
+      fromCurrency: _currency(transfer, 'fromCurrency'),
+      toAmount: _positiveMoney(transfer, 'toAmount'),
+      toCurrency: _currency(transfer, 'toCurrency'),
+      occurredOn: _date(transfer, 'occurredOn'),
+    );
+  }
+}
+
 /// An explicit request to change where an account's months are drawn.
 ///
 /// One phase, not the evaluate/confirm handshake a baseline needs (ADR 0028):
@@ -2620,6 +2883,17 @@ void validateAccountDraft(FinanceAccountDraft draft) {
 void validateOperationDraft(FinanceOperationDraft draft) {
   FinanceOperationDraft.fromJson(draft.toJson());
 }
+
+FinanceTransferIssueCode _transferIssueCode(String value) => switch (value) {
+  'WALLET_UNAVAILABLE' => FinanceTransferIssueCode.walletUnavailable,
+  'WALLET_CURRENCY_MISMATCH' => FinanceTransferIssueCode.walletCurrencyMismatch,
+  'TRANSFER_BEFORE_WALLET_BASELINE' =>
+    FinanceTransferIssueCode.transferBeforeWalletBaseline,
+  'FUTURE_OCCURRED_DATE' => FinanceTransferIssueCode.futureOccurredDate,
+  'CONFIRMATION_BEFORE_CAPTURE' =>
+    FinanceTransferIssueCode.confirmationBeforeCapture,
+  _ => throw FormatException('Unsupported transfer issue code: $value'),
+};
 
 FinanceTimezoneIssueCode _timezoneIssueCode(String value) => switch (value) {
   'TIMEZONE_UNCHANGED' => FinanceTimezoneIssueCode.timezoneUnchanged,

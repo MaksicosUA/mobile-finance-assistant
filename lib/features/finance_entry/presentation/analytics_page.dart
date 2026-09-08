@@ -104,6 +104,13 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
     ).showSnackBar(SnackBar(content: Text(l10n.analyticsLoadError)));
   }
 
+  String? _defaultWalletId(AnalyticsReady state) {
+    for (final wallet in state.wallets) {
+      if (wallet.isDefault) return wallet.accountId;
+    }
+    return null;
+  }
+
   Widget _ready(
     BuildContext context,
     AppLocalizations l10n,
@@ -138,6 +145,29 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
               .selectPeriod(period),
           onPickCustom: _pickCustomWindow,
         ),
+        // Which wallet is being reported. Figures are never added across
+        // them: that would need a rate, and there is none (ADR 0029).
+        if (state.wallets.length > 1) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: DropdownButtonFormField<String>(
+              key: const Key('analytics-wallet'),
+              initialValue: state.accountId ?? _defaultWalletId(state),
+              decoration: InputDecoration(labelText: l10n.operationWalletField),
+              items: [
+                for (final wallet in state.wallets)
+                  DropdownMenuItem(
+                    value: wallet.accountId,
+                    child: Text('${wallet.name} · ${wallet.currency}'),
+                  ),
+              ],
+              onChanged: (selected) => ref
+                  .read(analyticsControllerProvider.notifier)
+                  .selectAccount(selected),
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         Text(
           l10n.analyticsWindowRange(

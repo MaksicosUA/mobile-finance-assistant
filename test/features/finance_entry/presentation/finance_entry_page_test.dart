@@ -334,7 +334,63 @@ void main() {
     expect(deliveryCoordinator.calls, hasLength(1));
     expect(tester.takeException(), isNull);
   });
+
+  // Several wallets, one currency each (ADR 0029). Without a picker a hryvnia
+  // wallet could be opened and never recorded into.
+  testWidgets('one wallet offers no choice', (tester) async {
+    await _pumpPage(
+      tester,
+      repository: _FakeFinanceRepository(_initializedSetup()),
+    );
+
+    expect(find.byKey(const Key('operation-wallet')), findsNothing);
+  });
+
+  testWidgets('choosing a wallet keeps the amount and changes the currency', (
+    tester,
+  ) async {
+    await _pumpPage(tester, repository: _FakeFinanceRepository(_walletSetup()));
+
+    expect(find.byKey(const Key('operation-wallet')), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('operation-amount')), '250.00');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('operation-wallet')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Гривна · UAH').last);
+    await tester.pumpAndSettle();
+
+    // Switching wallets is choosing where the money moved, not starting again.
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const Key('operation-amount')))
+          .controller
+          ?.text,
+      '250.00',
+    );
+    expect(find.text('UAH'), findsWidgets);
+  });
 }
+
+FinanceAccountSetup _walletSetup() => FinanceAccountSetup(
+  canonicalTimezone: 'Europe/Berlin',
+  timezoneRevision: 1,
+  accounts: [_account(), _hryvniaWallet()],
+);
+
+FinanceAccount _hryvniaWallet() => const FinanceAccount(
+  accountId: '55555555-5555-4555-8555-555555555555',
+  userId: '22222222-2222-4222-8222-222222222222',
+  commandId: '66666666-6666-4666-8666-666666666666',
+  name: 'Гривна',
+  currency: 'UAH',
+  openingBalance: '0',
+  openingBalanceOn: '2026-07-01',
+  openingTimezone: 'Europe/Berlin',
+  isDefault: false,
+  confirmedAt: '2026-07-01T08:00:00Z',
+  createdAt: '2026-07-01T08:00:00Z',
+);
 
 Future<void> _pumpPage(
   WidgetTester tester, {
@@ -519,6 +575,16 @@ final class _FakeOperationDeliveryCoordinator
 
 final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer(
+    FinanceTransferDraft draft,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer(
+    FinanceTransferCommitCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone(
     FinanceTimezoneCommand command,
   ) => throw UnimplementedError();
@@ -587,6 +653,7 @@ final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<UserProfile>> readProfile() =>

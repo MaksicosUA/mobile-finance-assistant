@@ -206,6 +206,25 @@ class HomeWarning {
 }
 
 @immutable
+/// One wallet's balance, in its own currency.
+@immutable
+class Wallet {
+  const Wallet({
+    required this.accountId,
+    required this.name,
+    required this.balance,
+    required this.isDefault,
+  });
+
+  final String accountId;
+  final String name;
+  final Money balance;
+
+  /// Whether this is the wallet the balance card shows.
+  final bool isDefault;
+}
+
+@immutable
 class HomeSnapshot {
   HomeSnapshot({
     required this.generatedAt,
@@ -220,7 +239,9 @@ class HomeSnapshot {
     required List<RecentTransaction> recentTransactions,
     required Set<HomeAction> availableActions,
     required List<HomeWarning> warnings,
-  }) : upcomingPayments = List<UpcomingPayment>.unmodifiable(upcomingPayments),
+    List<Wallet> wallets = const [],
+  }) : wallets = List<Wallet>.unmodifiable(wallets),
+       upcomingPayments = List<UpcomingPayment>.unmodifiable(upcomingPayments),
        recentTransactions = List<RecentTransaction>.unmodifiable(
          recentTransactions,
        ),
@@ -235,7 +256,21 @@ class HomeSnapshot {
     if (monthSummary.to.isBefore(monthSummary.from)) {
       throw const FormatException('Month boundaries are invalid.');
     }
+    if (this.wallets.isNotEmpty &&
+        this.wallets.where((wallet) => wallet.isDefault).length != 1) {
+      throw const FormatException('Exactly one wallet is the default.');
+    }
   }
+
+  /// Every wallet this profile holds, the default one included.
+  ///
+  /// Deliberately never summed: adding across currencies needs a rate and
+  /// there is none (ADR 0029). Empty when the server has not sent them.
+  final List<Wallet> wallets;
+
+  /// The wallets that are not the balance card, in the order they arrived.
+  List<Wallet> get otherWallets =>
+      wallets.where((wallet) => !wallet.isDefault).toList(growable: false);
 
   final DateTime generatedAt;
   final DateTime dataAsOf;

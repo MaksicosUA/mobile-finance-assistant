@@ -51,6 +51,18 @@ abstract final class HomeMapper {
             })
             .toList(growable: false),
       ),
+      wallets: dto.wallets
+          .map(
+            (wallet) => Wallet(
+              accountId: wallet.accountId,
+              name: wallet.name,
+              // Its own currency, never the profile's: that is the whole
+              // point of a wallet (ADR 0029).
+              balance: Money(amount: wallet.balance, currency: wallet.currency),
+              isDefault: wallet.isDefault,
+            ),
+          )
+          .toList(growable: false),
       primaryGoal: dto.primaryGoal == null ? null : _goal(dto.primaryGoal!),
       upcomingPayments: dto.upcomingPayments
           .take(3)

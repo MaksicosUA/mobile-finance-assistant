@@ -35,6 +35,16 @@ abstract interface class FinanceEntryRepositoryClient {
     FinanceTimezoneCommand command,
   );
 
+  /// Decide a movement between two wallets without moving anything (ADR 0029).
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer(
+    FinanceTransferDraft draft,
+  );
+
+  /// Move it, exactly once for one command identity.
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer(
+    FinanceTransferCommitCommand command,
+  );
+
   Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
     PlannedCostDraft draft,
   );
@@ -79,6 +89,7 @@ abstract interface class FinanceEntryRepositoryClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   });
 
   Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets();
@@ -240,6 +251,28 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
   }
 
   @override
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer(
+    FinanceTransferDraft draft,
+  ) {
+    return _authorized(
+      (accessToken) =>
+          _api.evaluateTransfer(accessToken: accessToken, draft: draft),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer(
+    FinanceTransferCommitCommand command,
+  ) {
+    // No delivery outbox: a transfer creates no income and no expense, so it
+    // is not the accepted financial write ADR 0009 exists for.
+    return _authorized(
+      (accessToken) =>
+          _api.commitTransfer(accessToken: accessToken, command: command),
+    );
+  }
+
+  @override
   Future<FinanceEntryResult<PlannedCostCreated>> createPlannedCost(
     PlannedCostDraft draft,
   ) {
@@ -389,6 +422,7 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) {
     return _authorized(
       (accessToken) => _api.readAnalyticsWindow(
@@ -396,6 +430,7 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         period: period,
         from: from,
         to: to,
+        accountId: accountId,
       ),
     );
   }

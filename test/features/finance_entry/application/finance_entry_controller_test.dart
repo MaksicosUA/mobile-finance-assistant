@@ -1289,6 +1289,16 @@ final class _FakeOperationDeliveryCoordinator
 final class _FakeFinanceEntryRepository
     implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer(
+    FinanceTransferDraft draft,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer(
+    FinanceTransferCommitCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone(
     FinanceTimezoneCommand command,
   ) => throw UnimplementedError();
@@ -1358,6 +1368,7 @@ final class _FakeFinanceEntryRepository
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<UserProfile>> readProfile() =>

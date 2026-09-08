@@ -622,6 +622,18 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer({
+    required String accessToken,
+    required FinanceTransferDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer({
+    required String accessToken,
+    required FinanceTransferCommitCommand command,
+  }) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone({
     required String accessToken,
     required FinanceTimezoneCommand command,
@@ -706,6 +718,7 @@ class _ListApi implements FinanceEntryApiClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<UserProfile>> readProfile({

@@ -18,6 +18,7 @@ class HomeDto {
     required this.recentTransactions,
     required this.availableActions,
     required this.warnings,
+    this.wallets = const <HomeWalletDto>[],
   });
 
   factory HomeDto.fromJson(Map<String, Object?> json) {
@@ -71,6 +72,21 @@ class HomeDto {
             );
           })
           .toList(growable: false),
+      // Additive: a server that does not send them yet is not an error, and a
+      // profile with one account has one entry (ADR 0029).
+      wallets: json.containsKey('wallets')
+          ? _list(json['wallets'], r'$.wallets').indexed
+                .map((entry) {
+                  return HomeWalletDto.fromJson(
+                    _map(
+                      entry.$2,
+                      r'$.wallets['
+                      '${entry.$1}]',
+                    ),
+                  );
+                })
+                .toList(growable: false)
+          : const <HomeWalletDto>[],
       warnings: json.containsKey('warnings')
           ? _list(json['warnings'], r'$.warnings').indexed
                 .map((entry) {
@@ -107,6 +123,39 @@ class HomeDto {
   final List<HomeTransactionDto> recentTransactions;
   final List<String> availableActions;
   final List<HomeWarningDto> warnings;
+  final List<HomeWalletDto> wallets;
+}
+
+/// One wallet beside the balance card. Never summed with another (ADR 0029).
+@immutable
+class HomeWalletDto {
+  const HomeWalletDto({
+    required this.accountId,
+    required this.name,
+    required this.currency,
+    required this.balance,
+    required this.isDefault,
+  });
+
+  factory HomeWalletDto.fromJson(Map<String, Object?> json) {
+    final isDefault = json['isDefault'];
+    if (isDefault is! bool) {
+      throw const FormatException(r'$.wallets[].isDefault must be a boolean.');
+    }
+    return HomeWalletDto(
+      accountId: _nonEmptyString(json['accountId'], r'$.wallets[].accountId'),
+      name: _nonEmptyString(json['name'], r'$.wallets[].name'),
+      currency: _currency(json['currency'], r'$.wallets[].currency'),
+      balance: _decimal(json['balance'], r'$.wallets[].balance'),
+      isDefault: isDefault,
+    );
+  }
+
+  final String accountId;
+  final String name;
+  final String currency;
+  final String balance;
+  final bool isDefault;
 }
 
 bool _isConsistentFirstUseEmpty(HomeDto dto) {

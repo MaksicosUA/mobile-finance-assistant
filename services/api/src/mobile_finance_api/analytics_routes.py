@@ -43,8 +43,10 @@ class AnalyticsReader(Protocol):
         kind: ReportingPeriodKind,
         from_date: date | None = None,
         to_date: date | None = None,
+        account_id: UUID | None = None,
     ) -> AnalyticsV2Response:
-        """Group one requested window, beside the window before it."""
+        """Group one requested window for one wallet, beside the window
+        before it."""
 
 
 def _analytics_repository(request: Request) -> AnalyticsReader:
@@ -112,8 +114,14 @@ async def read_analytics_period(
     period: PeriodQuery = "month",
     from_date: FromQuery = None,
     to_date: ToQuery = None,
+    account_id: Annotated[UUID | None, Query(alias="accountId")] = None,
 ) -> AnalyticsV2Response:
-    """Report one window. Defaults to the month, which is what Home projects."""
+    """Report one window for one wallet.
+
+    Defaults to the month, which is what Home projects, and to the default
+    wallet, which is what its balance card shows. Figures are never added
+    across wallets: that would need a rate, and there is none (ADR 0029).
+    """
 
     user_id = _user_id(user)
     _validate_window(period, from_date, to_date)
@@ -123,6 +131,7 @@ async def read_analytics_period(
             kind=period,
             from_date=from_date,
             to_date=to_date,
+            account_id=account_id,
         )
     except HomeProjectionInvariantError:
         # A window lying entirely before the account existed is a bad request,

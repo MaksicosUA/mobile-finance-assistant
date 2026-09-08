@@ -524,6 +524,16 @@ Future<void> _pumpPage(
 
 final class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer(
+    FinanceTransferDraft draft,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<FinanceTransferCommitted>> commitTransfer(
+    FinanceTransferCommitCommand command,
+  ) => throw UnimplementedError();
+
+  @override
   Future<FinanceEntryResult<FinanceTimezoneCorrected>> correctTimezone(
     FinanceTimezoneCommand command,
   ) => throw UnimplementedError();
@@ -606,6 +616,7 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<UserProfile>> readProfile() =>
