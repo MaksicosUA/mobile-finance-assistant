@@ -186,6 +186,7 @@ async def _seed_stale_current_home_snapshot(
     *,
     session_factory: AsyncSessionFactory,
     user_id: UUID,
+    account_id: UUID,
 ) -> None:
     generated_at = datetime.now(UTC) - timedelta(minutes=1)
     local_date = generated_at.astimezone(ZoneInfo("Europe/Berlin")).date()
@@ -199,6 +200,8 @@ async def _seed_stale_current_home_snapshot(
             HomeProjectionSnapshotRow(
                 id=uuid4(),
                 user_id=user_id,
+                # A revision belongs to a wallet from 0020 on (ADR 0029).
+                account_id=account_id,
                 timezone_name="Europe/Berlin",
                 period_start=period_start,
                 period_end=period_end,
@@ -315,19 +318,20 @@ async def _exercise_http() -> tuple[
         assert home_before.status_code == 200
         assert home_before.json()["homeState"] == "first_use_empty"
 
-        await _seed_stale_current_home_snapshot(
-            session_factory=session_factory,
-            user_id=first.user_id,
-        )
-        stale_home_before_account = await client.get(
-            "/api/v1/home",
-            params={"period": "current_month", "timezone": "Europe/Berlin"},
-            headers=first.headers,
-        )
-        assert stale_home_before_account.status_code == 503
-        assert stale_home_before_account.json() == {
-            "detail": "Home temporarily unavailable"
-        }
+        # Home used to fail closed on a projection that existed while no
+        # account did. From migration 0020 a revision belongs to a wallet
+        # (ADR 0029), so the database refuses that state outright — a stronger
+        # guarantee than the read path checking for it.
+        try:
+            await _seed_stale_current_home_snapshot(
+                session_factory=session_factory,
+                user_id=first.user_id,
+                account_id=uuid4(),
+            )
+        except IntegrityError:
+            pass
+        else:
+            raise AssertionError("a projection without a wallet was accepted")
 
         marker = "sensitive-account-marker"
         malformed = _account_draft(name=marker)
@@ -656,11 +660,14 @@ async def _exercise_http() -> tuple[
                 )
                 == 1
             )
+            # Nothing published a revision in this scenario: the projector is
+            # not run here, and a revision can no longer be seeded without a
+            # wallet to belong to (ADR 0029).
             assert (
                 await database.scalar(
                     select(func.count()).select_from(HomeProjectionSnapshotRow)
                 )
-                == 1
+                == 0
             )
             outbox = tuple(
                 (await database.scalars(select(FinanceAccountOutboxEventRow))).all()

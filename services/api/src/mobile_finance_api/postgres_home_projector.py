@@ -614,7 +614,6 @@ class PostgresHomeProjector:
                 raise HomeProjectionInvariantError(
                     "projection requires exactly one default wallet"
                 )
-            account = defaults[0]
 
             operations = tuple(
                 (
@@ -825,7 +824,8 @@ class PostgresHomeProjector:
                 # publish a revision or block unrelated users.
                 return False
 
-            _validate_profile(user=user, account=account)
+            for wallet in accounts:
+                _validate_profile(user=user, account=wallet)
             # Read separately from the operations above, and deliberately
             # unfiltered: an event about a withdrawn operation still has to
             # validate, or the very correction that withdrew it could never be
@@ -865,105 +865,130 @@ class PostgresHomeProjector:
                 transfers_by_id={transfer.id: transfer for transfer in transfers},
             )
 
+            # One instant for every wallet. Both sides of a transfer must move
+            # together, so they are built from the same moment and published in
+            # the same transaction (ADR 0029).
             generated_at = _aware_utc(self._clock())
-            latest_watermark = await database.scalar(
-                select(HomeProjectionSnapshotRow)
-                .where(
-                    HomeProjectionSnapshotRow.user_id == user_id,
-                    HomeProjectionSnapshotRow.timezone_name == account.opening_timezone,
-                )
-                .order_by(
-                    HomeProjectionSnapshotRow.data_as_of.desc(),
-                    HomeProjectionSnapshotRow.revision.desc(),
-                )
-                .limit(1)
-            )
-            if latest_watermark is not None and generated_at < _aware_utc(
-                latest_watermark.data_as_of
-            ):
-                raise HomeProjectionInvariantError(
-                    "projection watermark cannot move backwards"
-                )
-            if (
-                latest_watermark is not None
-                and latest_watermark.projection_schema_version
-                > _PROJECTION_SCHEMA_VERSION
-            ):
-                raise HomeProjectionInvariantError(
-                    "newer Home projection schema is already authoritative"
-                )
             # ADR 0020: a report reads the link, never the stored text. The
             # text stays on the operation as evidence of what the user wrote,
             # and is the fallback for anything recorded before the catalogue.
             category_names = {category.id: category.name for category in categories}
-            projection = build_current_home_revision(
-                account=_account_fact(account),
-                operations=tuple(
-                    _operation_fact(row, category_names=category_names)
-                    for row in operations
-                ),
-                generated_at=generated_at,
-                planned_costs=tuple(_planned_cost_fact(row) for row in planned_costs),
-                goals=tuple(_goal_fact(row) for row in goals),
-                goal_contributions=tuple(
-                    _goal_contribution_fact(row) for row in goal_contributions
-                ),
-                transfers=tuple(_transfer_fact(row) for row in transfers),
+            operation_facts = tuple(
+                _operation_fact(row, category_names=category_names)
+                for row in operations
             )
-            latest = await database.scalar(
-                select(HomeProjectionSnapshotRow)
-                .where(
-                    HomeProjectionSnapshotRow.user_id == user_id,
-                    HomeProjectionSnapshotRow.timezone_name == projection.timezone_name,
-                    HomeProjectionSnapshotRow.period_start == projection.period_start,
-                )
-                .order_by(HomeProjectionSnapshotRow.revision.desc())
-                .limit(1)
+            planned_cost_facts = tuple(_planned_cost_fact(row) for row in planned_costs)
+            goal_facts = tuple(_goal_fact(row) for row in goals)
+            contribution_facts = tuple(
+                _goal_contribution_fact(row) for row in goal_contributions
             )
-            if (
-                latest is not None
-                and latest.projection_schema_version > _PROJECTION_SCHEMA_VERSION
-            ):
-                raise HomeProjectionInvariantError(
-                    "newer Home projection schema is already authoritative"
+            transfer_facts = tuple(_transfer_fact(row) for row in transfers)
+
+            planned: list[
+                tuple[ProjectedHomeRevision, HomeProjectionSnapshotRow | None]
+            ]
+            planned = []
+            for wallet in accounts:
+                latest_watermark = await database.scalar(
+                    select(HomeProjectionSnapshotRow)
+                    .where(
+                        HomeProjectionSnapshotRow.user_id == user_id,
+                        HomeProjectionSnapshotRow.account_id == wallet.id,
+                        HomeProjectionSnapshotRow.timezone_name
+                        == wallet.opening_timezone,
+                    )
+                    .order_by(
+                        HomeProjectionSnapshotRow.data_as_of.desc(),
+                        HomeProjectionSnapshotRow.revision.desc(),
+                    )
+                    .limit(1)
                 )
+                if latest_watermark is not None and generated_at < _aware_utc(
+                    latest_watermark.data_as_of
+                ):
+                    raise HomeProjectionInvariantError(
+                        "projection watermark cannot move backwards"
+                    )
+                if (
+                    latest_watermark is not None
+                    and latest_watermark.projection_schema_version
+                    > _PROJECTION_SCHEMA_VERSION
+                ):
+                    raise HomeProjectionInvariantError(
+                        "newer Home projection schema is already authoritative"
+                    )
+                projection = build_current_home_revision(
+                    account=_account_fact(wallet),
+                    operations=operation_facts,
+                    generated_at=generated_at,
+                    planned_costs=planned_cost_facts,
+                    goals=goal_facts,
+                    goal_contributions=contribution_facts,
+                    transfers=transfer_facts,
+                )
+                latest = await database.scalar(
+                    select(HomeProjectionSnapshotRow)
+                    .where(
+                        HomeProjectionSnapshotRow.user_id == user_id,
+                        HomeProjectionSnapshotRow.account_id == wallet.id,
+                        HomeProjectionSnapshotRow.timezone_name
+                        == projection.timezone_name,
+                        HomeProjectionSnapshotRow.period_start
+                        == projection.period_start,
+                    )
+                    .order_by(HomeProjectionSnapshotRow.revision.desc())
+                    .limit(1)
+                )
+                if (
+                    latest is not None
+                    and latest.projection_schema_version > _PROJECTION_SCHEMA_VERSION
+                ):
+                    raise HomeProjectionInvariantError(
+                        "newer Home projection schema is already authoritative"
+                    )
+                planned.append((projection, latest))
+
             has_pending = pending_events
-            if not has_pending and not _reconciliation_due(
-                latest=latest,
-                projection=projection,
+            # One wallet being due publishes them all: a set of balances read
+            # from different moments is what this arrangement exists to avoid.
+            if not has_pending and not any(
+                _reconciliation_due(latest=latest, projection=projection)
+                for projection, latest in planned
             ):
                 return False
 
-            snapshot_id = uuid4()
-            revision = 1 if latest is None else latest.revision + 1
-            database.add(
-                HomeProjectionSnapshotRow(
-                    id=snapshot_id,
-                    user_id=user_id,
-                    timezone_name=projection.timezone_name,
-                    period_start=projection.period_start,
-                    period_end=projection.period_end,
-                    revision=revision,
-                    projection_schema_version=_PROJECTION_SCHEMA_VERSION,
-                    generated_at=projection.generated_at,
-                    data_as_of=projection.data_as_of,
-                    base_currency=projection.base_currency,
-                    balance_amount=projection.balance_amount,
-                    balance_delta_amount=projection.balance_delta_amount,
-                    balance_delta_percent=projection.balance_delta_percent,
-                    month_income=projection.month_income,
-                    month_expense=projection.month_expense,
-                    month_net_flow=projection.month_net_flow,
-                    trend_metric=projection.trend_metric,
-                    trend_period=projection.trend_period,
-                    trend_total=projection.trend_total,
+            for wallet, (projection, latest) in zip(accounts, planned, strict=True):
+                snapshot_id = uuid4()
+                revision = 1 if latest is None else latest.revision + 1
+                database.add(
+                    HomeProjectionSnapshotRow(
+                        id=snapshot_id,
+                        user_id=user_id,
+                        account_id=wallet.id,
+                        timezone_name=projection.timezone_name,
+                        period_start=projection.period_start,
+                        period_end=projection.period_end,
+                        revision=revision,
+                        projection_schema_version=_PROJECTION_SCHEMA_VERSION,
+                        generated_at=projection.generated_at,
+                        data_as_of=projection.data_as_of,
+                        base_currency=projection.base_currency,
+                        balance_amount=projection.balance_amount,
+                        balance_delta_amount=projection.balance_delta_amount,
+                        balance_delta_percent=projection.balance_delta_percent,
+                        month_income=projection.month_income,
+                        month_expense=projection.month_expense,
+                        month_net_flow=projection.month_net_flow,
+                        trend_metric=projection.trend_metric,
+                        trend_period=projection.trend_period,
+                        trend_total=projection.trend_total,
+                    )
                 )
-            )
-            await database.flush()
-            database.add_all(_projection_children(snapshot_id, projection))
+                await database.flush()
+                database.add_all(_projection_children(snapshot_id, projection))
 
             for account_event in account_events:
-                account_event.published_at = projection.generated_at
+                account_event.published_at = generated_at
                 account_event.attempt_count = min(
                     account_event.attempt_count + 1,
                     32767,
@@ -973,7 +998,7 @@ class PostgresHomeProjector:
                 account_event.failure_code = None
                 account_event.dead_lettered_at = None
             for operation_event in operation_events:
-                operation_event.published_at = projection.generated_at
+                operation_event.published_at = generated_at
                 operation_event.attempt_count = min(
                     operation_event.attempt_count + 1,
                     32767,
@@ -983,7 +1008,7 @@ class PostgresHomeProjector:
                 operation_event.failure_code = None
                 operation_event.dead_lettered_at = None
             for planned_cost_event in planned_cost_events:
-                planned_cost_event.published_at = projection.generated_at
+                planned_cost_event.published_at = generated_at
                 planned_cost_event.attempt_count = min(
                     planned_cost_event.attempt_count + 1,
                     32767,
@@ -993,14 +1018,14 @@ class PostgresHomeProjector:
                 planned_cost_event.failure_code = None
                 planned_cost_event.dead_lettered_at = None
             for goal_event in goal_events:
-                goal_event.published_at = projection.generated_at
+                goal_event.published_at = generated_at
                 goal_event.attempt_count = min(goal_event.attempt_count + 1, 32767)
                 goal_event.next_attempt_at = None
                 goal_event.last_failed_at = None
                 goal_event.failure_code = None
                 goal_event.dead_lettered_at = None
             for category_event in category_events:
-                category_event.published_at = projection.generated_at
+                category_event.published_at = generated_at
                 category_event.attempt_count = min(
                     category_event.attempt_count + 1,
                     32767,
@@ -1010,7 +1035,7 @@ class PostgresHomeProjector:
                 category_event.failure_code = None
                 category_event.dead_lettered_at = None
             for transfer_event in transfer_events:
-                transfer_event.published_at = projection.generated_at
+                transfer_event.published_at = generated_at
                 transfer_event.attempt_count = min(
                     transfer_event.attempt_count + 1,
                     32767,

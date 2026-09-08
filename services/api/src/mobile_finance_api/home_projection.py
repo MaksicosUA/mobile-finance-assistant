@@ -400,8 +400,14 @@ def _build_current_home_revision(
     account_created_at = _aware_utc(account.created_at)
     timezone_name = _validated_account(account)
     timezone = ZoneInfo(timezone_name)
+    # Only what this wallet holds. A user's other wallets carry operations in
+    # their own currencies (ADR 0029), and they are not this projection's to
+    # validate — allocation used to happen after validation, when there could
+    # only ever be one wallet.
     checked_operations = tuple(
-        _validated_operation(operation, account=account) for operation in operations
+        _validated_operation(operation, account=account)
+        for operation in operations
+        if operation.account_id is None or operation.account_id == account.account_id
     )
     newest_fact_at = max(
         (
@@ -791,11 +797,11 @@ def _validated_contribution(
 
 
 def _validated_account(account: ProjectionAccount) -> str:
-    if (
-        account.currency != "EUR"
-        or account.status != "active"
-        or not account.is_default
-    ):
+    # Neither the currency nor being the default is checked here any more: a
+    # wallet holds one currency of its own and only one wallet is the default,
+    # while every one of them gets a revision (ADR 0029). The currency an
+    # operation carries is still checked against this account's below.
+    if account.status != "active":
         raise HomeProjectionInvariantError("unsupported authoritative account state")
     _finite(account.opening_balance)
     try:

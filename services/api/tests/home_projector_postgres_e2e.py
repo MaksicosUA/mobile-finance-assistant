@@ -106,7 +106,11 @@ def _populated_migration_round_trip() -> None:
     config = _alembic_config()
     command.upgrade(config, "0004_authoritative_accounts")
     asyncio.run(_seed_schema_0004_home_fixture())
-    command.upgrade(config, "head")
+    # Pinned to 0005 rather than head: the property under test belongs to that
+    # migration, and the fixture models a database with no financial account —
+    # which from 0020 on is not a database that can hold a projection at all,
+    # because a revision belongs to a wallet (ADR 0029).
+    command.upgrade(config, "0005_home_projector")
     asyncio.run(_assert_schema_0005_preserves_legacy_unknowns())
     command.downgrade(config, "0004_authoritative_accounts")
     asyncio.run(_assert_schema_0004_legacy_fixture_and_cleanup())
@@ -1245,6 +1249,7 @@ async def _assert_watermark_and_newer_schema_guards(
             HomeProjectionSnapshotRow(
                 id=future_watermark_id,
                 user_id=latest.user_id,
+                account_id=latest.account_id,
                 timezone_name=latest.timezone_name,
                 period_start=latest.period_start,
                 period_end=latest.period_end,
@@ -1301,6 +1306,7 @@ async def _assert_watermark_and_newer_schema_guards(
             HomeProjectionSnapshotRow(
                 id=newer_schema_id,
                 user_id=latest.user_id,
+                account_id=latest.account_id,
                 timezone_name=latest.timezone_name,
                 period_start=latest.period_start,
                 period_end=latest.period_end,
@@ -1677,6 +1683,31 @@ async def _assert_revision_retention_is_bounded_and_keeps_two(
                 disabled_at=None,
             )
         )
+        # Flushed before the account below: nothing relates the mappers, so
+        # the unit of work is free to insert the account first and its foreign
+        # key then refuses it.
+        await database.flush()
+        # A revision belongs to a wallet from 0020 on (ADR 0029), so the
+        # synthetic profile needs one before it can hold any.
+        non_deletable_account_id = UUID("00000000-0000-4000-8000-000000000002")
+        database.add(
+            FinanceAccountRow(
+                id=non_deletable_account_id,
+                user_id=non_deletable_user_id,
+                command_id=UUID("00000000-0000-4000-8000-000000000003"),
+                command_payload_hash=b"\x00" * 32,
+                schema_version="1",
+                name="Synthetic retention skip account",
+                currency="EUR",
+                opening_balance=Decimal("0"),
+                opening_balance_on=old_generated_at.date(),
+                opening_timezone=TIMEZONE_NAME,
+                status="active",
+                is_default=True,
+                confirmed_at=old_generated_at,
+                created_at=old_generated_at,
+            )
+        )
         await database.flush()
         for revision in range(1, 3):
             generated_at = old_generated_at + timedelta(milliseconds=revision)
@@ -1684,6 +1715,7 @@ async def _assert_revision_retention_is_bounded_and_keeps_two(
                 HomeProjectionSnapshotRow(
                     id=uuid4(),
                     user_id=non_deletable_user_id,
+                    account_id=non_deletable_account_id,
                     timezone_name=latest.timezone_name,
                     period_start=date(2024, 1, 1),
                     period_end=date(2024, 1, 31),
@@ -1711,6 +1743,7 @@ async def _assert_revision_retention_is_bounded_and_keeps_two(
                 HomeProjectionSnapshotRow(
                     id=snapshot_id,
                     user_id=identity.user_id,
+                    account_id=latest.account_id,
                     timezone_name=latest.timezone_name,
                     period_start=date(2025, 1, 1),
                     period_end=date(2025, 1, 31),

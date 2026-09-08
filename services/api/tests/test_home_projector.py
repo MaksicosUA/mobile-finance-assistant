@@ -209,7 +209,6 @@ def test_legacy_unallocated_operation_is_excluded_and_visible_as_warning() -> No
     "changes",
     [
         {"user_id": UUID("99999999-9999-4999-8999-999999999999")},
-        {"account_id": UUID("99999999-9999-4999-8999-999999999999")},
         {"currency": "USD"},
         {"occurred_on": date(2026, 5, 31)},
     ],
@@ -223,6 +222,32 @@ def test_inconsistent_allocated_operation_fails_closed(
             operations=(_operation(1, **changes),),
             generated_at=_GENERATED_AT,
         )
+
+
+def test_another_wallets_operation_is_not_this_wallets_business() -> None:
+    """It used to fail closed, when a user could only own one account.
+
+    A user may now hold several wallets, one currency each (ADR 0029), and an
+    operation naming another one belongs to that wallet's revision. It cannot
+    name a wallet that does not exist: the database enforces that with a
+    composite foreign key.
+    """
+
+    revision = build_current_home_revision(
+        account=_account(),
+        operations=(
+            _operation(
+                1,
+                account_id=UUID("99999999-9999-4999-8999-999999999999"),
+                currency="UAH",
+            ),
+        ),
+        generated_at=_GENERATED_AT,
+    )
+
+    assert revision.balance_amount == _account().opening_balance
+    assert revision.month_income == 0
+    assert revision.month_expense == 0
 
 
 def test_home_contract_serializes_explicit_unknown_values_without_fabrication() -> None:

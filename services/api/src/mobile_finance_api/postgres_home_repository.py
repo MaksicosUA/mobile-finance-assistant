@@ -148,12 +148,19 @@ class PostgresHomeRepository:
             elif profile.timezone_revision != 0 or canonical_timezone is not None:
                 raise RuntimeError("Empty financial profile is inconsistent")
 
+            # The default wallet's revision is the Home card. Every wallet has
+            # one of its own (ADR 0029), and they are never summed.
             snapshot = await database.scalar(
                 select(HomeProjectionSnapshotRow)
                 .where(
                     HomeProjectionSnapshotRow.user_id == user_id,
                     HomeProjectionSnapshotRow.timezone_name == timezone_name,
                     HomeProjectionSnapshotRow.period_start == month_start,
+                    *(
+                        (HomeProjectionSnapshotRow.account_id == defaults[0].id,)
+                        if accounts
+                        else ()
+                    ),
                 )
                 .order_by(HomeProjectionSnapshotRow.revision.desc())
                 .limit(1)
