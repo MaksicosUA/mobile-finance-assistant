@@ -116,9 +116,16 @@ final class FinanceOperationEditing extends FinanceEntryState {
     this.failure,
     this.isSubmitting = false,
     List<FinanceIssue> issues = const [],
-  }) : issues = List.unmodifiable(issues);
+    List<FinanceAccount>? wallets,
+  }) : issues = List.unmodifiable(issues),
+       wallets = List.unmodifiable(wallets ?? [account]);
 
+  /// The wallet this operation will be recorded in.
   final FinanceAccount account;
+
+  /// Every wallet the profile holds, so one can be chosen (ADR 0029). A
+  /// profile with one wallet has one entry and the screen offers no choice.
+  final List<FinanceAccount> wallets;
   final OperationEntryInput initialInput;
   final DateTime latestOperationDate;
   final bool accountCreated;

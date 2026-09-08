@@ -176,6 +176,7 @@ class _FinanceEntryBody extends ConsumerWidget {
         privacyEnabled: privacyEnabled,
         focusSentence: focusSentence,
         onSubmit: controller.evaluateOperation,
+        onSelectAccount: controller.selectAccount,
       ),
       FinanceOperationReviewing() => _OperationReview(
         state: state as FinanceOperationReviewing,
@@ -388,12 +389,14 @@ class _OperationForm extends ConsumerStatefulWidget {
     required this.privacyEnabled,
     required this.focusSentence,
     required this.onSubmit,
+    required this.onSelectAccount,
   });
 
   final FinanceOperationEditing state;
   final bool privacyEnabled;
   final bool focusSentence;
   final ValueChanged<OperationEntryInput> onSubmit;
+  final void Function(FinanceAccount, OperationEntryInput) onSelectAccount;
 
   @override
   ConsumerState<_OperationForm> createState() => _OperationFormState();
@@ -562,6 +565,34 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
                     }
                   }),
           ),
+          // Which wallet this goes in. Offered only when there is a choice:
+          // one wallet needs no picker (ADR 0029).
+          if (widget.state.wallets.length > 1) ...[
+            const SizedBox(height: AppSpacing.md),
+            DropdownButtonFormField<String>(
+              key: const Key('operation-wallet'),
+              initialValue: account.accountId,
+              decoration: InputDecoration(labelText: l10n.operationWalletField),
+              items: [
+                for (final wallet in widget.state.wallets)
+                  DropdownMenuItem(
+                    value: wallet.accountId,
+                    child: Text('${wallet.name} · ${wallet.currency}'),
+                  ),
+              ],
+              onChanged: widget.state.isSubmitting
+                  ? null
+                  : (selected) {
+                      if (selected == null) return;
+                      widget.onSelectAccount(
+                        widget.state.wallets.firstWhere(
+                          (wallet) => wallet.accountId == selected,
+                        ),
+                        _currentInput(),
+                      );
+                    },
+            ),
+          ],
           const SizedBox(height: AppSpacing.md),
           TextFormField(
             key: const Key('operation-amount'),
@@ -638,6 +669,26 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
           ),
         ],
       ),
+    );
+  }
+
+  /// What is on the form right now, whether or not it is ready to send.
+  OperationEntryInput _currentInput() {
+    final choice = _categoryChoice;
+    return OperationEntryInput(
+      type: _type,
+      amount: _amountController.text,
+      occurredOn: _occurredOn,
+      category: switch (choice) {
+        CategoryFromCatalogue(:final category) => category.name,
+        CategoryFreeText() => _categoryController.text,
+        CategoryUnset() => '',
+      },
+      categoryId: switch (choice) {
+        CategoryFromCatalogue(:final category) => category.categoryId,
+        _ => null,
+      },
+      merchant: _merchantController.text,
     );
   }
 

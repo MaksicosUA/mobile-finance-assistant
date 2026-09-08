@@ -1964,4 +1964,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get walletWriteError => 'Не удалось открыть кошелёк.';
+
+  @override
+  String get operationWalletField => 'Кошелёк';
 }

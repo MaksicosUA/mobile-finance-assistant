@@ -96,6 +96,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
               .adopt(value.canonicalTimezone);
           state = FinanceOperationEditing(
             account: account,
+            wallets: value.accounts,
             initialInput: _defaultOperationInput(
               account,
               timeContext.osLocalDate,
@@ -112,6 +113,27 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
     } finally {
       _endRequest(requestGeneration);
     }
+  }
+
+  /// Records the next operation in another wallet.
+  ///
+  /// The typed amount and date are kept: switching wallets is choosing where
+  /// the money moved, not starting again (ADR 0029).
+  void selectAccount(FinanceAccount account, OperationEntryInput input) {
+    final current = state;
+    if (_requestInFlight || current is! FinanceOperationEditing) return;
+    if (!current.wallets.any(
+      (wallet) => wallet.accountId == account.accountId,
+    )) {
+      return;
+    }
+    state = FinanceOperationEditing(
+      account: account,
+      wallets: current.wallets,
+      initialInput: input,
+      latestOperationDate: current.latestOperationDate,
+      accountCreated: current.accountCreated,
+    );
   }
 
   Future<void> evaluateAccount(AccountSetupInput input) async {

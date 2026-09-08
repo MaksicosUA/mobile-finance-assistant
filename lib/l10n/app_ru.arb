@@ -1795,5 +1795,7 @@
   "walletLoadError": "Не удалось загрузить счета.",
   "@walletLoadError": {"description": "Wallet screen."},
   "walletWriteError": "Не удалось открыть кошелёк.",
-  "@walletWriteError": {"description": "Wallet screen."}
+  "@walletWriteError": {"description": "Wallet screen."},
+  "operationWalletField": "Кошелёк",
+  "@operationWalletField": {"description": "Entry form: which wallet the operation is recorded in (ADR 0029)."}
 }

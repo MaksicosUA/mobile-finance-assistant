@@ -3494,6 +3494,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Не удалось открыть кошелёк.'**
   String get walletWriteError;
+
+  /// Entry form: which wallet the operation is recorded in (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Кошелёк'**
+  String get operationWalletField;
 }
 
 class _AppLocalizationsDelegate
