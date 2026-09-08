@@ -915,6 +915,14 @@ async def _assert_transfer_projection(
     after = await _home(client, identity)
     assert after.status_code == 200, after.text
     payload = after.json()
+    # Both wallets are reported, and nothing is summed across them: adding
+    # euro to hryvnia needs a rate, and there is none (ADR 0029).
+    wallets = {item["currency"]: item for item in payload["wallets"]}
+    assert set(wallets) == {"EUR", "UAH"}
+    assert _amount(wallets["UAH"]["balance"]) == Decimal("4800.00")
+    assert wallets["UAH"]["isDefault"] is False
+    assert wallets["EUR"]["isDefault"] is True
+    assert _amount(wallets["EUR"]["balance"]) == _amount(payload["balance"]["amount"])
     # The euro that left is gone from the euro balance.
     assert _amount(payload["balance"]["amount"]) == balance_before - Decimal("100.00")
     # And it was neither income nor expense.

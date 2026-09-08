@@ -40,6 +40,7 @@ from .models import (
     HomeTrend,
     HomeTrendPoint,
     HomeUser,
+    HomeWallet,
     HomeWarning,
 )
 from .repository import HomeCanonicalTimezoneMismatch, HomeQuery
@@ -281,8 +282,45 @@ class PostgresHomeRepository:
             if len(payments) > 3:
                 raise RuntimeError("Home projection payment limit is invalid")
 
+            # Every wallet's newest revision for the same month and zone, all
+            # published in one cycle, so the card and the lines beneath it are
+            # read from one moment (ADR 0029).
+            wallet_balances = {
+                row.account_id: row.balance_amount
+                for row in (
+                    await database.scalars(
+                        select(HomeProjectionSnapshotRow)
+                        .where(
+                            HomeProjectionSnapshotRow.user_id == user_id,
+                            HomeProjectionSnapshotRow.timezone_name == timezone_name,
+                            HomeProjectionSnapshotRow.period_start == month_start,
+                        )
+                        .order_by(
+                            HomeProjectionSnapshotRow.account_id.asc(),
+                            HomeProjectionSnapshotRow.revision.desc(),
+                        )
+                        .distinct(HomeProjectionSnapshotRow.account_id)
+                    )
+                ).all()
+            }
+            # A wallet opened since the last cycle has no revision yet. It is
+            # left out rather than shown as zero: an unprojected balance is
+            # unknown, not empty.
+            wallets = tuple(
+                HomeWallet(
+                    account_id=candidate.id,
+                    name=candidate.name,
+                    currency=candidate.currency,
+                    balance=wallet_balances[candidate.id],
+                    is_default=candidate.is_default,
+                )
+                for candidate in accounts
+                if candidate.id in wallet_balances
+            )
+
         return _projected_home(
             snapshot=snapshot,
+            wallets=wallets,
             display_name=profile.display_name,
             trend_points=trend_points,
             goal=goal,
@@ -372,6 +410,7 @@ async def _has_unpublished_projection_event(
 def _projected_home(
     *,
     snapshot: HomeProjectionSnapshotRow,
+    wallets: tuple[HomeWallet, ...],
     display_name: str,
     trend_points: Sequence[HomeProjectionTrendPointRow],
     goal: HomeProjectionGoalRow | None,
@@ -381,6 +420,7 @@ def _projected_home(
     warnings: Sequence[HomeProjectionWarningRow],
 ) -> HomeResponse:
     return HomeResponse(
+        wallets=wallets,
         generated_at=snapshot.generated_at,
         data_as_of=snapshot.data_as_of,
         base_currency=snapshot.base_currency,
