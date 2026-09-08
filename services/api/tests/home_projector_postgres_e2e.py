@@ -26,6 +26,7 @@ from mobile_finance_api.db_models import (
     FinanceAccountRow,
     FinanceOperationRow,
     FinanceOutboxEventRow,
+    FinanceTransferOutboxEventRow,
     HomeProjectionActionRow,
     HomeProjectionSnapshotRow,
     HomeProjectionTransactionRow,
@@ -49,11 +50,13 @@ from mobile_finance_api.postgres_projector_supervision import (
     prune_home_revisions,
     read_projector_health,
 )
+from mobile_finance_api.postgres_transfer_repository import PostgresTransferRepository
 from mobile_finance_api.projector_supervision import (
     EventRetryPolicy,
     RevisionRetentionPolicy,
 )
 from mobile_finance_api.tokens import AccessTokenCodec
+from mobile_finance_api.transfer_core import TransferCore
 
 DATABASE_URL = os.environ["MFA_TEST_DATABASE_URL"]
 JWT_SECRET = b"test-only-home-projector-secret-32-bytes-minimum"
@@ -394,6 +397,13 @@ def _application(
             ),
             account_directory=accounts,
         ),
+        transfer_core=TransferCore(
+            repository=PostgresTransferRepository(
+                session_factory=session_factory,
+                clock=clock,
+            ),
+            clock=clock,
+        ),
     )
 
 
@@ -424,13 +434,16 @@ async def _open_account(
     identity: _Identity,
     opening_on: date,
     clock: _MutableClock,
+    currency: str = "EUR",
+    name: str = "Synthetic primary account",
+    opening_balance: str = "1000.00",
 ) -> UUID:
     draft: dict[str, object] = {
         "schemaVersion": "1",
         "commandId": str(uuid4()),
-        "name": "Synthetic primary account",
-        "currency": "EUR",
-        "openingBalance": "1000.00",
+        "name": name,
+        "currency": currency,
+        "openingBalance": opening_balance,
         "openingBalanceOn": opening_on.isoformat(),
         "canonicalTimezone": TIMEZONE_NAME,
     }
@@ -797,6 +810,117 @@ async def _assert_operation_projection(
         assert row.direction == source.operation_type
         assert row.status == source.status
     return income_id, expense_id, occurred_on
+
+
+async def _drain(
+    *,
+    session_factory: AsyncSessionFactory,
+    clock: _MutableClock,
+    limit: int = 8,
+) -> int:
+    """Consume until the projector says there is nothing left."""
+
+    consumed = 0
+    for _ in range(limit):
+        clock.advance(timedelta(seconds=1))
+        projector = PostgresHomeProjector(session_factory=session_factory, clock=clock)
+        if not await projector.consume_next():
+            return consumed
+        consumed += 1
+    raise AssertionError("projector did not drain")
+
+
+async def _assert_transfer_projection(
+    *,
+    client: AsyncClient,
+    identity: _Identity,
+    account_id: UUID,
+    session_factory: AsyncSessionFactory,
+    clock: _MutableClock,
+) -> None:
+    """A transfer moves the balance and touches nothing else (ADR 0029)."""
+
+    before = await _home(client, identity)
+    assert before.status_code == 200, before.text
+    balance_before = _amount(before.json()["balance"]["amount"])
+    income_before = _amount(before.json()["monthSummary"]["income"])
+    expense_before = _amount(before.json()["monthSummary"]["expense"])
+
+    local_date = clock().astimezone(TIMEZONE).date()
+    wallet_id = await _open_account(
+        client,
+        identity=identity,
+        opening_on=local_date,
+        clock=clock,
+        currency="UAH",
+        name="Synthetic hryvnia wallet",
+        opening_balance="0",
+    )
+    draft: dict[str, object] = {
+        "schemaVersion": "1",
+        "commandId": str(uuid4()),
+        "fromAccountId": str(account_id),
+        "fromAmount": "100.00",
+        "fromCurrency": "EUR",
+        "toAccountId": str(wallet_id),
+        "toAmount": "4800.00",
+        "toCurrency": "UAH",
+        "capturedAt": _iso(clock()),
+        "capturedTimezone": TIMEZONE_NAME,
+        "occurredOn": local_date.isoformat(),
+    }
+    evaluation = await client.post(
+        "/api/v1/transfers/evaluate",
+        json={"draft": draft},
+        headers=identity.headers,
+    )
+    assert evaluation.status_code == 200, evaluation.text
+    assert evaluation.json()["decision"] == "NEEDS_CONFIRMATION"
+
+    committed = await client.post(
+        "/api/v1/transfers/commit",
+        json={
+            "schemaVersion": "1",
+            "draft": draft,
+            "draftHash": evaluation.json()["draftHash"],
+            "confirmedAt": _iso(clock()),
+        },
+        headers=identity.headers,
+    )
+    assert committed.status_code == 201, committed.text
+
+    assert await _drain(session_factory=session_factory, clock=clock) >= 1
+
+    async with session_factory() as database:
+        unpublished = await database.scalar(
+            select(func.count())
+            .select_from(FinanceTransferOutboxEventRow)
+            .where(
+                FinanceTransferOutboxEventRow.user_id == identity.user_id,
+                FinanceTransferOutboxEventRow.published_at.is_(None),
+            )
+        )
+        dead = await database.scalar(
+            select(func.count())
+            .select_from(FinanceTransferOutboxEventRow)
+            .where(FinanceTransferOutboxEventRow.dead_lettered_at.is_not(None))
+        )
+    assert unpublished == 0
+    assert dead == 0
+
+    after = await _home(client, identity)
+    assert after.status_code == 200, after.text
+    payload = after.json()
+    # The euro that left is gone from the euro balance.
+    assert _amount(payload["balance"]["amount"]) == balance_before - Decimal("100.00")
+    # And it was neither income nor expense.
+    assert _amount(payload["monthSummary"]["income"]) == income_before
+    assert _amount(payload["monthSummary"]["expense"]) == expense_before
+    # The delta follows the balance, not the net flow, or the card would show a
+    # balance that fell beside a delta that did not.
+    assert _amount(payload["balance"]["deltaAmount"]) == _amount(
+        before.json()["balance"]["deltaAmount"]
+    ) - Decimal("100.00")
 
 
 async def _assert_tampered_event_retry(
@@ -1782,6 +1906,13 @@ async def _exercise() -> None:
                 account_id=account_id,
                 session_factory=session_factory,
                 projector=projector,
+                clock=clock,
+            )
+            await _assert_transfer_projection(
+                client=client,
+                identity=identity,
+                account_id=account_id,
+                session_factory=session_factory,
                 clock=clock,
             )
             await _assert_leadership_health_and_takeover(
