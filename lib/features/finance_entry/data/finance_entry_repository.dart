@@ -89,6 +89,7 @@ abstract interface class FinanceEntryRepositoryClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   });
 
   Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets();
@@ -421,6 +422,7 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) {
     return _authorized(
       (accessToken) => _api.readAnalyticsWindow(
@@ -428,6 +430,7 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         period: period,
         from: from,
         to: to,
+        accountId: accountId,
       ),
     );
   }

@@ -613,6 +613,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<UserProfile>> readProfile() =>

@@ -28,9 +28,19 @@ final class AnalyticsReady extends AnalyticsState {
   AnalyticsReady({
     required this.window,
     required List<OperationHistoryItem> recent,
-  }) : recent = List<OperationHistoryItem>.unmodifiable(recent);
+    List<FinanceAccount> wallets = const [],
+    this.accountId,
+  }) : recent = List<OperationHistoryItem>.unmodifiable(recent),
+       wallets = List<FinanceAccount>.unmodifiable(wallets);
 
   final AnalyticsWindow window;
+
+  /// Every wallet, so one can be chosen. Empty when they could not be read:
+  /// a report of the default wallet is still worth showing (ADR 0029).
+  final List<FinanceAccount> wallets;
+
+  /// The wallet being reported. Null is the default one.
+  final String? accountId;
 
   /// The newest operations, moved here from Home. Failing to read them must
   /// not hide the totals, so this is empty rather than fatal.
@@ -57,6 +67,10 @@ class AnalyticsController extends Notifier<AnalyticsState> {
   bool _requestInFlight = false;
   int _requestGeneration = 0;
   AnalyticsPeriodKind _period = AnalyticsPeriodKind.month;
+
+  /// Which wallet is being reported. Null is the default one.
+  String? _accountId;
+  List<FinanceAccount> _wallets = const [];
   DateTime? _customFrom;
   DateTime? _customTo;
 
@@ -121,6 +135,17 @@ class AnalyticsController extends Notifier<AnalyticsState> {
   /// when the screen is still showing the older reading.
   Future<bool> refresh() => _read(keepVisible: true);
 
+  /// Report another wallet.
+  ///
+  /// Null means the default one, which is what the balance card shows.
+  /// Figures are never added across wallets: that would need a rate, and
+  /// there is none (ADR 0029).
+  Future<void> selectAccount(String? accountId) async {
+    if (_accountId == accountId) return;
+    _accountId = accountId;
+    await _read(keepVisible: false);
+  }
+
   Future<bool> _read({required bool keepVisible}) async {
     if (_requestInFlight) return true;
     final requestGeneration = _beginRequest();
@@ -131,12 +156,19 @@ class AnalyticsController extends Notifier<AnalyticsState> {
         period: _period,
         from: _customFrom == null ? null : _dateWire(_customFrom!),
         to: _customTo == null ? null : _dateWire(_customTo!),
+        accountId: _accountId,
       );
       if (!_isCurrentRequest(requestGeneration)) return false;
       switch (result) {
         case FinanceEntrySuccess(:final value):
-          state = AnalyticsReady(window: value, recent: const []);
+          state = AnalyticsReady(
+            window: value,
+            recent: const [],
+            wallets: _wallets,
+            accountId: _accountId,
+          );
           await _loadRecent(requestGeneration);
+          await _loadWallets(requestGeneration);
           return true;
         case FinanceEntryFailureResult(:final failure):
           if (_requiresAuthentication(failure)) {
@@ -160,6 +192,32 @@ class AnalyticsController extends Notifier<AnalyticsState> {
   ///
   /// Deliberately swallows its own failure: the month's totals are the point
   /// of this screen, and losing them because a list failed would be worse.
+  /// Reads the wallet list beside the report.
+  ///
+  /// A failure leaves the chooser out rather than the report: not knowing
+  /// which other wallets exist is not a reason to hide this one's figures.
+  Future<void> _loadWallets(int requestGeneration) async {
+    if (_wallets.isNotEmpty) return;
+    try {
+      final result = await _repository.listAccounts();
+      if (!_isCurrentRequest(requestGeneration)) return;
+      if (result case FinanceEntrySuccess(:final value)) {
+        _wallets = value.accounts;
+        final current = state;
+        if (current is AnalyticsReady) {
+          state = AnalyticsReady(
+            window: current.window,
+            recent: current.recent,
+            wallets: _wallets,
+            accountId: _accountId,
+          );
+        }
+      }
+    } on Object {
+      // Left out, deliberately.
+    }
+  }
+
   Future<void> _loadRecent(int requestGeneration) async {
     try {
       final result = await _repository.listOperations(

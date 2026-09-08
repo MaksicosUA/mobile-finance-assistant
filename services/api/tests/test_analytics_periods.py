@@ -397,6 +397,7 @@ class _FakeAnalytics:
     def __init__(self, *, failure: Exception | None = None) -> None:
         self.failure = failure
         self.asked: list[tuple[str, date | None, date | None]] = []
+        self.wallets: list[UUID | None] = []
 
     async def analyse_period(
         self,
@@ -405,11 +406,13 @@ class _FakeAnalytics:
         kind: str,
         from_date: date | None = None,
         to_date: date | None = None,
+        account_id: UUID | None = None,
     ):  # type: ignore[no-untyped-def]
         del user_id
         if self.failure is not None:
             raise self.failure
         self.asked.append((kind, from_date, to_date))
+        self.wallets.append(account_id)
         return _to_v2_contract(
             build_analytics(
                 account=_account(),
@@ -423,3 +426,39 @@ class _FakeAnalytics:
             ),
             kind=kind,  # type: ignore[arg-type]
         )
+
+
+def test_a_report_can_name_the_wallet_it_is_about() -> None:
+    """Figures are never added across wallets: that would need a rate, and
+    there is none (ADR 0029). A report answers for one of them, and naming
+    none means the default one — what the balance card shows."""
+
+    async def scenario() -> None:
+        repository = _FakeAnalytics()
+        wallet = UUID("55555555-5555-4555-8555-555555555555")
+        app = create_app(
+            analytics_repository=repository,
+            current_user_authenticator=_StaticAuthenticator(),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            headers = {"Authorization": "Bearer synthetic-token"}
+            named = await client.get(
+                "/api/v1/analytics/v2",
+                params={"period": "month", "accountId": str(wallet)},
+                headers=headers,
+            )
+            assert named.status_code == 200, named.text
+
+            unnamed = await client.get(
+                "/api/v1/analytics/v2",
+                params={"period": "month"},
+                headers=headers,
+            )
+            assert unnamed.status_code == 200, unnamed.text
+
+        assert repository.wallets == [wallet, None]
+
+    asyncio.run(scenario())

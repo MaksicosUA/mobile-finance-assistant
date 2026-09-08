@@ -1456,6 +1456,7 @@ final class _FakeFinanceEntryRepository
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<UserProfile>> readProfile() =>

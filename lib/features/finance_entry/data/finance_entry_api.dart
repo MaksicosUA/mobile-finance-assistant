@@ -146,6 +146,7 @@ abstract interface class FinanceEntryApiClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   });
 
   Future<FinanceEntryResult<OperationProposal>> parseOperationText({
@@ -918,6 +919,7 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) {
     final custom = period == AnalyticsPeriodKind.custom;
     if (custom != (from != null && to != null)) {
@@ -934,6 +936,11 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     if (custom) {
       query.write('&from=${Uri.encodeQueryComponent(from!)}');
       query.write('&to=${Uri.encodeQueryComponent(to!)}');
+    }
+    // Naming none means the default wallet, which is what the balance card
+    // shows. Figures are never added across wallets (ADR 0029).
+    if (accountId != null) {
+      query.write('&accountId=${Uri.encodeQueryComponent(accountId)}');
     }
     return _request(
       method: 'GET',

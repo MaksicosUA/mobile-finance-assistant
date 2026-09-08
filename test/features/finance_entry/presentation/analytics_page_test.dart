@@ -185,7 +185,66 @@ void main() {
 
     expect(find.byKey(const Key('analytics-failure')), findsOneWidget);
   });
+
+  // Several wallets, one currency each (ADR 0029).
+  testWidgets('one wallet offers no chooser', (tester) async {
+    await _pump(tester, _FakeRepository());
+
+    expect(find.byKey(const Key('analytics-wallet')), findsNothing);
+  });
+
+  testWidgets('a report can be asked for another wallet', (tester) async {
+    final repository = _FakeRepository()
+      ..wallets = [
+        _wallet(
+          id: _euroId,
+          name: 'Основной',
+          currency: 'EUR',
+          isDefault: true,
+        ),
+        _wallet(
+          id: _hryvniaId,
+          name: 'Гривна',
+          currency: 'UAH',
+          isDefault: false,
+        ),
+      ];
+    await _pump(tester, repository);
+
+    expect(find.byKey(const Key('analytics-wallet')), findsOneWidget);
+    // The first read names no wallet, which means the default one.
+    expect(repository.reportedWallets, [null]);
+
+    await tester.tap(find.byKey(const Key('analytics-wallet')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Гривна · UAH').last);
+    await tester.pumpAndSettle();
+
+    expect(repository.reportedWallets.last, _hryvniaId);
+  });
 }
+
+const _euroId = '11111111-1111-4111-8111-111111111111';
+const _hryvniaId = '55555555-5555-4555-8555-555555555555';
+
+FinanceAccount _wallet({
+  required String id,
+  required String name,
+  required String currency,
+  required bool isDefault,
+}) => FinanceAccount(
+  accountId: id,
+  userId: '22222222-2222-4222-8222-222222222222',
+  commandId: '33333333-3333-4333-8333-333333333333',
+  name: name,
+  currency: currency,
+  openingBalance: '0',
+  openingBalanceOn: '2026-01-01',
+  openingTimezone: 'Europe/Berlin',
+  isDefault: isDefault,
+  confirmedAt: '2026-01-01T10:00:00.000Z',
+  createdAt: '2026-01-01T10:00:00.000Z',
+);
 
 Future<void> _pump(
   WidgetTester tester,
@@ -280,6 +339,24 @@ AnalyticsWindow _window({bool empty = false}) => AnalyticsWindow(
 );
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
+  /// Wallets to offer. Empty means the chooser has nothing to draw, which is
+  /// also what happens when the list cannot be read at all.
+  List<FinanceAccount> wallets = const [];
+  final List<String?> reportedWallets = [];
+
+  @override
+  Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {
+    if (wallets.isEmpty) throw UnimplementedError();
+    return FinanceEntrySuccess<FinanceAccountSetup>(
+      requestId: 'req_synthetic',
+      value: FinanceAccountSetup(
+        canonicalTimezone: 'Europe/Berlin',
+        timezoneRevision: 1,
+        accounts: wallets,
+      ),
+    );
+  }
+
   @override
   Future<FinanceEntryResult<BudgetsSnapshot>> readBudgets() =>
       throw UnimplementedError();
@@ -336,7 +413,9 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     required AnalyticsPeriodKind period,
     String? from,
     String? to,
+    String? accountId,
   }) async {
+    reportedWallets.add(accountId);
     final kind = failure;
     if (kind != null || (failRefresh && asked.isNotEmpty)) {
       return FinanceEntryFailureResult<AnalyticsWindow>(

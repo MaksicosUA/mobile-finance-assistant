@@ -78,8 +78,12 @@ class PostgresAnalyticsRepository:
         kind: ReportingPeriodKind,
         from_date: date | None = None,
         to_date: date | None = None,
+        account_id: UUID | None = None,
     ) -> AnalyticsV2Response:
-        account, operations = await self._read(user_id=user_id)
+        account, operations = await self._read(
+            user_id=user_id,
+            account_id=account_id,
+        )
         return _to_v2_contract(
             build_analytics(
                 account=account,
@@ -93,14 +97,19 @@ class PostgresAnalyticsRepository:
         )
 
     async def _read(
-        self, *, user_id: UUID
+        self, *, user_id: UUID, account_id: UUID | None = None
     ) -> tuple[ProjectionAccount, tuple[AnalyticsOperation, ...]]:
         async with self._session_factory() as database:
+            # A report answers for one wallet. Naming none means the default
+            # one, which is what the balance card shows (ADR 0029) — the
+            # figures are never added across currencies.
             account = await database.scalar(
                 select(FinanceAccountRow).where(
                     FinanceAccountRow.user_id == user_id,
                     FinanceAccountRow.status == "active",
-                    FinanceAccountRow.is_default.is_(True),
+                    FinanceAccountRow.id == account_id
+                    if account_id is not None
+                    else FinanceAccountRow.is_default.is_(True),
                 )
             )
             if account is None:
@@ -256,8 +265,9 @@ class UnavailableAnalyticsRepository:
         kind: ReportingPeriodKind,
         from_date: date | None = None,
         to_date: date | None = None,
+        account_id: UUID | None = None,
     ) -> AnalyticsV2Response:
-        del user_id, kind, from_date, to_date
+        del user_id, kind, from_date, to_date, account_id
         raise AnalyticsUnavailable
 
     async def analyse_current_month(self, *, user_id: UUID) -> AnalyticsResponse:
