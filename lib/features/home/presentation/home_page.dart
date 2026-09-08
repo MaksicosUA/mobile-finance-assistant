@@ -14,6 +14,7 @@ import 'home_header_time.dart';
 import 'money_formatter.dart';
 import 'widgets/app_header.dart';
 import 'widgets/balance_card.dart';
+import 'widgets/wallet_lines.dart';
 import 'widgets/home_empty_view.dart';
 import 'widgets/home_failure_view.dart';
 import 'widgets/home_loading_view.dart';
@@ -430,6 +431,27 @@ class _PopulatedHome extends StatelessWidget {
             privacyEnabled: privacyEnabled,
             onTogglePrivacy: onTogglePrivacy,
           ),
+        // The other wallets, beneath the card and never added to it: summing
+        // across currencies needs a rate, and there is none (ADR 0029).
+        if (snapshot.otherWallets.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          WalletLines(
+            title: l10n.otherWalletsTitle,
+            items: snapshot.otherWallets
+                .map(
+                  (wallet) => WalletLineItem(
+                    accountId: wallet.accountId,
+                    name: wallet.name,
+                    balance: MoneyFormatter.format(
+                      wallet.balance,
+                      locale: locale,
+                      privacy: privacyEnabled,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ],
         const SizedBox(height: AppSpacing.lg),
         QuickEntryCta(
           label: l10n.addBySentence,

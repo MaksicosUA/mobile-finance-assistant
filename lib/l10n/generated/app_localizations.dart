@@ -3248,6 +3248,12 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Сумма в {parsed}, а счёт в {account} — не подставил её.'**
   String entrySentenceCurrencyMismatch(String parsed, String account);
+
+  /// Home: wallets in other currencies, listed beside the balance card and never summed with it (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'ДРУГИЕ КОШЕЛЬКИ'**
+  String get otherWalletsTitle;
 }
 
 class _AppLocalizationsDelegate

@@ -1829,4 +1829,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String entrySentenceCurrencyMismatch(String parsed, String account) {
     return 'Сумма в $parsed, а счёт в $account — не подставил её.';
   }
+
+  @override
+  String get otherWalletsTitle => 'ДРУГИЕ КОШЕЛЬКИ';
 }

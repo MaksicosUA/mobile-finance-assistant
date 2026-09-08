@@ -76,6 +76,56 @@ void main() {
     expect(find.byKey(const Key('home-populated')), findsNothing);
   });
 
+  // Several wallets, one currency each (ADR 0029).
+  testWidgets('other wallets are listed beside the card and never summed', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      repository: _ValueHomeRepository(
+        loadHomeFixtureSnapshotSync('wallets.json'),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('home-wallets')), findsOneWidget);
+    // The card still states the default wallet, in its own currency.
+    expect(find.text('3 240,50 €'), findsOneWidget);
+    // The other wallet states its own, and nowhere is a total drawn: adding
+    // euro to hryvnia would need a rate the product does not have.
+    expect(find.text('Гривна'), findsOneWidget);
+    expect(find.textContaining('4 800,00'), findsOneWidget);
+    expect(find.text('Основной'), findsNothing);
+  });
+
+  testWidgets('a profile with one wallet shows no list', (tester) async {
+    await _pumpApp(
+      tester,
+      repository: _ValueHomeRepository(
+        loadHomeFixtureSnapshotSync('populated.json'),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('home-wallets')), findsNothing);
+  });
+
+  testWidgets('privacy mode masks a wallet like everything else', (
+    tester,
+  ) async {
+    await _pumpApp(
+      tester,
+      repository: _ValueHomeRepository(
+        loadHomeFixtureSnapshotSync('wallets.json'),
+      ),
+      settings: const AppSettings(privacyMode: true),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('home-wallets')), findsOneWidget);
+    expect(find.textContaining('4 800'), findsNothing);
+  });
+
   testWidgets(
     'mounted Home reloads after a same-account session epoch advance',
     (tester) async {
