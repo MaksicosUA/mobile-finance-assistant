@@ -24,6 +24,8 @@ from .db_models import (
     FinanceGoalRow,
     FinanceOperationRow,
     FinanceOutboxEventRow,
+    FinanceTransferOutboxEventRow,
+    FinanceTransferRow,
     HomeProjectionActionRow,
     HomeProjectionGoalRow,
     HomeProjectionPaymentRow,
@@ -44,6 +46,7 @@ from .home_projection import (
     ProjectionGoalContribution,
     ProjectionOperation,
     ProjectionPlannedCost,
+    ProjectionTransfer,
     build_current_home_revision,
 )
 from .projector_supervision import (
@@ -54,7 +57,14 @@ from .projector_supervision import (
 )
 from .timezones import validated_iana_timezone_key
 
-type _EventKind = Literal["account", "operation", "planned_cost", "goal", "category"]
+type _EventKind = Literal[
+    "account",
+    "operation",
+    "planned_cost",
+    "goal",
+    "category",
+    "transfer",
+]
 
 _LOGGER = logging.getLogger("mobile_finance_api.home_projector")
 _PROJECTION_SCHEMA_VERSION = 2
@@ -289,6 +299,13 @@ class PostgresHomeProjector:
                         | (FinanceCategoryOutboxEventRow.next_attempt_at > now)
                     ),
                 ),
+                select(FinanceTransferOutboxEventRow.user_id.label("user_id")).where(
+                    FinanceTransferOutboxEventRow.published_at.is_(None),
+                    (
+                        FinanceTransferOutboxEventRow.dead_lettered_at.is_not(None)
+                        | (FinanceTransferOutboxEventRow.next_attempt_at > now)
+                    ),
+                ),
             ).subquery()
             account_query = (
                 select(
@@ -461,6 +478,40 @@ class PostgresHomeProjector:
                     FinanceCategoryOutboxEventRow.user_id.not_in(excluded_user_ids)
                 )
             category_row = (await database.execute(category_query)).one_or_none()
+            transfer_query = (
+                select(
+                    FinanceTransferOutboxEventRow.id,
+                    FinanceTransferOutboxEventRow.user_id,
+                    FinanceTransferOutboxEventRow.created_at,
+                )
+                .join(UserRow, UserRow.id == FinanceTransferOutboxEventRow.user_id)
+                .join(
+                    FinanceAccountRow,
+                    FinanceAccountRow.user_id == FinanceTransferOutboxEventRow.user_id,
+                )
+                .where(
+                    FinanceTransferOutboxEventRow.published_at.is_(None),
+                    FinanceTransferOutboxEventRow.dead_lettered_at.is_(None),
+                    FinanceTransferOutboxEventRow.next_attempt_at.is_not(None),
+                    FinanceTransferOutboxEventRow.next_attempt_at <= now,
+                    UserRow.disabled_at.is_(None),
+                    FinanceAccountRow.status == "active",
+                    FinanceAccountRow.is_default.is_(True),
+                    FinanceTransferOutboxEventRow.user_id.not_in(
+                        select(blocked_users.c.user_id)
+                    ),
+                )
+                .order_by(
+                    FinanceTransferOutboxEventRow.created_at.asc(),
+                    FinanceTransferOutboxEventRow.id.asc(),
+                )
+                .limit(1)
+            )
+            if excluded_user_ids:
+                transfer_query = transfer_query.where(
+                    FinanceTransferOutboxEventRow.user_id.not_in(excluded_user_ids)
+                )
+            transfer_row = (await database.execute(transfer_query)).one_or_none()
 
         candidates = tuple(
             candidate
@@ -505,6 +556,14 @@ class PostgresHomeProjector:
                     user_id=category_row.user_id,
                     created_at=_aware_utc(category_row.created_at),
                 ),
+                None
+                if transfer_row is None
+                else _OutboxCandidate(
+                    kind="transfer",
+                    event_id=transfer_row.id,
+                    user_id=transfer_row.user_id,
+                    created_at=_aware_utc(transfer_row.created_at),
+                ),
             )
             if candidate is not None
         )
@@ -546,11 +605,16 @@ class PostgresHomeProjector:
                     )
                 ).all()
             )
-            if len(accounts) != 1:
+            # Home draws the default wallet; the others are held beside it and
+            # never summed into it, because adding across currencies needs a
+            # rate and there is none (ADR 0029). Every wallet is still locked
+            # above: a transfer touches two of them.
+            defaults = [candidate for candidate in accounts if candidate.is_default]
+            if len(defaults) != 1:
                 raise HomeProjectionInvariantError(
-                    "projection requires exactly one account"
+                    "projection requires exactly one default wallet"
                 )
-            account = accounts[0]
+            account = defaults[0]
 
             operations = tuple(
                 (
@@ -704,6 +768,36 @@ class PostgresHomeProjector:
                     )
                 ).all()
             )
+            # Both sides of a transfer are read: this user may be on either,
+            # and which one decides whether the money arrived or left.
+            transfers = tuple(
+                (
+                    await database.scalars(
+                        select(FinanceTransferRow)
+                        .where(FinanceTransferRow.user_id == user_id)
+                        .order_by(
+                            FinanceTransferRow.created_at.asc(),
+                            FinanceTransferRow.id.asc(),
+                        )
+                    )
+                ).all()
+            )
+            transfer_events = tuple(
+                (
+                    await database.scalars(
+                        select(FinanceTransferOutboxEventRow)
+                        .where(
+                            FinanceTransferOutboxEventRow.user_id == user_id,
+                            FinanceTransferOutboxEventRow.published_at.is_(None),
+                        )
+                        .order_by(
+                            FinanceTransferOutboxEventRow.created_at.asc(),
+                            FinanceTransferOutboxEventRow.id.asc(),
+                        )
+                        .with_for_update()
+                    )
+                ).all()
+            )
             eligibility_at = _aware_utc(self._clock())
             if _stream_is_blocked(
                 account_events=account_events,
@@ -711,6 +805,7 @@ class PostgresHomeProjector:
                 planned_cost_events=planned_cost_events,
                 goal_events=goal_events,
                 category_events=category_events,
+                transfer_events=transfer_events,
                 eligibility_at=eligibility_at,
             ):
                 raise _ProjectionStreamBlocked
@@ -720,6 +815,7 @@ class PostgresHomeProjector:
                 or planned_cost_events
                 or goal_events
                 or category_events
+                or transfer_events
             )
             if require_pending and not pending_events:
                 return False
@@ -740,7 +836,10 @@ class PostgresHomeProjector:
                 user_id=user_id,
                 events=operation_events,
             )
-            _validate_account_events(account_events, account=account)
+            _validate_account_events(
+                account_events,
+                accounts_by_id={row.id: row for row in accounts},
+            )
             _validate_operation_events(
                 operation_events,
                 operations_by_id=operations_by_id,
@@ -760,6 +859,10 @@ class PostgresHomeProjector:
             _validate_category_events(
                 category_events,
                 categories_by_id={category.id: category for category in categories},
+            )
+            _validate_transfer_events(
+                transfer_events,
+                transfers_by_id={transfer.id: transfer for transfer in transfers},
             )
 
             generated_at = _aware_utc(self._clock())
@@ -805,6 +908,7 @@ class PostgresHomeProjector:
                 goal_contributions=tuple(
                     _goal_contribution_fact(row) for row in goal_contributions
                 ),
+                transfers=tuple(_transfer_fact(row) for row in transfers),
             )
             latest = await database.scalar(
                 select(HomeProjectionSnapshotRow)
@@ -905,6 +1009,16 @@ class PostgresHomeProjector:
                 category_event.last_failed_at = None
                 category_event.failure_code = None
                 category_event.dead_lettered_at = None
+            for transfer_event in transfer_events:
+                transfer_event.published_at = projection.generated_at
+                transfer_event.attempt_count = min(
+                    transfer_event.attempt_count + 1,
+                    32767,
+                )
+                transfer_event.next_attempt_at = None
+                transfer_event.last_failed_at = None
+                transfer_event.failure_code = None
+                transfer_event.dead_lettered_at = None
         return True
 
     async def _record_failed_attempt(self, error: _OutboxContractError) -> None:
@@ -930,6 +1044,27 @@ class PostgresHomeProjector:
                         policy=self._retry_policy,
                     )
                     _apply_retry_decision(account_event, decision=decision)
+                return
+            if error.kind == "transfer":
+                transfer_event = await database.scalar(
+                    select(FinanceTransferOutboxEventRow)
+                    .where(
+                        FinanceTransferOutboxEventRow.id == error.event_id,
+                        FinanceTransferOutboxEventRow.published_at.is_(None),
+                        FinanceTransferOutboxEventRow.dead_lettered_at.is_(None),
+                    )
+                    .with_for_update()
+                )
+                if transfer_event is not None:
+                    decision = event_retry_decision(
+                        previous_validation_failure_count=(
+                            transfer_event.validation_failure_count
+                        ),
+                        failed_at=failed_at,
+                        failure_code=error.failure_code,
+                        policy=self._retry_policy,
+                    )
+                    _apply_retry_decision(transfer_event, decision=decision)
                 return
             if error.kind == "goal":
                 goal_event = await database.scalar(
@@ -1042,27 +1177,31 @@ def _validate_profile(*, user: UserRow, account: FinanceAccountRow) -> None:
 def _validate_account_events(
     events: Sequence[FinanceAccountOutboxEventRow],
     *,
-    account: FinanceAccountRow,
+    accounts_by_id: dict[UUID, FinanceAccountRow],
 ) -> None:
-    expected_payload = {
-        "schemaVersion": "1",
-        "accountId": str(account.id),
-        "userId": str(account.user_id),
-        "commandId": str(account.command_id),
-    }
+    """Check each event against the wallet it names, not against the default.
+
+    A user may hold several wallets (ADR 0029), and opening one publishes an
+    event about that wallet. Validating every account event against the default
+    wallet would dead-letter the moment a second one is opened.
+    """
+
     for event in events:
+        account = accounts_by_id.get(event.aggregate_id)
         if (
-            event.aggregate_type != "finance_account"
-            or event.aggregate_id != account.id
+            account is None
+            or event.aggregate_type != "finance_account"
             or event.user_id != account.user_id
         ):
             raise _OutboxContractError(kind="account", event_id=event.id)
         if event.event_type == "finance.account.opened.v1":
             # The opening event is bound to the account's own opening command.
-            if (
-                event.command_id != account.command_id
-                or event.payload != expected_payload
-            ):
+            if event.command_id != account.command_id or event.payload != {
+                "schemaVersion": "1",
+                "accountId": str(account.id),
+                "userId": str(account.user_id),
+                "commandId": str(account.command_id),
+            }:
                 raise _OutboxContractError(kind="account", event_id=event.id)
         elif event.event_type in {
             "finance.account.baseline_corrected.v1",
@@ -1223,6 +1362,36 @@ def _validate_category_events(
             raise _OutboxContractError(kind="category", event_id=event.id)
 
 
+def _validate_transfer_events(
+    events: Sequence[FinanceTransferOutboxEventRow],
+    *,
+    transfers_by_id: dict[UUID, FinanceTransferRow],
+) -> None:
+    for event in events:
+        transfer = transfers_by_id.get(event.aggregate_id)
+        if transfer is None or transfer.user_id != event.user_id:
+            raise _OutboxContractError(kind="transfer", event_id=event.id)
+        if (
+            event.aggregate_type != "finance_transfer"
+            or event.event_type != "finance.transfer.accepted.v1"
+        ):
+            raise _OutboxContractError(kind="transfer", event_id=event.id)
+        # Identifier-only, and the amounts are deliberately absent: the
+        # projector reads them from the transfer row, so no event can replay a
+        # stale figure (ADR 0011).
+        if event.payload != {
+            "schemaVersion": "1",
+            "transferId": str(transfer.id),
+            "userId": str(transfer.user_id),
+            "commandId": str(event.command_id),
+        }:
+            raise _OutboxContractError(kind="transfer", event_id=event.id)
+        # One event per transfer, written with it. A different command id means
+        # the event does not describe the row it points at.
+        if event.command_id != transfer.command_id:
+            raise _OutboxContractError(kind="transfer", event_id=event.id)
+
+
 def _stream_is_blocked(
     *,
     account_events: Sequence[FinanceAccountOutboxEventRow],
@@ -1230,6 +1399,7 @@ def _stream_is_blocked(
     planned_cost_events: Sequence[PlannedCostOutboxEventRow],
     goal_events: Sequence[FinanceGoalOutboxEventRow],
     category_events: Sequence[FinanceCategoryOutboxEventRow],
+    transfer_events: Sequence[FinanceTransferOutboxEventRow],
     eligibility_at: datetime,
 ) -> bool:
     return (
@@ -1253,6 +1423,10 @@ def _stream_is_blocked(
             _event_is_blocked(event, eligibility_at=eligibility_at)
             for event in category_events
         )
+        or any(
+            _event_is_blocked(event, eligibility_at=eligibility_at)
+            for event in transfer_events
+        )
     )
 
 
@@ -1261,7 +1435,8 @@ def _event_is_blocked(
     | FinanceOutboxEventRow
     | PlannedCostOutboxEventRow
     | FinanceGoalOutboxEventRow
-    | FinanceCategoryOutboxEventRow,
+    | FinanceCategoryOutboxEventRow
+    | FinanceTransferOutboxEventRow,
     *,
     eligibility_at: datetime,
 ) -> bool:
@@ -1277,7 +1452,8 @@ def _apply_retry_decision(
     | FinanceOutboxEventRow
     | PlannedCostOutboxEventRow
     | FinanceGoalOutboxEventRow
-    | FinanceCategoryOutboxEventRow,
+    | FinanceCategoryOutboxEventRow
+    | FinanceTransferOutboxEventRow,
     *,
     decision: EventRetryDecision,
 ) -> None:
@@ -1287,6 +1463,19 @@ def _apply_retry_decision(
     event.last_failed_at = decision.last_failed_at
     event.failure_code = decision.failure_code
     event.dead_lettered_at = decision.dead_lettered_at
+
+
+def _transfer_fact(row: FinanceTransferRow) -> ProjectionTransfer:
+    return ProjectionTransfer(
+        transfer_id=row.id,
+        user_id=row.user_id,
+        from_account_id=row.from_account_id,
+        from_amount=row.from_amount,
+        to_account_id=row.to_account_id,
+        to_amount=row.to_amount,
+        occurred_on=row.occurred_on,
+        created_at=row.created_at,
+    )
 
 
 def _account_fact(row: FinanceAccountRow) -> ProjectionAccount:
