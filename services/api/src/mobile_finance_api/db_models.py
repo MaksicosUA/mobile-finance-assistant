@@ -2789,12 +2789,21 @@ class HomeProjectionSnapshotRow(Base):
             ),
             name="ck_home_projection_snapshots_finite_decimals",
         ),
+        # A revision belongs to one wallet: a user may hold several, one
+        # currency each, and their balances are never summed (ADR 0029).
+        ForeignKeyConstraint(
+            ["account_id", "user_id"],
+            ["finance_accounts.id", "finance_accounts.user_id"],
+            ondelete="CASCADE",
+            name="fk_home_projection_snapshots_owned_account",
+        ),
         UniqueConstraint(
             "user_id",
+            "account_id",
             "timezone_name",
             "period_start",
             "revision",
-            name="uq_home_projection_snapshots_user_timezone_period_revision",
+            name="uq_home_projection_snapshots_account_timezone_period_revision",
         ),
     )
 
@@ -2804,6 +2813,7 @@ class HomeProjectionSnapshotRow(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
+    account_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     timezone_name: Mapped[str] = mapped_column(String(128), nullable=False)
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)

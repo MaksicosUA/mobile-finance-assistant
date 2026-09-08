@@ -718,7 +718,6 @@ def test_source_fact_newer_than_cutoff_fails_closed(
     "operation",
     [
         _operation(1, user_id=_OTHER_USER_ID, merchant="Sensitive Shop"),
-        _operation(2, account_id=_OTHER_ACCOUNT_ID, merchant="Sensitive Shop"),
         _operation(3, currency="USD", merchant="Sensitive Shop"),
         _operation(4, status="pending", merchant="Sensitive Shop"),
         _operation(

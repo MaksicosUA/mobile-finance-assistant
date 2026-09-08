@@ -11,6 +11,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Self
+from uuid import UUID
 
 from pydantic import (
     AfterValidator,
@@ -253,6 +254,22 @@ class HomeWarning(ApiModel):
     block: OpenEnumValue
 
 
+class HomeWallet(ApiModel):
+    """One wallet beside the balance card, never summed into it.
+
+    Adding across currencies needs a rate, and there is none: a wallet holds one
+    currency and nothing is converted (ADR 0029). Each figure comes from that
+    wallet's own projected revision, published in the same cycle as the card's,
+    so both sides of a transfer move together.
+    """
+
+    account_id: UUID = Field(alias="accountId")
+    name: NonEmptyText
+    currency: CurrencyCode
+    balance: DecimalString
+    is_default: bool = Field(alias="isDefault")
+
+
 class HomeResponse(ApiModel):
     """Home v2 response preserving unknown authoritative operation fields."""
 
@@ -273,8 +290,24 @@ class HomeResponse(ApiModel):
         alias="recentTransactions",
         max_length=3,
     )
+    # Every wallet this profile holds, the default one included, so a client
+    # can draw the card and the lines beneath it from one answer. Additive:
+    # Home v2 tolerates fields a client does not know.
+    wallets: tuple[HomeWallet, ...] = Field(default_factory=tuple, max_length=64)
     available_actions: tuple[OpenEnumValue, ...] = Field(alias="availableActions")
     warnings: tuple[HomeWarning, ...] = Field(default_factory=tuple, max_length=16)
+
+    @field_validator("wallets")
+    @classmethod
+    def wallets_have_one_default(
+        cls,
+        value: tuple[HomeWallet, ...],
+    ) -> tuple[HomeWallet, ...]:
+        if value and sum(1 for wallet in value if wallet.is_default) != 1:
+            raise ValueError("exactly one wallet is the default")
+        if len({wallet.account_id for wallet in value}) != len(value):
+            raise ValueError("a wallet appears once")
+        return value
 
     @field_validator("available_actions")
     @classmethod
