@@ -1914,4 +1914,54 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get transferIssueConfirmationBeforeCapture =>
       'Подтверждение раньше самой записи.';
+
+  @override
+  String get walletTitle => 'Новый кошелёк';
+
+  @override
+  String get walletSettingsAction => 'Открыть кошелёк';
+
+  @override
+  String get walletSettingsDescription =>
+      'Счёт в другой валюте — деньги не конвертируются';
+
+  @override
+  String get walletNameField => 'Название';
+
+  @override
+  String get walletCurrencyField => 'Валюта';
+
+  @override
+  String get walletOpeningBalanceField => 'Сколько сейчас на нём';
+
+  @override
+  String get walletOpeningDateField => 'С какого числа';
+
+  @override
+  String get walletCurrencySearch => 'Поиск валюты';
+
+  @override
+  String get walletCurrencyHeld => 'Уже есть';
+
+  @override
+  String get walletExplanation =>
+      'Деньги между кошельками не конвертируются. Каждый живёт в своей валюте, а перевод записывается двумя суммами.';
+
+  @override
+  String get walletReviewAction => 'Продолжить';
+
+  @override
+  String get walletConfirmAction => 'Открыть';
+
+  @override
+  String get walletOpenedTitle => 'Кошелёк открыт';
+
+  @override
+  String get walletAccountRequired => 'Сначала создайте основной счёт.';
+
+  @override
+  String get walletLoadError => 'Не удалось загрузить счета.';
+
+  @override
+  String get walletWriteError => 'Не удалось открыть кошелёк.';
 }

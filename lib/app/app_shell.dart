@@ -22,6 +22,7 @@ import '../features/notifications/presentation/notifications_page.dart';
 import '../features/profile/presentation/profile_page.dart';
 import '../features/timezone/presentation/timezone_page.dart';
 import '../features/transfers/presentation/transfer_page.dart';
+import '../features/wallets/presentation/wallet_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
 import 'theme/app_colors.dart';
@@ -125,6 +126,12 @@ class _AppShellState extends ConsumerState<AppShell>
         builder: (_) => BudgetsPage(onSignInRequested: _openSessionExpired),
       ),
     );
+  }
+
+  void _openWallet() {
+    Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute<void>(builder: (_) => const WalletPage()));
   }
 
   void _openTransfer() {
@@ -297,6 +304,7 @@ class _AppShellState extends ConsumerState<AppShell>
               onBudgets: _openBudgets,
               onCorrectTimezone: _openTimezone,
               onTransfer: _openTransfer,
+              onOpenWallet: _openWallet,
               onSignOut: ref.read(authControllerProvider.notifier).signOut,
             )
           else

@@ -3398,6 +3398,102 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Подтверждение раньше самой записи.'**
   String get transferIssueConfirmationBeforeCapture;
+
+  /// Opening a wallet in another currency (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый кошелёк'**
+  String get walletTitle;
+
+  /// Profile action opening the wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть кошелёк'**
+  String get walletSettingsAction;
+
+  /// Profile action subtitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Счёт в другой валюте — деньги не конвертируются'**
+  String get walletSettingsDescription;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Название'**
+  String get walletNameField;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Валюта'**
+  String get walletCurrencyField;
+
+  /// Wallet screen: the opening balance.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сколько сейчас на нём'**
+  String get walletOpeningBalanceField;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'С какого числа'**
+  String get walletOpeningDateField;
+
+  /// Wallet screen: currency picker.
+  ///
+  /// In ru, this message translates to:
+  /// **'Поиск валюты'**
+  String get walletCurrencySearch;
+
+  /// Wallet screen: a currency this profile already holds.
+  ///
+  /// In ru, this message translates to:
+  /// **'Уже есть'**
+  String get walletCurrencyHeld;
+
+  /// Wallet screen: no conversion happens (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Деньги между кошельками не конвертируются. Каждый живёт в своей валюте, а перевод записывается двумя суммами.'**
+  String get walletExplanation;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Продолжить'**
+  String get walletReviewAction;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть'**
+  String get walletConfirmAction;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Кошелёк открыт'**
+  String get walletOpenedTitle;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала создайте основной счёт.'**
+  String get walletAccountRequired;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось загрузить счета.'**
+  String get walletLoadError;
+
+  /// Wallet screen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось открыть кошелёк.'**
+  String get walletWriteError;
 }
 
 class _AppLocalizationsDelegate

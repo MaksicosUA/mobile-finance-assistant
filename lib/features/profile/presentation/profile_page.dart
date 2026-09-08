@@ -22,6 +22,7 @@ class ProfilePage extends ConsumerStatefulWidget {
     required this.onCorrectOpeningDate,
     required this.onCorrectTimezone,
     required this.onTransfer,
+    required this.onOpenWallet,
     required this.onPlanCost,
     required this.onManageCategories,
     required this.onOperationHistory,
@@ -34,6 +35,7 @@ class ProfilePage extends ConsumerStatefulWidget {
   final VoidCallback onCorrectOpeningDate;
   final VoidCallback onCorrectTimezone;
   final VoidCallback onTransfer;
+  final VoidCallback onOpenWallet;
   final VoidCallback onPlanCost;
   final VoidCallback onManageCategories;
   final VoidCallback onOperationHistory;
@@ -124,6 +126,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     value: profile?.account?.canonicalTimezone,
                     description: l10n.timezoneSettingsDescription,
                     onPressed: widget.onCorrectTimezone,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: SettingsActionRow(
+                    key: const Key('profile-open-wallet'),
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: l10n.walletSettingsAction,
+                    description: l10n.walletSettingsDescription,
+                    onPressed: widget.onOpenWallet,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),

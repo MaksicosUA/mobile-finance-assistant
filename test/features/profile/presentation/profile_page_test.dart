@@ -308,6 +308,7 @@ Future<void> _pumpPage(
             onBudgets: () {},
             onCorrectTimezone: onCorrectTimezone ?? () {},
             onTransfer: () {},
+            onOpenWallet: () {},
             onSignOut: onSignOut ?? () async {},
           ),
         ),
