@@ -49,6 +49,15 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
   bool _requestInFlight = false;
   int _requestGeneration = 0;
 
+  /// Every wallet the profile holds (ADR 0029).
+  ///
+  /// It lives on the controller rather than being threaded through each state
+  /// because it describes the profile, not the form: rebuilding the form after
+  /// a refusal, an edit, or a recorded operation must not take the choice of
+  /// wallet away. Held here it survives all of them, and it is cleared with
+  /// the rest of the state when the session ends.
+  List<FinanceAccount> _wallets = const [];
+
   FinanceEntryRepositoryClient get _repository =>
       ref.read(financeEntryRepositoryProvider);
 
@@ -61,6 +70,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
     _requestInFlight = false;
     _accountCommit = null;
     _operationCommit = null;
+    _wallets = const [];
     return const FinanceEntryLoading();
   }
 
@@ -94,9 +104,10 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
           ref
               .read(canonicalTimezoneProvider.notifier)
               .adopt(value.canonicalTimezone);
+          _wallets = value.accounts;
           state = FinanceOperationEditing(
             account: account,
-            wallets: value.accounts,
+            wallets: _wallets,
             initialInput: _defaultOperationInput(
               account,
               timeContext.osLocalDate,
@@ -122,14 +133,12 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
   void selectAccount(FinanceAccount account, OperationEntryInput input) {
     final current = state;
     if (_requestInFlight || current is! FinanceOperationEditing) return;
-    if (!current.wallets.any(
-      (wallet) => wallet.accountId == account.accountId,
-    )) {
+    if (!_wallets.any((wallet) => wallet.accountId == account.accountId)) {
       return;
     }
     state = FinanceOperationEditing(
       account: account,
-      wallets: current.wallets,
+      wallets: _wallets,
       initialInput: input,
       latestOperationDate: current.latestOperationDate,
       accountCreated: current.accountCreated,
@@ -264,8 +273,10 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
         case FinanceEntrySuccess(:final value):
           _accountCommit = null;
           final account = value.account;
+          _wallets = [account];
           state = FinanceOperationEditing(
             account: account,
+            wallets: _wallets,
             initialInput: _defaultOperationInput(
               account,
               current.latestOperationDate,
@@ -345,6 +356,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
       }
     } on Object {
       state = FinanceOperationEditing(
+        wallets: _wallets,
         account: current.account,
         initialInput: input,
         latestOperationDate: current.latestOperationDate,
@@ -355,6 +367,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
 
     final requestGeneration = _beginRequest();
     state = FinanceOperationEditing(
+      wallets: _wallets,
       account: current.account,
       initialInput: input,
       latestOperationDate: current.latestOperationDate,
@@ -365,6 +378,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
       if (!_isCurrentRequest(requestGeneration)) return;
       if (occurredOn.isAfter(timeContext.osLocalDate)) {
         state = FinanceOperationEditing(
+          wallets: _wallets,
           account: current.account,
           initialInput: input,
           latestOperationDate: timeContext.osLocalDate,
@@ -403,6 +417,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
               );
             case FinanceOperationRejected(:final issues):
               state = FinanceOperationEditing(
+                wallets: _wallets,
                 account: current.account,
                 initialInput: input,
                 latestOperationDate: timeContext.osLocalDate,
@@ -416,6 +431,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
             state = const FinanceEntryAuthenticationRequired();
           } else {
             state = FinanceOperationEditing(
+              wallets: _wallets,
               account: current.account,
               initialInput: input,
               latestOperationDate: timeContext.osLocalDate,
@@ -427,6 +443,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
     } on Object {
       if (_isCurrentRequest(requestGeneration)) {
         state = FinanceOperationEditing(
+          wallets: _wallets,
           account: current.account,
           initialInput: input,
           latestOperationDate: current.latestOperationDate,
@@ -557,6 +574,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
     _operationCommit = null;
     final draft = current.review.draft;
     state = FinanceOperationEditing(
+      wallets: _wallets,
       account: current.account,
       initialInput: OperationEntryInput(
         type: draft.type,
@@ -605,6 +623,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
         return;
     }
     state = FinanceOperationEditing(
+      wallets: _wallets,
       account: account,
       initialInput: _defaultOperationInput(account, latestOperationDate),
       latestOperationDate: latestOperationDate,
@@ -666,6 +685,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
     _requestInFlight = false;
     _accountCommit = null;
     _operationCommit = null;
+    _wallets = const [];
     state = FinanceEntryLoadFailure(failure);
   }
 

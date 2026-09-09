@@ -370,6 +370,78 @@ void main() {
     );
     expect(find.text('UAH'), findsWidgets);
   });
+
+  // The wallet list describes the profile, not one form. Every rebuild of the
+  // entry form used to drop it, which collapsed the picker to the wallet in
+  // hand: after a refusal or a recorded operation there was no way back to
+  // another wallet without leaving the screen.
+  testWidgets('a refusal keeps the choice of wallet', (tester) async {
+    await _pumpPage(
+      tester,
+      repository: _FakeFinanceRepository(
+        _walletSetup(),
+        operationEvaluation: (draft) => FinanceOperationRejected(
+          draft: draft,
+          issues: const [
+            FinanceIssue(
+              code: FinanceIssueCode.futureOccurredDate,
+              field: FinanceIssueField.occurredOn,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byKey(const Key('operation-amount')), '250.00');
+    await _scrollTo(tester, find.byKey(const Key('operation-evaluate')));
+    await tester.tap(find.byKey(const Key('operation-evaluate')));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const Key('operation-wallet')));
+    expect(find.byKey(const Key('operation-wallet')), findsOneWidget);
+  });
+
+  testWidgets('a recorded operation keeps the choice of wallet', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _pumpPage(
+      tester,
+      repository: _FakeFinanceRepository(_walletSetup()),
+      operationDeliveryCoordinator: _FakeOperationDeliveryCoordinator(
+        (_, command) => OperationDeliveryAccepted(
+          commit: _operationCommit(command),
+          homeStatus: AcceptedWriteHomeConvergenceResult.projectionDelayed,
+        ),
+      ),
+    );
+
+    await _reviewAndConfirmOperation(tester, amount: '18.00');
+    await _scrollTo(tester, find.text('Добавить ещё одну'));
+    await tester.tap(find.text('Добавить ещё одну'));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const Key('operation-wallet')));
+    expect(find.byKey(const Key('operation-wallet')), findsOneWidget);
+  });
+
+  testWidgets('editing a reviewed operation keeps the choice of wallet', (
+    tester,
+  ) async {
+    await _pumpPage(tester, repository: _FakeFinanceRepository(_walletSetup()));
+
+    await tester.enterText(find.byKey(const Key('operation-amount')), '18.00');
+    await _scrollTo(tester, find.byKey(const Key('operation-evaluate')));
+    await tester.tap(find.byKey(const Key('operation-evaluate')));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.byKey(const Key('finance-edit')));
+    await tester.tap(find.byKey(const Key('finance-edit')));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const Key('operation-wallet')));
+    expect(find.byKey(const Key('operation-wallet')), findsOneWidget);
+  });
 }
 
 FinanceAccountSetup _walletSetup() => FinanceAccountSetup(
