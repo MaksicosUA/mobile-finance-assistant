@@ -17,6 +17,7 @@ import 'package:mobile_finance_assistant/features/home/domain/home_snapshot.dart
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 const _userId = '11111111-1111-4111-8111-111111111111';
+const _hryvniaAccountId = '77777777-7777-4777-8777-777777777777';
 const _accountId = '22222222-2222-4222-8222-222222222222';
 const _accountCommandId = '33333333-3333-4333-8333-333333333333';
 const _planCommandId = '44444444-4444-4444-8444-444444444444';
@@ -447,6 +448,62 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  // A bill can be planned in any wallet the profile holds (ADR 0029). Without
+  // a picker every plan landed on the default wallet, so a hryvnia rent could
+  // not be recorded as an obligation at all.
+  testWidgets('one wallet offers no choice', (tester) async {
+    await _pumpPage(tester, repository: _FakeRepository());
+
+    expect(find.byKey(const Key('planned-cost-wallet')), findsNothing);
+  });
+
+  testWidgets('a plan is written against the wallet that will pay it', (
+    tester,
+  ) async {
+    final repository = _FakeRepository(
+      extraWallet: true,
+      createResult: FinanceEntrySuccess<PlannedCostCreated>(
+        requestId: 'req_synthetic_planned_cost',
+        value: const PlannedCostCreated(
+          plannedCost: PlannedCost(
+            plannedCostId: _planId,
+            accountId: _hryvniaAccountId,
+            amount: '1200.00',
+            currency: 'UAH',
+            title: 'Интернет',
+            plannedOn: '2026-09-01',
+            status: 'planned',
+            isDue: false,
+          ),
+          idempotentReplay: false,
+        ),
+      ),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    expect(find.byKey(const Key('planned-cost-wallet')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('planned-cost-title')),
+      'Интернет',
+    );
+    await tester.enterText(
+      find.byKey(const Key('planned-cost-amount')),
+      '1200.00',
+    );
+    await _tapAt(tester, const Key('planned-cost-wallet'));
+    await tester.tap(find.text('Гривна · UAH').last);
+    await tester.pumpAndSettle();
+    await _tapAt(tester, const Key('planned-cost-submit'));
+
+    // Switching wallets chooses where the bill is paid from; it does not
+    // start the form again.
+    final draft = repository.drafts.single;
+    expect(draft.accountId, _hryvniaAccountId);
+    expect(draft.currency, 'UAH');
+    expect(draft.title, 'Интернет');
+    expect(draft.amount, '1200.00');
+  });
 }
 
 PlannedCostRecurrence _recurrence({
@@ -680,6 +737,7 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
   ) => throw UnimplementedError();
   _FakeRepository({
     this.hasAccount = true,
+    this.extraWallet = false,
     this.listFailure,
     this.createResult,
     this.plans = const [],
@@ -694,6 +752,9 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
   final List<String> settled = [];
   final List<PlannedCostTransition> transitions = [];
   final bool hasAccount;
+
+  /// A second wallet in another currency (ADR 0029).
+  final bool extraWallet;
   final FinanceEntryFailure? listFailure;
   final FinanceEntryResult<PlannedCostCreated>? createResult;
   final List<PlannedCostDraft> drafts = [];
@@ -751,6 +812,20 @@ final class _FakeRepository implements FinanceEntryRepositoryClient {
                   confirmedAt: '2026-07-10T10:00:00.000Z',
                   createdAt: '2026-07-10T10:00:00.000Z',
                 ),
+                if (extraWallet)
+                  const FinanceAccount(
+                    accountId: _hryvniaAccountId,
+                    userId: _userId,
+                    commandId: '88888888-8888-4888-8888-888888888888',
+                    name: 'Гривна',
+                    currency: 'UAH',
+                    openingBalance: '0.00',
+                    openingBalanceOn: '2026-07-12',
+                    openingTimezone: configuredHomeApiTimezone,
+                    isDefault: false,
+                    confirmedAt: '2026-07-12T10:00:00.000Z',
+                    createdAt: '2026-07-12T10:00:00.000Z',
+                  ),
               ]
             : const [],
       ),

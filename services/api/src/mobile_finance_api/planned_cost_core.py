@@ -438,10 +438,10 @@ def _creation_issues(
         issues.append(
             PlannedCostIssue(code="ACCOUNT_CURRENCY_MISMATCH", field="currency")
         )
-    # No verified currency registry or rate provenance exists yet, so anything
-    # outside the account base currency fails closed exactly as operations do.
-    if command.currency != "EUR":
-        issues.append(PlannedCostIssue(code="UNSUPPORTED_CURRENCY", field="currency"))
+    # A plan is denominated by the wallet it will be paid from, which the
+    # mismatch check above already enforces. There is no base currency left to
+    # measure it against and nothing converts anything (ADR 0029).
+    # `UNSUPPORTED_CURRENCY` stays in the contract for installed clients.
     # A plan before the baseline could never be confirmed into a legal
     # operation. Corrections only move the baseline earlier (ADR 0016), so this
     # bound can widen later but never invalidates an accepted plan.

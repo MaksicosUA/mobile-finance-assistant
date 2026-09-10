@@ -303,11 +303,6 @@ def test_a_past_planned_date_is_accepted_and_reads_as_due() -> None:
             ("ACCOUNT_CURRENCY_MISMATCH", "currency"),
         ),
         (
-            {"currency": "USD"},
-            _context(currency="USD"),
-            ("UNSUPPORTED_CURRENCY", "currency"),
-        ),
-        (
             {"plannedOn": "2025-12-31"},
             _context(opening_balance_on=date(2026, 1, 1)),
             ("PLAN_BEFORE_ACCOUNT_BASELINE", "plannedOn"),
@@ -326,6 +321,24 @@ def test_creation_is_rejected_deterministically(
     codes = [(issue.code, issue.field) for issue in rejection.value.issues]
     assert expected in codes
     assert repository.writes == 0
+
+
+def test_a_plan_is_denominated_by_the_wallet_it_is_paid_from() -> None:
+    """A bill can be planned in any wallet the profile holds (ADR 0029).
+
+    Finance Core refused everything but euro here too, so a hryvnia rent could
+    never be planned even after the wallet itself became spendable.
+    """
+
+    repository = _FakeRepository(context=_context(currency="UAH"))
+    core = PlannedCostCore(repository=repository, clock=_clock)
+
+    created = asyncio.run(
+        core.create(user_id=_USER_ID, command=_command(currency="UAH"))
+    )
+
+    assert created.planned_cost.currency == "UAH"
+    assert repository.writes == 1
 
 
 def test_exact_replay_returns_the_original_and_writes_nothing() -> None:

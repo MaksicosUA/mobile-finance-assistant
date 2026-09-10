@@ -156,6 +156,35 @@ class _PlannedCostPageState extends ConsumerState<PlannedCostPage> {
           ),
           onChanged: ref.read(plannedCostControllerProvider.notifier).setTitle,
         ),
+        // Which wallet the bill will be paid from. Offered only when there is
+        // a choice: one wallet needs no picker (ADR 0029).
+        if (state.wallets.length > 1) ...[
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            key: const Key('planned-cost-wallet'),
+            initialValue: state.account.accountId,
+            decoration: InputDecoration(labelText: l10n.operationWalletField),
+            items: [
+              for (final wallet in state.wallets)
+                DropdownMenuItem(
+                  value: wallet.accountId,
+                  child: Text('${wallet.name} · ${wallet.currency}'),
+                ),
+            ],
+            onChanged: state.isSubmitting
+                ? null
+                : (selected) {
+                    if (selected == null) return;
+                    ref
+                        .read(plannedCostControllerProvider.notifier)
+                        .selectAccount(
+                          state.wallets.firstWhere(
+                            (wallet) => wallet.accountId == selected,
+                          ),
+                        );
+                  },
+          ),
+        ],
         const SizedBox(height: 16),
         TextField(
           key: const Key('planned-cost-amount'),

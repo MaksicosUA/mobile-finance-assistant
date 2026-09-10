@@ -72,11 +72,35 @@ def _plan(
     )
 
 
-def _build(*plans: ProjectionPlannedCost, operations: tuple[object, ...] = ()):
+def _wallet(
+    *,
+    account_id: UUID = _OTHER_ACCOUNT_ID,
+    user_id: UUID = _USER_ID,
+    currency: str = "UAH",
+) -> ProjectionAccount:
+    return ProjectionAccount(
+        account_id=account_id,
+        user_id=user_id,
+        currency=currency,
+        opening_balance=Decimal("0.00"),
+        opening_balance_on=date(2026, 6, 1),
+        opening_timezone="Europe/Berlin",
+        status="active",
+        is_default=False,
+        created_at=datetime(2026, 6, 1, 8, tzinfo=UTC),
+    )
+
+
+def _build(
+    *plans: ProjectionPlannedCost,
+    operations: tuple[object, ...] = (),
+    wallets: tuple[ProjectionAccount, ...] = (),
+):
     return build_current_home_revision(
         account=_account(),
         operations=operations,  # type: ignore[arg-type]
         generated_at=_GENERATED_AT,
+        wallets=wallets,
         planned_costs=plans,
     )
 
@@ -143,9 +167,70 @@ def test_block_is_ordered_by_date_then_identifier_and_capped_at_three() -> None:
     ]
 
 
-def test_plans_outside_the_projected_account_are_excluded() -> None:
+def test_a_plan_on_an_account_the_profile_does_not_hold_is_excluded() -> None:
     revision = _build(_plan(1, account_id=_OTHER_ACCOUNT_ID))
     assert revision.upcoming_payments == ()
+
+
+def test_every_wallet_of_the_profile_owes_into_one_block() -> None:
+    """An obligation belongs to the profile, not to one wallet (ADR 0029).
+
+    Home draws the default wallet's revision, so a hryvnia bill filed against
+    the hryvnia wallet would otherwise never appear on the screen a person
+    actually looks at. Each line keeps its own currency and nothing is summed.
+    """
+
+    revision = _build(
+        _plan(1, planned_on=date(2026, 8, 5), amount="800.00"),
+        _plan(
+            2,
+            planned_on=date(2026, 8, 1),
+            amount="1200.00",
+            account_id=_OTHER_ACCOUNT_ID,
+            currency="UAH",
+        ),
+        wallets=(_wallet(),),
+    )
+
+    assert [
+        (payment.payment_id, payment.currency) for payment in revision.upcoming_payments
+    ] == [(str(UUID(int=2)), "UAH"), (str(UUID(int=1)), "EUR")]
+    # Nothing about a second wallet's obligation reaches an authoritative total.
+    assert revision.month_expense == Decimal("0.00")
+    assert revision.balance_amount == Decimal("100.00")
+
+
+def test_the_block_is_the_same_whichever_wallet_is_projected() -> None:
+    """Every revision of one cycle carries the same obligations.
+
+    A reader must not be able to miss a payment by reading the wallet the
+    projector happened to publish second.
+    """
+
+    plans = (
+        _plan(1, planned_on=date(2026, 8, 5)),
+        _plan(
+            2,
+            planned_on=date(2026, 8, 1),
+            account_id=_OTHER_ACCOUNT_ID,
+            currency="UAH",
+        ),
+    )
+    from_default = _build(*plans, wallets=(_wallet(),))
+    from_hryvnia = build_current_home_revision(
+        account=_wallet(),
+        operations=(),
+        generated_at=_GENERATED_AT,
+        wallets=(_account(),),
+        planned_costs=plans,
+    )
+
+    assert from_default.upcoming_payments == from_hryvnia.upcoming_payments
+
+
+def test_a_wallet_of_another_user_fails_closed() -> None:
+    with pytest.raises(HomeProjectionInvariantError):
+        _build(wallets=(_wallet(user_id=_OTHER_USER_ID),))
 
 
 def test_a_plan_created_after_the_cutoff_is_not_yet_visible() -> None:
@@ -167,6 +252,23 @@ def test_a_plan_created_after_the_cutoff_is_not_yet_visible() -> None:
 def test_inconsistent_planned_facts_fail_closed(invalid: dict[str, object]) -> None:
     with pytest.raises(HomeProjectionInvariantError):
         _build(_plan(1, **invalid))  # type: ignore[arg-type]
+
+
+def test_a_plan_is_checked_against_its_own_wallet_not_the_projected_one() -> None:
+    """The hryvnia wallet's plan is measured in hryvnia, not in the euro the
+    wallet being projected happens to hold."""
+
+    consistent = _build(
+        _plan(1, account_id=_OTHER_ACCOUNT_ID, currency="UAH"),
+        wallets=(_wallet(),),
+    )
+    assert consistent.upcoming_payments[0].currency == "UAH"
+
+    with pytest.raises(HomeProjectionInvariantError):
+        _build(
+            _plan(1, account_id=_OTHER_ACCOUNT_ID, currency="EUR"),
+            wallets=(_wallet(),),
+        )
 
 
 def test_an_operation_and_a_plan_coexist_without_mixing() -> None:

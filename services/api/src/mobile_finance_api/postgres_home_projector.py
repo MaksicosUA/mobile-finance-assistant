@@ -883,6 +883,9 @@ class PostgresHomeProjector:
                 _goal_contribution_fact(row) for row in goal_contributions
             )
             transfer_facts = tuple(_transfer_fact(row) for row in transfers)
+            # Upcoming payments are a profile-level fact: every wallet's
+            # revision carries the obligations of all of them (ADR 0029).
+            wallet_facts = tuple(_account_fact(row) for row in accounts)
 
             planned: list[
                 tuple[ProjectedHomeRevision, HomeProjectionSnapshotRow | None]
@@ -921,6 +924,7 @@ class PostgresHomeProjector:
                     account=_account_fact(wallet),
                     operations=operation_facts,
                     generated_at=generated_at,
+                    wallets=wallet_facts,
                     planned_costs=planned_cost_facts,
                     goals=goal_facts,
                     goal_contributions=contribution_facts,
