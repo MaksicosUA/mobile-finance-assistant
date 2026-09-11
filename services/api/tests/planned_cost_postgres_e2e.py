@@ -144,12 +144,18 @@ async def _register(client: AsyncClient, *, email: str, name: str) -> _Identity:
     )
 
 
-async def _bootstrap_account(client: AsyncClient, *, identity: _Identity) -> UUID:
+async def _bootstrap_account(
+    client: AsyncClient,
+    *,
+    identity: _Identity,
+    name: str = "Synthetic primary account",
+    currency: str = "EUR",
+) -> UUID:
     draft = {
         "schemaVersion": "1",
         "commandId": str(uuid4()),
-        "name": "Synthetic primary account",
-        "currency": "EUR",
+        "name": name,
+        "currency": currency,
         "openingBalance": "1000.00",
         "openingBalanceOn": OPENING_ON.isoformat(),
         "canonicalTimezone": TIMEZONE,
@@ -593,6 +599,57 @@ async def _exercise() -> tuple[AsyncEngine, AsyncSessionFactory]:
             headers=identity.headers,
         )
         assert legacy.status_code == 503, legacy.text
+
+        # --- a bill planned in another wallet is still an obligation ------
+        #
+        # Home draws the default wallet's revision, so a hryvnia bill filed
+        # against the hryvnia wallet has to reach that revision or a person
+        # would never see it on the screen they actually look at (ADR 0029).
+        hryvnia_id = await _bootstrap_account(
+            client,
+            identity=identity,
+            name="Synthetic hryvnia wallet",
+            currency="UAH",
+        )
+        hryvnia_plan = await client.post(
+            "/api/v1/planned-costs",
+            json=_plan_body(
+                account_id=hryvnia_id,
+                title="Интернет",
+                amount="1200.00",
+                currency="UAH",
+                plannedOn=FUTURE_ON.isoformat(),
+            ),
+            headers=identity.headers,
+        )
+        assert hryvnia_plan.status_code == 201, hryvnia_plan.text
+        hryvnia_plan_id = UUID(hryvnia_plan.json()["plannedCost"]["plannedCostId"])
+
+        projector = PostgresHomeProjector(session_factory=session_factory)
+        await projector.drain_pending()
+
+        merged = await client.get(
+            "/api/v2/home",
+            params={"period": "current_month", "timezone": TIMEZONE},
+            headers=identity.headers,
+        )
+        assert merged.status_code == 200, merged.text
+        merged_block = merged.json()["upcomingPayments"]
+        assert {payment["id"] for payment in merged_block} == {
+            str(outstanding_id),
+            str(hryvnia_plan_id),
+        }, merged_block
+        hryvnia_payment = next(
+            payment
+            for payment in merged_block
+            if payment["id"] == str(hryvnia_plan_id)
+        )
+        # Each line keeps its own currency and nothing is summed.
+        assert hryvnia_payment["currency"] == "UAH"
+        assert Decimal(hryvnia_payment["amount"]) == Decimal("1200.00")
+        assert merged.json()["baseCurrency"] == "EUR"
+        # A forecast in any wallet still moves no authoritative total.
+        assert Decimal(merged.json()["monthSummary"]["expense"]) == Decimal("800.00")
 
         # --- another user can neither see nor settle the plan --------------
         intruder = await _register(

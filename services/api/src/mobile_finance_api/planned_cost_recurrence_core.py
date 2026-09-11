@@ -446,8 +446,8 @@ def _creation_issues(
         issues.append(
             RecurrenceIssue(code="ACCOUNT_CURRENCY_MISMATCH", field="currency")
         )
-    if command.currency != "EUR":
-        issues.append(RecurrenceIssue(code="UNSUPPORTED_CURRENCY", field="currency"))
+    # The wallet the rule is paid from denominates every instance it makes;
+    # the mismatch check above is the whole rule (ADR 0029).
     # Corrections only move a baseline earlier (ADR 0016), so this bound can
     # widen later but never invalidates a rule that was already accepted.
     if context is not None and command.starts_on < context.opening_balance_on:

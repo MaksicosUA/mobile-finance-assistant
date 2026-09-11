@@ -363,6 +363,7 @@ def build_current_home_revision(
     account: ProjectionAccount,
     operations: tuple[ProjectionOperation, ...],
     generated_at: datetime,
+    wallets: tuple[ProjectionAccount, ...] = (),
     planned_costs: tuple[ProjectionPlannedCost, ...] = (),
     goals: tuple[ProjectionGoal, ...] = (),
     goal_contributions: tuple[ProjectionGoalContribution, ...] = (),
@@ -378,6 +379,7 @@ def build_current_home_revision(
             account=account,
             operations=operations,
             generated_at=generated_at,
+            wallets=wallets,
             planned_costs=planned_costs,
             goals=goals,
             goal_contributions=goal_contributions,
@@ -390,6 +392,7 @@ def _build_current_home_revision(
     account: ProjectionAccount,
     operations: tuple[ProjectionOperation, ...],
     generated_at: datetime,
+    wallets: tuple[ProjectionAccount, ...],
     planned_costs: tuple[ProjectionPlannedCost, ...],
     goals: tuple[ProjectionGoal, ...],
     goal_contributions: tuple[ProjectionGoalContribution, ...],
@@ -609,6 +612,17 @@ def _build_current_home_revision(
     # Outstanding obligations only. confirmed/skipped/cancelled are terminal and
     # are no longer something the user owes. An already-due plan stays in the
     # block on purpose: it is the one a user most needs to see.
+    # An obligation belongs to the profile, not to one wallet: a hryvnia bill
+    # is due whichever wallet Home happens to draw large, so every revision
+    # carries the same list and a reader cannot miss a payment by looking at
+    # the wrong one. Each line keeps its own currency and nothing is summed —
+    # the same reason balances sit side by side instead of being added
+    # (ADR 0029). Each plan is validated against the wallet that owns it, not
+    # against the wallet being projected.
+    for wallet in wallets:
+        if wallet.user_id != account.user_id:
+            raise HomeProjectionInvariantError("wallet belongs to another user")
+    wallets_by_id = {wallet.account_id: wallet for wallet in (account, *wallets)}
     upcoming_payments = tuple(
         ProjectedUpcomingPayment(
             payment_id=str(plan.planned_cost_id),
@@ -621,10 +635,10 @@ def _build_current_home_revision(
         )
         for plan in sorted(
             (
-                _validated_planned_cost(plan, account=account)
+                _validated_planned_cost(plan, account=wallets_by_id[plan.account_id])
                 for plan in planned_costs
                 if plan.status == "planned"
-                and plan.account_id == account.account_id
+                and plan.account_id in wallets_by_id
                 and _aware_utc(plan.created_at) <= data_as_of
             ),
             key=lambda plan: (plan.planned_on, str(plan.planned_cost_id)),

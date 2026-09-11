@@ -48,7 +48,42 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     return const PlannedCostLoading();
   }
 
+  /// Every wallet the profile holds (ADR 0029), kept off the form state so a
+  /// refusal or a written plan cannot take the choice away.
+  List<FinanceAccount> _wallets = const [];
+
   Future<void> load() => _load();
+
+  /// Plans the next cost against another wallet.
+  ///
+  /// The wallet denominates the plan and carries its own opening baseline, so
+  /// the date bounds are recomputed and the chosen date is clamped into them.
+  /// What is typed is kept: switching wallets is choosing where the bill will
+  /// be paid from, not starting again.
+  void selectAccount(FinanceAccount account) {
+    final current = state;
+    if (_requestInFlight || current is! PlannedCostEditing) return;
+    if (!_wallets.any((wallet) => wallet.accountId == account.accountId)) {
+      return;
+    }
+    final rebuilt = _editingState(account);
+    final selected = current.selectedDate.isBefore(rebuilt.earliestDate)
+        ? rebuilt.earliestDate
+        : current.selectedDate;
+    state = PlannedCostEditing(
+      account: account,
+      wallets: _wallets,
+      selectedDate: selected,
+      earliestDate: rebuilt.earliestDate,
+      latestDate: rebuilt.latestDate,
+      title: current.title,
+      amount: current.amount,
+      repeats: current.repeats,
+      lastDayOfMonth: current.lastDayOfMonth,
+      plans: current.plans,
+      recurrences: current.recurrences,
+    );
+  }
 
   void setTitle(String value) {
     final current = state;
@@ -376,6 +411,7 @@ class PlannedCostController extends Notifier<PlannedCostState> {
             );
             return;
           }
+          _wallets = value.accounts;
           state = _editingState(value.account!);
           await _loadPlans(requestGeneration);
           await _loadRecurrences(requestGeneration);
@@ -752,6 +788,7 @@ class PlannedCostController extends Notifier<PlannedCostState> {
     final selected = today.isBefore(earliest) ? earliest : today;
     return PlannedCostEditing(
       account: account,
+      wallets: _wallets.isEmpty ? [account] : _wallets,
       selectedDate: selected,
       earliestDate: earliest,
       latestDate: latest,

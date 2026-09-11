@@ -43,13 +43,20 @@ final class PlannedCostEditing extends PlannedCostState {
     List<PlannedCostIssue> issues = const [],
     List<PlannedCost> plans = const [],
     List<PlannedCostRecurrenceListItem> recurrences = const [],
+    List<FinanceAccount>? wallets,
   }) : issues = List<PlannedCostIssue>.unmodifiable(issues),
        plans = List<PlannedCost>.unmodifiable(plans),
        recurrences = List<PlannedCostRecurrenceListItem>.unmodifiable(
          recurrences,
-       );
+       ),
+       wallets = List<FinanceAccount>.unmodifiable(wallets ?? [account]);
 
+  /// The wallet this plan will be paid from.
   final FinanceAccount account;
+
+  /// Every wallet the profile holds (ADR 0029). A profile with one wallet has
+  /// one entry and the screen offers no choice.
+  final List<FinanceAccount> wallets;
   final String title;
   final String amount;
   final DateTime selectedDate;
@@ -118,6 +125,7 @@ final class PlannedCostEditing extends PlannedCostState {
   }) {
     return PlannedCostEditing(
       account: account,
+      wallets: wallets,
       title: title ?? this.title,
       amount: amount ?? this.amount,
       selectedDate: selectedDate ?? this.selectedDate,
