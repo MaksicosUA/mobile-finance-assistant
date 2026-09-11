@@ -292,6 +292,7 @@ def create_app(
     analytics_repository: object | None = None,
     profile_repository: object | None = None,
     app_release_store: AppReleaseStore | None = None,
+    app_download_link_secret: bytes | None = None,
     database_engine: AsyncEngine | None = None,
     registration_allowlist: frozenset[str] | None = None,
 ) -> FastAPI:
@@ -326,6 +327,9 @@ def create_app(
     application.state.app_release_store = (
         app_release_store if app_release_store is not None else NoAppReleaseStore()
     )
+    # Absent by default: a deployment that never sets a secret offers no
+    # unauthenticated download, and upgrading reaches nothing new (ADR 0026).
+    application.state.app_download_link_secret = app_download_link_secret
     application.state.authentication_service = (
         authentication_service
         if authentication_service is not None

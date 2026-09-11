@@ -12,6 +12,7 @@ from .auth import PostgresCurrentUserAuthenticator
 from .auth_service import PostgresAuthenticationService
 from .budget_core import BudgetCore
 from .config import (
+    load_download_link_secret,
     load_registration_allowlist,
     load_release_directory,
     require_runtime_settings,
@@ -104,5 +105,6 @@ app = create_app(
         if (release_directory := load_release_directory()) is None
         else FilesystemAppReleaseStore(directory=release_directory)
     ),
+    app_download_link_secret=load_download_link_secret(),
     database_engine=engine,
 )

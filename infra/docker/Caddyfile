@@ -14,6 +14,14 @@
 		-Server
 	}
 
+	# A download link carries its secret in the path, so logging that request
+	# would write a working capability URL to stdout and keep it there for
+	# whoever reads the logs later. The request is dropped from the log
+	# entirely rather than redacted: knowing a build was fetched is worth less
+	# than the link staying secret (ADR 0026).
+	@download_link path /api/v1/app/get/*
+	log_skip @download_link
+
 	# Financial requests carry account data; the paths and statuses are enough
 	# to debug a deployment, and the bodies are nobody's business.
 	log {

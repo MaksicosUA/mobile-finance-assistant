@@ -1,12 +1,20 @@
-"""Authenticated boundary for the update a device may install (ADR 0026)."""
+"""The boundary for the build a device may install (ADR 0026).
+
+Two doors, and the difference is deliberate. An installed app updates
+itself through the bearer token it already holds. A person with no copy
+holds nothing, so a first install is reached instead through a signed,
+expiring link — see `app_download_link`.
+"""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
 
+from .app_download_link import verify_download_link
 from .app_release import AppReleaseStore, AppReleaseUnavailable
 from .app_release_contracts import (
     AppReleaseErrorDetail,
@@ -104,6 +112,67 @@ async def download_release(
         )
     # Streamed by Starlette rather than read into memory: this is the one
     # response measured in tens of megabytes.
+    return FileResponse(
+        published.apk_path,
+        media_type=APK_MEDIA_TYPE,
+        filename=f"mobile-finance-assistant-{published.release.version_name}.apk",
+        headers={"cache-control": "no-store"},
+    )
+
+
+@router.get(
+    "/get/{link}",
+    responses={
+        200: {
+            "content": {APK_MEDIA_TYPE: {}},
+            "description": "The published Android package",
+        },
+        404: {
+            "model": AppReleaseErrorResponse,
+            "description": "Nothing is published, or the link is not valid",
+        },
+        503: {
+            "model": AppReleaseErrorResponse,
+            "description": "A configured release could not be read",
+        },
+    },
+)
+async def download_release_by_link(
+    request: Request,
+    link: str,
+    store: ReleaseStoreDependency,
+) -> FileResponse:
+    """Serve the published build to someone who has no account yet (ADR 0026).
+
+    The only route here that takes no bearer token, because a first install
+    cannot present one. A malformed link, a forged link, an expired link, a
+    host that issues no links, and a host with nothing published are **one
+    answer**: telling them apart would turn this into an oracle for whether a
+    guess was close, exactly as the registration allowlist refuses to do.
+    """
+
+    secret = getattr(request.app.state, "app_download_link_secret", None)
+    if secret is None or not verify_download_link(
+        secret=secret,
+        link=link,
+        now=datetime.now(UTC),
+    ):
+        raise _error(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="APP_RELEASE_NOT_FOUND",
+        )
+    try:
+        published = store.published()
+    except Exception:
+        raise _error(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="APP_RELEASE_UNAVAILABLE",
+        ) from None
+    if published is None:
+        raise _error(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="APP_RELEASE_NOT_FOUND",
+        )
     return FileResponse(
         published.apk_path,
         media_type=APK_MEDIA_TYPE,

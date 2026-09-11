@@ -12,13 +12,17 @@ import asyncio
 import hashlib
 import json
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
 
+from mobile_finance_api.app_download_link import (
+    sign_download_link,
+    verify_download_link,
+)
 from mobile_finance_api.app_release import (
     APK_FILENAME,
     MANIFEST_FILENAME,
@@ -195,7 +199,11 @@ async def _get(app: object, path: str, *, authenticated: bool = True):  # type: 
 
 def test_an_anonymous_caller_gets_neither_the_manifest_nor_the_file() -> None:
     """The hostname is public through Certificate Transparency (ADR 0024), so
-    an open endpoint here would be a download link for anyone who looked."""
+    an open endpoint here would be a download link for anyone who looked.
+
+    A first install is reached instead through a signed, expiring link on its
+    own route — unguessable rather than open. These two stay behind the token.
+    """
 
     async def scenario() -> None:
         app = create_app()
@@ -286,5 +294,176 @@ def test_the_manifest_never_carries_financial_data(release_directory: Path) -> N
             "notes",
             "publishedAt",
         }
+
+    asyncio.run(scenario())
+
+
+# --- the download link --------------------------------------------------------
+
+
+_LINK_SECRET = b"synthetic-download-link-secret-32-bytes"
+
+
+def _link(*, minutes: int = 60, secret: bytes = _LINK_SECRET) -> str:
+    return sign_download_link(
+        secret=secret,
+        expires_at=datetime.now(UTC) + timedelta(minutes=minutes),
+    )
+
+
+def test_a_signed_link_is_valid_until_it_expires() -> None:
+    now = datetime(2026, 9, 11, 12, tzinfo=UTC)
+    link = sign_download_link(secret=_LINK_SECRET, expires_at=now + timedelta(hours=1))
+
+    assert verify_download_link(secret=_LINK_SECRET, link=link, now=now)
+    assert verify_download_link(
+        secret=_LINK_SECRET,
+        link=link,
+        now=now + timedelta(minutes=59),
+    )
+    assert not verify_download_link(
+        secret=_LINK_SECRET,
+        link=link,
+        now=now + timedelta(hours=1, seconds=1),
+    )
+
+
+def test_rotating_the_secret_withdraws_every_link_ever_issued() -> None:
+    """The whole revocation story, and the reason it is worth stating: there is
+    no way to withdraw one link and keep another (ADR 0026)."""
+
+    now = datetime(2026, 9, 11, 12, tzinfo=UTC)
+    link = sign_download_link(secret=_LINK_SECRET, expires_at=now + timedelta(hours=1))
+
+    rotated = b"a-different-download-link-secret-32-bytes"
+    assert not verify_download_link(secret=rotated, link=link, now=now)
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [
+        "",
+        ".",
+        "not-a-number.signature",
+        "1789000000",
+        "1789000000.",
+        "1789000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "9" * 13 + ".signature",
+        "1789000000." + "A" * 200,
+    ],
+)
+def test_a_forged_or_malformed_link_is_refused(forged: str) -> None:
+    assert not verify_download_link(
+        secret=_LINK_SECRET,
+        link=forged,
+        now=datetime(2026, 9, 11, 12, tzinfo=UTC),
+    )
+
+
+def test_a_secret_too_short_to_sign_with_is_refused() -> None:
+    weak = b"too-short"
+    with pytest.raises(ValueError):
+        sign_download_link(
+            secret=weak,
+            expires_at=datetime(2026, 9, 11, 13, tzinfo=UTC),
+        )
+    # And nothing signed with it would verify either, so a misconfigured host
+    # cannot accidentally start honouring weak links.
+    assert not verify_download_link(
+        secret=weak,
+        link="1789000000.signature",
+        now=datetime(2026, 9, 11, 12, tzinfo=UTC),
+    )
+
+
+def test_a_link_delivers_the_build_without_any_token(
+    release_directory: Path,
+) -> None:
+    """The one route here that takes no bearer token, because a first install
+    cannot present one: the token comes from the app."""
+
+    async def scenario() -> None:
+        app = create_app(
+            app_release_store=FilesystemAppReleaseStore(directory=release_directory),
+            app_download_link_secret=_LINK_SECRET,
+        )
+        response = await _get(app, f"/api/v1/app/get/{_link()}", authenticated=False)
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == (
+            "application/vnd.android.package-archive"
+        )
+        assert response.headers["cache-control"] == "no-store"
+        assert response.content == _APK_BYTES
+
+    asyncio.run(scenario())
+
+
+def test_every_way_a_link_can_fail_gives_one_answer(
+    release_directory: Path,
+) -> None:
+    """Telling them apart would make the URL an oracle for whether a guess was
+    close — the same refusal the registration allowlist gives (ADR 0024)."""
+
+    async def scenario() -> None:
+        published = FilesystemAppReleaseStore(directory=release_directory)
+        cases = [
+            # A host that issues no links at all.
+            (create_app(app_release_store=published), _link()),
+            # A forged signature.
+            (
+                create_app(
+                    app_release_store=published,
+                    app_download_link_secret=_LINK_SECRET,
+                ),
+                "1789000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            ),
+            # An expired link.
+            (
+                create_app(
+                    app_release_store=published,
+                    app_download_link_secret=_LINK_SECRET,
+                ),
+                _link(minutes=-1),
+            ),
+            # A valid link against a host with nothing published.
+            (
+                create_app(app_download_link_secret=_LINK_SECRET),
+                _link(),
+            ),
+        ]
+        answers = set()
+        for app, link in cases:
+            response = await _get(
+                app,
+                f"/api/v1/app/get/{link}",
+                authenticated=False,
+            )
+            answers.add((response.status_code, response.text))
+
+        assert len(answers) == 1, answers
+        assert next(iter(answers))[0] == 404
+
+    asyncio.run(scenario())
+
+
+def test_a_link_cannot_reach_anything_but_the_published_build(
+    release_directory: Path,
+) -> None:
+    """Nothing in the URL reaches the filesystem: the store resolves fixed
+    names, so there is no path to traverse (ADR 0026)."""
+
+    async def scenario() -> None:
+        app = create_app(
+            app_release_store=FilesystemAppReleaseStore(directory=release_directory),
+            app_download_link_secret=_LINK_SECRET,
+        )
+        for probe in ("../../etc/passwd", "..%2f..%2fetc%2fpasswd"):
+            response = await _get(
+                app,
+                f"/api/v1/app/get/{probe}",
+                authenticated=False,
+            )
+            assert response.status_code in {404, 405}, probe
 
     asyncio.run(scenario())

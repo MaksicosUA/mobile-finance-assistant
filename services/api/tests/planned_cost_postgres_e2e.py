@@ -640,9 +640,7 @@ async def _exercise() -> tuple[AsyncEngine, AsyncSessionFactory]:
             str(hryvnia_plan_id),
         }, merged_block
         hryvnia_payment = next(
-            payment
-            for payment in merged_block
-            if payment["id"] == str(hryvnia_plan_id)
+            payment for payment in merged_block if payment["id"] == str(hryvnia_plan_id)
         )
         # Each line keeps its own currency and nothing is summed.
         assert hryvnia_payment["currency"] == "UAH"
