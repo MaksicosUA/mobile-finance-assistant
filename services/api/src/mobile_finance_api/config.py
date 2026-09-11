@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .app_download_link import MINIMUM_SECRET_BYTES
+
 
 @dataclass(frozen=True, slots=True, repr=False)
 class RuntimeSettings:
@@ -123,3 +125,27 @@ def load_release_directory() -> Path | None:
     if not directory:
         return None
     return Path(directory)
+
+
+def load_download_link_secret() -> bytes | None:
+    """The key that signs unauthenticated download links, if this host issues any.
+
+    Unset means the deployment offers no public download at all and the route
+    answers as though nothing were published — a host gains no new reachable
+    surface by upgrading. Set-but-weak is an operator error and stops startup
+    rather than signing links nobody could trust (ADR 0026).
+    """
+
+    raw = os.environ.get("MFA_APP_DOWNLOAD_LINK_SECRET")
+    if raw is None:
+        return None
+    secret = raw.strip()
+    if not secret:
+        return None
+    encoded = secret.encode("utf-8")
+    if len(encoded) < MINIMUM_SECRET_BYTES:
+        raise RuntimeError(
+            "MFA_APP_DOWNLOAD_LINK_SECRET must contain at least "
+            f"{MINIMUM_SECRET_BYTES} bytes"
+        )
+    return encoded
