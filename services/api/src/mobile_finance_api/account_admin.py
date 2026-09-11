@@ -1,0 +1,349 @@
+"""Look after the accounts on this host: list, block, unblock, erase.
+
+Run it inside the API container, where the database URL already is::
+
+    docker compose --env-file .env exec -T api \\
+        python -m mobile_finance_api.account_admin list
+
+There is deliberately no HTTP route for any of this. Registration is open to
+anyone who reaches the host (ADR 0024), so the one power that must never be
+reachable from the internet is removing somebody. Being able to run a command
+in this container already means holding the database.
+
+It prints addresses and names, because telling accounts apart is its whole
+purpose — to the operator's terminal only. Nothing is logged except the type of
+an unexpected error.
+
+**Blocking is reversible and immediate.** Sign-in, refresh and every
+authenticated request already refuse a user whose ``disabled_at`` is set, so
+blocking only sets it. Sessions are left alone and simply stop working;
+unblocking lets the same devices back in.
+
+**Erasing is not reversible.** One ``DELETE`` on the user row, and every table
+that carries a ``user_id`` follows it through foreign keys that cascade all the
+way down. The command counts what it is about to remove, removes it in one
+transaction, and checks inside that transaction that nothing is left before
+committing. Daily backups still hold the data until they age out.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+import sys
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import TextIO
+from uuid import UUID
+
+from email_validator import EmailNotValidError
+from sqlalchemy import Table, delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .auth_service import normalize_email
+from .config import require_database_url
+from .database import AsyncSessionFactory, create_database
+from .db_models import (
+    AuthSessionRow,
+    Base,
+    FinanceAccountRow,
+    FinanceOperationRow,
+    UserRow,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+EXIT_OK = 0
+EXIT_NOT_FOUND = 1
+EXIT_REFUSED = 2
+
+_CONFIRMATION_REFUSED = (
+    "Refusing to erase: --confirm must repeat the same address. Nothing was touched."
+)
+
+
+class IncompleteErasure(RuntimeError):
+    """Rows for the user were still present after the delete; it was rolled back."""
+
+
+def user_tables() -> tuple[Table, ...]:
+    """Every table that holds a user's rows, read from the schema itself.
+
+    Found rather than listed, so a table added later is counted and checked
+    without anyone remembering to add it here.
+    """
+
+    return tuple(
+        table
+        for table in Base.metadata.sorted_tables
+        if "user_id" in table.c and table.name != UserRow.__tablename__
+    )
+
+
+def same_address(first: str, second: str) -> bool:
+    """Whether two typed addresses name the same account, as sign-in would."""
+
+    normalized = _normalized(first)
+    return normalized is not None and normalized == _normalized(second)
+
+
+def parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="python -m mobile_finance_api.account_admin",
+        description="List, block, unblock or erase the accounts on this host.",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("list", help="every account, oldest first")
+    block = commands.add_parser("block", help="stop an account signing in (reversible)")
+    block.add_argument("email")
+    unblock = commands.add_parser("unblock", help="let a blocked account back in")
+    unblock.add_argument("email")
+    erase = commands.add_parser(
+        "delete",
+        help="erase an account and every row it owns (irreversible)",
+    )
+    erase.add_argument("email")
+    erase.add_argument(
+        "--confirm",
+        required=True,
+        metavar="EMAIL",
+        help="the same address again",
+    )
+    return parser.parse_args(argv)
+
+
+async def execute(
+    args: argparse.Namespace,
+    *,
+    session_factory: AsyncSessionFactory,
+    out: TextIO,
+    err: TextIO,
+    now: datetime,
+) -> int:
+    if args.command == "list":
+        return await _list(session_factory, out=out)
+    if args.command in {"block", "unblock"}:
+        return await _set_blocked(
+            session_factory,
+            args.email,
+            blocked=args.command == "block",
+            now=now,
+            out=out,
+            err=err,
+        )
+    if args.command == "delete":
+        if not same_address(args.email, args.confirm):
+            print(_CONFIRMATION_REFUSED, file=err)
+            return EXIT_REFUSED
+        try:
+            return await _erase(session_factory, args.email, out=out, err=err)
+        except IncompleteErasure as error:
+            print(
+                f"Nothing was erased: rows remained in {error}. "
+                "The transaction was rolled back.",
+                file=err,
+            )
+            return EXIT_REFUSED
+    raise AssertionError(f"unhandled command {args.command!r}")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_arguments(argv)
+    logging.basicConfig(level=logging.INFO)
+    # Refused before the database is even opened: a typo must not get as far
+    # as a connection to the thing it would destroy.
+    if args.command == "delete" and not same_address(args.email, args.confirm):
+        print(_CONFIRMATION_REFUSED, file=sys.stderr)
+        return EXIT_REFUSED
+    try:
+        return asyncio.run(_main(args))
+    except Exception as error:
+        _LOGGER.error(
+            "Account administration failed error_type=%s",
+            type(error).__name__,
+        )
+        return EXIT_REFUSED
+
+
+async def _main(args: argparse.Namespace) -> int:
+    engine, session_factory = create_database(require_database_url())
+    try:
+        return await execute(
+            args,
+            session_factory=session_factory,
+            out=sys.stdout,
+            err=sys.stderr,
+            now=datetime.now(UTC),
+        )
+    finally:
+        await engine.dispose()
+
+
+def _normalized(address: str) -> str | None:
+    try:
+        return normalize_email(address.strip())
+    except (EmailNotValidError, ValueError):
+        return None
+
+
+async def _list(session_factory: AsyncSessionFactory, *, out: TextIO) -> int:
+    last_seen = (
+        select(
+            AuthSessionRow.user_id.label("user_id"),
+            func.max(AuthSessionRow.last_seen_at).label("last_seen"),
+        )
+        .group_by(AuthSessionRow.user_id)
+        .subquery()
+    )
+    wallets = (
+        select(
+            FinanceAccountRow.user_id.label("user_id"),
+            func.count().label("wallets"),
+        )
+        .group_by(FinanceAccountRow.user_id)
+        .subquery()
+    )
+    records = (
+        select(
+            FinanceOperationRow.user_id.label("user_id"),
+            func.count().label("records"),
+        )
+        .group_by(FinanceOperationRow.user_id)
+        .subquery()
+    )
+    query = (
+        select(
+            UserRow.email_normalized,
+            UserRow.display_name,
+            UserRow.disabled_at,
+            UserRow.created_at,
+            last_seen.c.last_seen,
+            func.coalesce(wallets.c.wallets, 0),
+            func.coalesce(records.c.records, 0),
+        )
+        .outerjoin(last_seen, last_seen.c.user_id == UserRow.id)
+        .outerjoin(wallets, wallets.c.user_id == UserRow.id)
+        .outerjoin(records, records.c.user_id == UserRow.id)
+        .order_by(UserRow.created_at.asc(), UserRow.email_normalized.asc())
+    )
+    async with session_factory() as session:
+        rows = (await session.execute(query)).all()
+
+    print(
+        f"{'EMAIL':<34} {'NAME':<22} {'STATUS':<8} {'CREATED':<10} "
+        f"{'LAST SEEN':<10} {'WALLETS':>7} {'RECORDS':>7}",
+        file=out,
+    )
+    for email, name, disabled_at, created_at, seen, wallet_count, record_count in rows:
+        print(
+            f"{email:<34} {name:<22} "
+            f"{'blocked' if disabled_at is not None else 'active':<8} "
+            f"{created_at:%Y-%m-%d} "
+            f"{(f'{seen:%Y-%m-%d}' if seen is not None else '—'):<10} "
+            f"{wallet_count:>7} {record_count:>7}",
+            file=out,
+        )
+    print(f"\n{len(rows)} account(s)", file=out)
+    return EXIT_OK
+
+
+async def _set_blocked(
+    session_factory: AsyncSessionFactory,
+    address: str,
+    *,
+    blocked: bool,
+    now: datetime,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    normalized = _normalized(address)
+    if normalized is None:
+        print("That is not a valid address.", file=err)
+        return EXIT_NOT_FOUND
+    async with session_factory() as session, session.begin():
+        user = await session.scalar(
+            select(UserRow)
+            .where(UserRow.email_normalized == normalized)
+            .with_for_update()
+        )
+        if user is None:
+            print("No account uses that address.", file=err)
+            return EXIT_NOT_FOUND
+        state = "blocked" if blocked else "active"
+        if (user.disabled_at is not None) == blocked:
+            print(f"{normalized}: already {state}", file=out)
+            return EXIT_OK
+        user.disabled_at = now if blocked else None
+        user.updated_at = now
+    print(f"{normalized}: {state}", file=out)
+    return EXIT_OK
+
+
+async def _erase(
+    session_factory: AsyncSessionFactory,
+    address: str,
+    *,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    normalized = _normalized(address)
+    if normalized is None:
+        print("That is not a valid address.", file=err)
+        return EXIT_NOT_FOUND
+    tables = user_tables()
+    async with session_factory() as session, session.begin():
+        user_id = await session.scalar(
+            select(UserRow.id)
+            .where(UserRow.email_normalized == normalized)
+            .with_for_update()
+        )
+        if user_id is None:
+            print("No account uses that address.", file=err)
+            return EXIT_NOT_FOUND
+
+        removed: dict[str, int] = {}
+        for table in tables:
+            count = await _count(session, table, user_id)
+            if count:
+                removed[table.name] = count
+
+        await session.execute(delete(UserRow).where(UserRow.id == user_id))
+
+        # Checked inside the transaction, so a cascade that stopped short rolls
+        # everything back instead of committing half an erasure.
+        remaining = [
+            table.name for table in tables if await _count(session, table, user_id)
+        ]
+        still_there = await session.scalar(
+            select(func.count()).select_from(UserRow).where(UserRow.id == user_id)
+        )
+        if remaining or still_there:
+            raise IncompleteErasure(", ".join(sorted(remaining)) or "users")
+
+    total = sum(removed.values())
+    print(
+        f"{normalized}: erased, with {total} row(s) from {len(removed)} table(s)",
+        file=out,
+    )
+    for name, count in sorted(removed.items()):
+        print(f"  {name:<40} {count:>6}", file=out)
+    print(
+        "\nDaily backups still contain this account until they age out "
+        "(MFA_BACKUP_KEEP_DAYS).",
+        file=out,
+    )
+    return EXIT_OK
+
+
+async def _count(session: AsyncSession, table: Table, user_id: UUID) -> int:
+    return int(
+        await session.scalar(
+            select(func.count()).select_from(table).where(table.c.user_id == user_id)
+        )
+        or 0
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

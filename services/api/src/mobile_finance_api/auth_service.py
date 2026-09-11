@@ -112,7 +112,7 @@ class PostgresAuthenticationService:
         display_name: str,
     ) -> AuthGrant:
         try:
-            normalized_email = _normalize_email(email)
+            normalized_email = normalize_email(email)
             normalized_name = _normalize_display_name(display_name)
             password_hash = await self._passwords.hash(password)
         except (EmailNotValidError, InvalidPassword, ValueError) as error:
@@ -153,7 +153,7 @@ class PostgresAuthenticationService:
 
     async def login(self, *, email: str, password: str) -> AuthGrant:
         try:
-            normalized_email = _normalize_email(email)
+            normalized_email = normalize_email(email)
         except EmailNotValidError:
             normalized_email = "invalid-login-identifier@invalid.invalid"
 
@@ -401,7 +401,7 @@ async def _revoke_session(
     )
 
 
-def _normalize_email(value: str) -> str:
+def normalize_email(value: str) -> str:
     result = validate_email(
         value,
         check_deliverability=False,

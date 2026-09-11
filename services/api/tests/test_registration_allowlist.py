@@ -107,6 +107,25 @@ def test_addresses_are_trimmed_and_case_folded(clean_environment: None) -> None:
     assert load_registration_allowlist() == frozenset({"owner@example.com", "b@e.com"})
 
 
+def test_a_star_opens_registration_explicitly(clean_environment: None) -> None:
+    """Compose passes an absent variable through as an empty string, which reads
+    as closed — so a deployment that means "open" has to say so (ADR 0024)."""
+
+    del clean_environment
+    os.environ["MFA_AUTH_REGISTRATION_ALLOWLIST"] = " * "
+    assert load_registration_allowlist() is None
+
+
+def test_a_star_beside_addresses_stops_startup(clean_environment: None) -> None:
+    """Open or a list, never both: guessing which was meant is how a closed
+    deployment ends up open."""
+
+    del clean_environment
+    os.environ["MFA_AUTH_REGISTRATION_ALLOWLIST"] = "*, owner@example.com"
+    with pytest.raises(RuntimeError):
+        load_registration_allowlist()
+
+
 # --- what the endpoint does ---------------------------------------------------
 
 
