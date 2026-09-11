@@ -8,6 +8,9 @@ from pathlib import Path
 
 from .app_download_link import MINIMUM_SECRET_BYTES
 
+#: The explicit value that opens registration to everyone.
+OPEN_REGISTRATION = "*"
+
 
 @dataclass(frozen=True, slots=True, repr=False)
 class RuntimeSettings:
@@ -31,13 +34,17 @@ def require_database_url() -> str:
 def load_registration_allowlist() -> frozenset[str] | None:
     """Who may create an account, read from the environment.
 
-    Three states, and the middle one is deliberate:
+    Four states, and the middle one is deliberate:
 
     * unset — registration is open, which is what a local run and every test
       expect;
     * set and empty — registration is closed to everyone, an explicit decision
       rather than an accident;
-    * set with addresses — only those may register.
+    * set with addresses — only those may register;
+    * `*` — registration is open, said out loud. A deployment needs this form
+      because compose passes an absent variable through as an empty string,
+      which is the closed state (ADR 0024). `*` beside addresses is an operator
+      error and stops startup rather than guessing which was meant.
 
     Addresses are compared case-insensitively and trimmed, because an invite
     typed with a capital letter is the same invite.
@@ -46,9 +53,14 @@ def load_registration_allowlist() -> frozenset[str] | None:
     raw = os.environ.get("MFA_AUTH_REGISTRATION_ALLOWLIST")
     if raw is None:
         return None
-    return frozenset(
-        entry.strip().casefold() for entry in raw.split(",") if entry.strip()
-    )
+    entries = [entry.strip().casefold() for entry in raw.split(",") if entry.strip()]
+    if OPEN_REGISTRATION in entries:
+        if len(entries) != 1:
+            raise RuntimeError(
+                "MFA_AUTH_REGISTRATION_ALLOWLIST cannot mix '*' with addresses"
+            )
+        return None
+    return frozenset(entries)
 
 
 def load_runtime_settings() -> RuntimeSettings | None:
