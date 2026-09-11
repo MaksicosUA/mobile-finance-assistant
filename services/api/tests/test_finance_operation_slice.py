@@ -218,12 +218,27 @@ def test_account_is_required_and_foreign_accounts_are_indistinguishable() -> Non
     assert [issue.code for issue in foreign.issues] == ["ACCOUNT_UNAVAILABLE"]
 
 
-def test_account_currency_and_supported_currency_fail_closed() -> None:
-    result = _evaluate(_draft(currency="USD"), account=_account(currency="EUR"))
-    assert [issue.code for issue in result.issues] == [
-        "ACCOUNT_CURRENCY_MISMATCH",
-        "UNSUPPORTED_CURRENCY",
-    ]
+def test_money_is_recorded_in_the_currency_its_own_wallet_holds() -> None:
+    """A wallet holds one currency, and only that one (ADR 0029).
+
+    The wallet is the authority, not a base currency: an expense in a hryvnia
+    wallet is ordinary, and the same expense against a euro wallet is refused
+    for the mismatch alone. Before ADR 0029 both were refused as unsupported,
+    which made every wallet but the default one impossible to spend from.
+    """
+
+    foreign_wallet = _evaluate(
+        _draft(currency="UAH"),
+        account=_account(currency="UAH"),
+    )
+    assert foreign_wallet.decision == "NEEDS_CONFIRMATION"
+    assert foreign_wallet.issues == ()
+
+    mismatch = _evaluate(_draft(currency="USD"), account=_account(currency="EUR"))
+    assert [issue.code for issue in mismatch.issues] == ["ACCOUNT_CURRENCY_MISMATCH"]
+
+    # The ISO-4217 shape is a contract rule, so a malformed code never reaches
+    # Finance Core at all.
     with pytest.raises(ValidationError):
         _draft(currency="eur")
 

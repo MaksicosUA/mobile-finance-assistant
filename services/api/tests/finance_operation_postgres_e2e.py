@@ -78,12 +78,14 @@ class _LoseCommitResponseTransport(AsyncBaseTransport):
 def _account_draft(
     *,
     command_id: str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    name: str = "Synthetic operation account",
+    currency: str = "EUR",
 ) -> dict[str, object]:
     return {
         "schemaVersion": "1",
         "commandId": command_id,
-        "name": "Synthetic operation account",
-        "currency": "EUR",
+        "name": name,
+        "currency": currency,
         "openingBalance": "1000.00",
         "openingBalanceOn": "2026-07-20",
         "canonicalTimezone": "Europe/Berlin",
@@ -160,8 +162,10 @@ async def _bootstrap_account(
     *,
     identity: _Identity,
     command_id: str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    name: str = "Synthetic operation account",
+    currency: str = "EUR",
 ) -> str:
-    draft = _account_draft(command_id=command_id)
+    draft = _account_draft(command_id=command_id, name=name, currency=currency)
     evaluation = await client.post(
         "/api/v1/accounts/evaluate",
         json={"draft": draft},
@@ -283,6 +287,85 @@ async def _single_command_operation_id(
         )
     assert operation_count == audit_count == outbox_count == 1
     return operation_id
+
+
+async def _assert_a_second_wallet_can_be_spent_from(
+    client: AsyncClient,
+    *,
+    identity: _Identity,
+    session_factory: AsyncSessionFactory,
+) -> None:
+    """Money is recorded in the currency its own wallet holds (ADR 0029).
+
+    Finance Core refused everything but euro long after a profile could hold a
+    wallet in another currency, so a hryvnia wallet could be opened and never
+    spent from: the operation was refused as an unsupported currency and no row
+    was ever written. Nothing in the slice that introduced wallets read the
+    operation path back, which is exactly why this lives against a real
+    database rather than beside the core alone.
+    """
+
+    wallet_id = await _bootstrap_account(
+        client,
+        identity=identity,
+        command_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        name="Synthetic hryvnia wallet",
+        currency="UAH",
+    )
+    draft = _draft(
+        account_id=wallet_id,
+        command_id="cccccccc-cccc-4ccc-8ccc-dddddddddddd",
+        source_expression=None,
+    )
+    draft["currency"] = "UAH"
+    evaluation = await client.post(
+        "/api/v1/operations/evaluate",
+        json={"draft": draft},
+        headers=identity.headers,
+    )
+    assert evaluation.status_code == 200, evaluation.text
+    assert evaluation.json()["issues"] == [], evaluation.text
+    assert evaluation.json()["decision"] == "NEEDS_CONFIRMATION"
+
+    commit = await client.post(
+        "/api/v1/operations/commit",
+        json={
+            "schemaVersion": "1",
+            "draft": draft,
+            "draftHash": evaluation.json()["draftHash"],
+            "confirmedAt": "2026-07-27T18:05:00Z",
+        },
+        headers=identity.headers,
+    )
+    assert commit.status_code == 201, commit.text
+    assert commit.json()["operation"]["accountId"] == wallet_id
+    assert commit.json()["operation"]["currency"] == "UAH"
+
+    # A currency the named wallet does not hold is still refused, and by the
+    # wallet rather than by a base currency: the euro wallet cannot take it
+    # either way round.
+    foreign_currency = dict(draft)
+    foreign_currency["commandId"] = "cccccccc-cccc-4ccc-8ccc-eeeeeeeeeeee"
+    foreign_currency["currency"] = "USD"
+    refused = await client.post(
+        "/api/v1/operations/evaluate",
+        json={"draft": foreign_currency},
+        headers=identity.headers,
+    )
+    assert refused.status_code == 200, refused.text
+    assert refused.json()["issues"] == [
+        {"code": "ACCOUNT_CURRENCY_MISMATCH", "field": "currency"}
+    ]
+
+    async with session_factory() as session:
+        written = (
+            await session.execute(
+                select(func.count())
+                .select_from(FinanceOperationRow)
+                .where(FinanceOperationRow.account_id == UUID(wallet_id))
+            )
+        ).scalar_one()
+    assert written == 1, written
 
 
 async def main() -> None:
@@ -512,6 +595,12 @@ async def main() -> None:
                 == lost_operation_id
             )
 
+            await _assert_a_second_wallet_can_be_spent_from(
+                client,
+                identity=first,
+                session_factory=session_factory,
+            )
+
             second = await _register(
                 client,
                 email="second-operation@example.com",
@@ -631,23 +720,24 @@ async def main() -> None:
             assert home_after.status_code == 503
 
         async with session_factory() as database:
+            # Three operations in euro wallets and one in the hryvnia wallet.
             assert (
                 await database.scalar(
                     select(func.count()).select_from(FinanceOperationRow)
                 )
-                == 3
+                == 4
             )
             assert (
                 await database.scalar(
                     select(func.count()).select_from(FinanceOperationAuditRow)
                 )
-                == 3
+                == 4
             )
             assert (
                 await database.scalar(
                     select(func.count()).select_from(FinanceOutboxEventRow)
                 )
-                == 3
+                == 4
             )
             assert (
                 await database.scalar(

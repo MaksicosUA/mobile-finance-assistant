@@ -565,10 +565,12 @@ def _evaluate_issues(
                     field="categoryId",
                 )
             )
-    # A versioned ISO currency registry and conversion provenance are not yet
-    # available. V1 therefore fails closed outside the account base currency.
-    if draft.currency != "EUR":
-        issues.append(OperationIssue(code="UNSUPPORTED_CURRENCY", field="currency"))
+    # No absolute currency rule remains: a wallet holds one currency and money
+    # recorded in it carries that currency, which the mismatch check above and
+    # the composite (account_id, user_id, currency) foreign key both enforce.
+    # Nothing converts anything, so there is nothing left for a base currency
+    # to mean (ADR 0029). `UNSUPPORTED_CURRENCY` stays in the contract for
+    # installed clients and is no longer raised.
     if draft.occurred_on > captured_local_date:
         issues.append(OperationIssue(code="FUTURE_OCCURRED_DATE", field="occurredOn"))
     if (
