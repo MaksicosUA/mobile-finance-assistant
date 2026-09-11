@@ -28,6 +28,26 @@ repository.
 Migrations run as a one-shot before the API starts, so the schema is part of
 the deployment rather than something the first request discovers missing.
 
+### After changing the Caddyfile
+
+`up -d --build` is not enough. The Caddyfile is bind-mounted as a single file,
+and uploading a new copy with `rsync` — or saving it from most editors —
+replaces the file with a new inode. A single-file bind mount stays attached to
+the old one, so the running Caddy keeps reading the previous configuration, and
+compose does not recreate the container because its service definition did not
+change. Even `caddy reload` re-reads the stale copy. Recreate it:
+
+    docker compose --env-file .env up -d --force-recreate --no-deps caddy
+
+Then check the file *inside* the container, not on the host — validating a
+configuration is not the same as running it:
+
+    docker compose exec -T caddy cat /etc/caddy/Caddyfile
+
+Certificates live in `$MFA_DATA_ROOT/caddy/data`, so recreating the container
+costs a few seconds and no reissue. This is how the download-link route was
+logged for twenty minutes on its first deploy (ADR 0026).
+
 ## Backups
 
 Provider snapshots capture a disk, which is not the same as a database: a
