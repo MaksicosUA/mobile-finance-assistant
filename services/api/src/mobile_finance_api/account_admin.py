@@ -1,4 +1,4 @@
-"""Look after the accounts on this host: list, block, unblock, erase.
+"""Look after the accounts on this host: list, block, unblock, reset, erase.
 
 Run it inside the API container, where the database URL already is::
 
@@ -19,6 +19,16 @@ authenticated request already refuse a user whose ``disabled_at`` is set, so
 blocking only sets it. Sessions are left alone and simply stop working;
 unblocking lets the same devices back in.
 
+**Setting a password needs no email.** This server cannot send mail, and
+registration never proves anyone owns the address they typed, so an emailed
+reset could reach a stranger and a made-up address could never receive one. The
+operator sets the password instead: typed twice at a hidden prompt, or one line
+on standard input with ``--password-stdin`` — never as an argument, which would
+land in shell history and the process list. It passes the same policy and the
+same Argon2id as registration, and every session of that account is deleted
+(their refresh tokens cascade), so every device is signed out; an access token
+already issued lapses within ten minutes. A blocked account stays blocked.
+
 **Erasing is not reversible.** One ``DELETE`` on the user row, and every table
 that carries a ``user_id`` follows it through foreign keys that cascade all the
 way down. The command counts what it is about to remove, removes it in one
@@ -30,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import logging
 import sys
 from collections.abc import Sequence
@@ -51,6 +62,7 @@ from .db_models import (
     FinanceOperationRow,
     UserRow,
 )
+from .passwords import InvalidPassword, PasswordService, validate_password
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,6 +111,16 @@ def parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     block.add_argument("email")
     unblock = commands.add_parser("unblock", help="let a blocked account back in")
     unblock.add_argument("email")
+    set_password = commands.add_parser(
+        "set-password",
+        help="give an account a new password and sign it out everywhere",
+    )
+    set_password.add_argument("email")
+    set_password.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="read the password from one line of standard input",
+    )
     erase = commands.add_parser(
         "delete",
         help="erase an account and every row it owns (irreversible)",
@@ -132,6 +154,15 @@ async def execute(
             out=out,
             err=err,
         )
+    if args.command == "set-password":
+        return await _set_password(
+            session_factory,
+            args.email,
+            args.password,
+            now=now,
+            out=out,
+            err=err,
+        )
     if args.command == "delete":
         if not same_address(args.email, args.confirm):
             print(_CONFIRMATION_REFUSED, file=err)
@@ -156,6 +187,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "delete" and not same_address(args.email, args.confirm):
         print(_CONFIRMATION_REFUSED, file=sys.stderr)
         return EXIT_REFUSED
+    if args.command == "set-password":
+        refusal = _read_new_password(args)
+        if refusal is not None:
+            code, message = refusal
+            print(message, file=sys.stderr)
+            return code
     try:
         return asyncio.run(_main(args))
     except Exception as error:
@@ -178,6 +215,33 @@ async def _main(args: argparse.Namespace) -> int:
         )
     finally:
         await engine.dispose()
+
+
+def _read_new_password(args: argparse.Namespace) -> tuple[int, str] | None:
+    """Read the new password before anything is opened, or say why not."""
+
+    if _normalized(args.email) is None:
+        return EXIT_NOT_FOUND, "That is not a valid address."
+    if args.password_stdin:
+        # Only the line ending goes: spaces can belong to a password.
+        password = sys.stdin.readline().rstrip("\r\n")
+    elif sys.stdin.isatty():
+        password = getpass.getpass("New password: ")
+        if getpass.getpass("Repeat it: ") != password:
+            return EXIT_REFUSED, "The two passwords differ. Nothing was changed."
+    else:
+        return EXIT_REFUSED, (
+            "No terminal to read a password from. Run without -T, or pass "
+            "--password-stdin. Nothing was changed."
+        )
+    try:
+        validate_password(password)
+    except InvalidPassword:
+        return EXIT_REFUSED, (
+            "A password must be 12 to 128 characters. Nothing was changed."
+        )
+    args.password = password
+    return None
 
 
 def _normalized(address: str) -> str | None:
@@ -277,6 +341,56 @@ async def _set_blocked(
         user.disabled_at = now if blocked else None
         user.updated_at = now
     print(f"{normalized}: {state}", file=out)
+    return EXIT_OK
+
+
+async def _set_password(
+    session_factory: AsyncSessionFactory,
+    address: str,
+    password: str,
+    *,
+    now: datetime,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    normalized = _normalized(address)
+    if normalized is None:
+        print("That is not a valid address.", file=err)
+        return EXIT_NOT_FOUND
+    # Hashed before the transaction: Argon2id is slow on purpose, and a locked
+    # user row should not wait for it.
+    password_hash = await PasswordService().hash(password)
+    async with session_factory() as session, session.begin():
+        user = await session.scalar(
+            select(UserRow)
+            .where(UserRow.email_normalized == normalized)
+            .with_for_update()
+        )
+        if user is None:
+            print("No account uses that address.", file=err)
+            return EXIT_NOT_FOUND
+        user.password_hash = password_hash
+        user.updated_at = now
+        signed_out = int(
+            await session.scalar(
+                select(func.count())
+                .select_from(AuthSessionRow)
+                .where(AuthSessionRow.user_id == user.id)
+            )
+            or 0
+        )
+        # Refresh tokens cascade from their sessions, so this signs the account
+        # out of every device.
+        await session.execute(
+            delete(AuthSessionRow).where(AuthSessionRow.user_id == user.id)
+        )
+        still_blocked = user.disabled_at is not None
+    print(
+        f"{normalized}: password set; {signed_out} session(s) signed out",
+        file=out,
+    )
+    if still_blocked:
+        print("The account is still blocked; unblock it to let it sign in.", file=out)
     return EXIT_OK
 
 

@@ -260,12 +260,18 @@ async def _dead_letters(session_factory) -> int:  # type: ignore[no-untyped-def]
     return total
 
 
-async def _admin(session_factory, *argv: str) -> tuple[int, str, str]:  # type: ignore[no-untyped-def]
+async def _admin(  # type: ignore[no-untyped-def]
+    session_factory, *argv: str, password: str | None = None
+) -> tuple[int, str, str]:
     from mobile_finance_api import account_admin
 
     out, err = io.StringIO(), io.StringIO()
+    args = account_admin.parse_arguments(list(argv))
+    if password is not None:
+        # What main() does after reading the hidden prompt.
+        args.password = password
     code = await account_admin.execute(
-        account_admin.parse_arguments(list(argv)),
+        args,
         session_factory=session_factory,
         out=out,
         err=err,
@@ -345,6 +351,40 @@ async def main() -> None:
             assert code == 0 and "active" in out, out
             status, body = await _sign_in(client, OWNER)
             assert status == 200 and "accessToken" in body, (status, body)
+
+            # --- set a password -----------------------------------------------
+            status, signed_in = await _sign_in(client, OWNER)
+            assert status == 200, signed_in
+            live_refresh = str(signed_in["refreshToken"])
+            new_password = "synthetic-reset-password-42"
+            code, out, _ = await _admin(
+                session_factory, "set-password", OWNER, password=new_password
+            )
+            assert code == 0 and "session(s) signed out" in out, out
+            # Every device is out: the refresh token went with its session.
+            revoked = await client.post(
+                "/api/v1/auth/refresh", json={"refreshToken": live_refresh}
+            )
+            assert revoked.status_code != 200, revoked.text
+            status, _ = await _sign_in(client, OWNER)
+            assert status != 200, "the old password still signs in"
+            renewed = await client.post(
+                "/api/v1/auth/login",
+                json={"email": OWNER, "password": new_password},
+            )
+            assert renewed.status_code == 200, renewed.text
+            assert "accessToken" in renewed.json()
+            code, _, _ = await _admin(
+                session_factory,
+                "set-password",
+                "nobody-admin-e2e@example.com",
+                password=new_password,
+            )
+            assert code == 1
+            untouched = await client.get(
+                "/api/v1/profile", headers=_bearer(other["access"])
+            )
+            assert untouched.status_code == 200, untouched.text
 
             # --- erasure refusals -----------------------------------------------
             code, _, err = await _admin(
