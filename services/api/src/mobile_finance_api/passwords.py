@@ -32,12 +32,12 @@ class PasswordService:
         self._dummy_hash = self._hasher.hash("not-a-real-account-password")
 
     async def hash(self, password: str) -> str:
-        _validate_password(password)
+        validate_password(password)
         return await run_in_threadpool(self._hasher.hash, password)
 
     async def verify(self, password: str, encoded_hash: str | None) -> bool:
         try:
-            _validate_password(password)
+            validate_password(password)
         except InvalidPassword:
             # Still consume one Argon2 operation to reduce account/timing oracles.
             await run_in_threadpool(
@@ -66,7 +66,7 @@ class PasswordService:
             return False
 
 
-def _validate_password(password: str) -> None:
+def validate_password(password: str) -> None:
     if not (_MINIMUM_PASSWORD_LENGTH <= len(password) <= _MAXIMUM_PASSWORD_LENGTH):
         raise InvalidPassword
     if len(password.encode("utf-8")) > _MAXIMUM_PASSWORD_BYTES:

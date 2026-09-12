@@ -7,6 +7,8 @@ schema that erasure rests on, so a table added later cannot quietly break it.
 
 from __future__ import annotations
 
+import io
+
 import pytest
 
 from mobile_finance_api import account_admin
@@ -86,3 +88,122 @@ def test_every_user_table_is_erased_with_its_user() -> None:
     ]
 
     assert unreachable == []
+
+
+# --- setting a password -------------------------------------------------------
+
+
+class _Terminal:
+    """A stdin that says it is a terminal, as `docker compose exec` without -T."""
+
+    def isatty(self) -> bool:
+        return True
+
+    def readline(self) -> str:  # pragma: no cover - never read on a terminal
+        raise AssertionError("a terminal password must come from getpass")
+
+
+def _refuse_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*_: object, **__: object) -> None:
+        raise AssertionError("the database was opened")
+
+    monkeypatch.setattr(account_admin, "create_database", refuse)
+    monkeypatch.setattr(account_admin, "require_database_url", refuse)
+
+
+def _prompts(monkeypatch: pytest.MonkeyPatch, *answers: str) -> None:
+    queue = list(answers)
+    monkeypatch.setattr(
+        account_admin.getpass, "getpass", lambda _prompt="": queue.pop(0)
+    )
+
+
+def test_a_password_is_never_taken_from_the_command_line() -> None:
+    """Arguments land in shell history and in the process list."""
+
+    with pytest.raises(SystemExit):
+        account_admin.parse_arguments(
+            ["set-password", "owner@example.com", "synthetic-new-password-42"]
+        )
+
+
+def test_two_different_passwords_change_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _refuse_database(monkeypatch)
+    monkeypatch.setattr(account_admin.sys, "stdin", _Terminal())
+    _prompts(monkeypatch, "synthetic-new-password-42", "synthetic-new-password-43")
+
+    code = account_admin.main(["set-password", "owner@example.com"])
+
+    assert code == account_admin.EXIT_REFUSED
+    assert "Nothing was changed" in capsys.readouterr().err
+
+
+def test_a_password_the_policy_refuses_never_reaches_the_database(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _refuse_database(monkeypatch)
+    monkeypatch.setattr(account_admin.sys, "stdin", _Terminal())
+    _prompts(monkeypatch, "short", "short")
+
+    code = account_admin.main(["set-password", "owner@example.com"])
+
+    assert code == account_admin.EXIT_REFUSED
+    assert "12" in capsys.readouterr().err
+
+
+def test_an_address_sign_in_would_reject_is_refused_before_asking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _refuse_database(monkeypatch)
+
+    def never(_prompt: str = "") -> str:
+        raise AssertionError("asked for a password for an impossible address")
+
+    monkeypatch.setattr(account_admin.getpass, "getpass", never)
+
+    assert account_admin.main(["set-password", "test3@gmai"]) == (
+        account_admin.EXIT_NOT_FOUND
+    )
+
+
+def test_without_a_terminal_it_asks_for_an_explicit_stdin_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`exec -T` has no terminal: getpass would echo, or read something that was
+    never meant to be a password."""
+
+    _refuse_database(monkeypatch)
+    monkeypatch.setattr(account_admin.sys, "stdin", io.StringIO(""))
+
+    code = account_admin.main(["set-password", "owner@example.com"])
+
+    assert code == account_admin.EXIT_REFUSED
+    assert "--password-stdin" in capsys.readouterr().err
+
+
+def test_password_stdin_reads_exactly_one_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str] = []
+
+    async def record(args: object) -> int:
+        seen.append(args.password)  # type: ignore[attr-defined]
+        return account_admin.EXIT_OK
+
+    monkeypatch.setattr(account_admin, "_main", record)
+    monkeypatch.setattr(
+        account_admin.sys,
+        "stdin",
+        io.StringIO("  synthetic new password 42  \nnot part of it\n"),
+    )
+
+    code = account_admin.main(["set-password", "owner@example.com", "--password-stdin"])
+
+    assert code == account_admin.EXIT_OK
+    # Only the line ending is removed: spaces can belong to a password.
+    assert seen == ["  synthetic new password 42  "]
