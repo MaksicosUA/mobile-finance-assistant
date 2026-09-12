@@ -78,3 +78,37 @@ database and compare it with the live one, then drop the scratch:
     # compare counts of users, finance_operations, finance_categories, ...
     docker compose exec -T postgres psql -U "$POSTGRES_USER" -d postgres \
       -c "DROP DATABASE mfa_restore_check;"
+
+## Looking at the database
+
+The database publishes no port, and it stays that way: everything below goes
+through SSH.
+
+Once, and again after a migration adds a column to `users` or
+`auth_refresh_tokens`:
+
+    sudo ./readonly-role.sh
+
+It creates `mfa_readonly`, which can read every table except the password hash
+and the refresh-token hash, runs every statement in a read-only transaction, and
+can therefore change nothing. Its password is generated into `.env` and never
+printed.
+
+When you want to look:
+
+    sudo ./adminer.sh start        # on the host; stops itself after two hours
+    ssh -N -L 8080:127.0.0.1:8080 <user>@<host>    # on your computer
+
+Open http://localhost:8080 and sign in with System **PostgreSQL**, Server
+**postgres**, Username **mfa_readonly**, Database the `POSTGRES_DB` value, and the
+password from `sudo grep ^MFA_READONLY_DB_PASSWORD= .env`. `sudo ./adminer.sh stop`
+when done.
+
+`users` and `auth_refresh_tokens` refuse `SELECT *`, because two of their columns
+are hidden: in Adminer, choose the columns under **Select** before opening them.
+For accounts, `account_admin list` is quicker anyway.
+
+**Do not edit financial rows by hand, even with a stronger login.** A write that
+skips Finance Core skips its audit row and its outbox invalidation, can break
+the append-only ledgers, and leaves Home showing numbers the database no longer
+holds. Accounts are managed with `account_admin`.
