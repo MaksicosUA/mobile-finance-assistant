@@ -183,6 +183,80 @@ def test_a_numeral_case_the_table_does_not_list_is_a_gap() -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # A price said aloud is two numbers in a row: whole units, then the
+        # hundredths. Adding them is what read «три пятьдесят» as 53 and put an
+        # amount fifteen times too large on an ordinary-looking card (0009).
+        ("Купил кофе за три пятьдесят", Decimal("3.50")),
+        ("Потратил пятнадцать пятьдесят в кафе", Decimal("15.50")),
+        ("Отдал шестьдесят шесть шестьдесят", Decimal("66.60")),
+        ("Заплатил девяносто девять девяносто девять", Decimal("99.99")),
+        ("Заплатил триста тридцать три тридцать три", Decimal("333.33")),
+    ],
+)
+def test_a_spoken_price_is_whole_units_and_hundredths(
+    text: str, expected: Decimal
+) -> None:
+    parsed = _parse(text)
+
+    assert parsed.amount == expected
+    assert parsed.gaps == () or "AMBIGUOUS_AMOUNT" not in parsed.gaps
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # The parts of one number descend: hundreds, then tens, then units.
+        # These must stay single numbers, or the fix above would break reading
+        # every ordinary spoken amount.
+        ("Потратил сто двадцать пять на продукты", Decimal("125")),
+        ("Потратил сто один евро", Decimal("101")),
+        ("Купил на четыреста сорок четыре", Decimal("444")),
+        ("Заплатил двадцать две тысячи двести", Decimal("22200")),
+        ("Потратил одна тысяча одиннадцать", Decimal("1011")),
+        ("Отдал две тысячи двадцать два", Decimal("2022")),
+        ("Купил за пятнадцать тысяч пятьсот", Decimal("15500")),
+        ("Потратил полторы тысячи на продукты", Decimal("1500")),
+    ],
+)
+def test_a_number_whose_parts_descend_stays_one_number(
+    text: str, expected: Decimal
+) -> None:
+    assert _parse(text).amount == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Потратил ноль целых пять", Decimal("0.50")),
+        ("Потратил две целых двадцать пять", Decimal("2.25")),
+    ],
+)
+def test_a_dictated_decimal_keeps_its_fraction(text: str, expected: Decimal) -> None:
+    assert _parse(text).amount == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Words between two numbers mean two things were counted, not a price.
+        "Купил два кофе и три булки",
+        # A correction spoken aloud. Picking either number writes money the
+        # user did not spend.
+        "Купил за тринадцать, не за тридцать",
+        # Too small to be hundredths: refusing beats inventing 3,05 or 3,50.
+        "Купил три пять",
+    ],
+)
+def test_numbers_that_are_not_a_price_stay_a_gap(text: str) -> None:
+    parsed = _parse(text)
+
+    assert parsed.amount is None
+    assert "AMBIGUOUS_AMOUNT" in parsed.gaps
+
+
+@pytest.mark.parametrize(
     ("text", "code"),
     [
         ("Потратил 500 евро", "EUR"),
@@ -241,6 +315,27 @@ def test_a_currency_symbol_it_cannot_name_is_a_gap(text: str) -> None:
     assert "CURRENCY_NOT_UNDERSTOOD" in parsed.gaps
     # The amount was read perfectly well. Only the currency is missing.
     assert parsed.amount is not None
+
+
+@pytest.mark.parametrize(
+    ("text", "amount"),
+    [
+        ("Купил на 800 крон еды", Decimal("800")),
+        ("Отдал 200 крон за такси", Decimal("200")),
+    ],
+)
+def test_a_currency_word_this_table_cannot_resolve_is_a_gap(
+    text: str, amount: Decimal
+) -> None:
+    """A crown is Swedish, Norwegian, Danish, Czech or Icelandic, and the
+    sentence does not say which. Booking it as euro was silent and wrong; the
+    gap costs one correction (0009)."""
+
+    parsed = _parse(text)
+
+    assert "CURRENCY_NOT_UNDERSTOOD" in parsed.gaps
+    # Only the unit is unknown; the number itself still reads.
+    assert parsed.amount == amount
 
 
 def test_a_sentence_with_no_currency_is_not_a_gap() -> None:
