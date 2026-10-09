@@ -573,36 +573,77 @@ class _AmountCandidate:
     value: Decimal
 
 
+#: What a numeral word contributes to the number being built. The parts of one
+#: number descend through these — "сто двадцать пять" is hundreds, then tens,
+#: then units — so a part that does not descend cannot belong to the same
+#: number. That is what tells "сто двадцать" from "три пятьдесят".
+_HUNDREDS, _TENS, _UNITS = 3, 2, 1
+
+#: "ноль целых пять" is how a decimal is dictated: the word is the point.
+_DECIMAL_SEPARATORS = frozenset({"целых", "целая", "целую", "целой", "целого", "целые"})
+
+
+def _numeral_class(value: Decimal) -> int:
+    if value >= 100:
+        return _HUNDREDS
+    if value >= 20 and value % 10 == 0:
+        return _TENS
+    return _UNITS
+
+
 def _spoken_amounts(haystack: str) -> list[_AmountCandidate]:
-    """Every maximal run of numeral words, read into a number.
+    """Every run of numeral words, read into numbers.
 
     A run ends at the first word that is not a numeral, so "двадцать евро
     тридцать" is two candidates rather than one impossible number, and the
     ordinary currency tie-break decides between them.
+
+    Inside a run, a part that does not descend begins a second number, and two
+    numbers side by side are a price: "три пятьдесят" is 3,50, not 53. Anything
+    else a run produces stays several candidates, which the caller reports as
+    an ambiguous amount rather than guessing between them.
     """
 
-    candidates: list[_AmountCandidate] = []
+    found: list[_AmountCandidate] = []
+    numbers: list[_AmountCandidate] = []
     total = Decimal(0)
     current = Decimal(0)
-    started = False
+    last_class = 0
     start = 0
     end = 0
+    started = False
+    dictated_point = False
 
-    def flush() -> None:
-        nonlocal total, current, started
-        if started:
-            value = total + current
-            # "полторы тысячи" arrives as 1500.0; a whole number should read
-            # as a whole number in the field the user is about to confirm.
-            if value == value.to_integral_value():
-                value = value.to_integral_value()
-            candidates.append(_AmountCandidate(start=start, end=end, value=value))
+    def close_number() -> None:
+        nonlocal total, current, last_class, started
+        if not started:
+            return
+        value = total + current
+        # "полторы тысячи" arrives as 1500.0; a whole number should read
+        # as a whole number in the field the user is about to confirm.
+        if value == value.to_integral_value():
+            value = value.to_integral_value()
+        numbers.append(_AmountCandidate(start=start, end=end, value=value))
         total = Decimal(0)
         current = Decimal(0)
+        last_class = 0
         started = False
+
+    def flush_run() -> None:
+        nonlocal dictated_point
+        close_number()
+        if numbers:
+            found.extend(_read_run(tuple(numbers), dictated_point=dictated_point))
+        numbers.clear()
+        dictated_point = False
 
     for match in _WORD.finditer(haystack):
         word = match.group()
+        if word in _DECIMAL_SEPARATORS:
+            if started:
+                close_number()
+                dictated_point = True
+            continue
         if word in _SPOKEN_UNITS:
             value = Decimal(_SPOKEN_UNITS[word])
         elif word in _SPOKEN_HALVES:
@@ -615,20 +656,64 @@ def _spoken_amounts(haystack: str) -> list[_AmountCandidate]:
             # "тысяча" on its own is one thousand, not zero thousands.
             total += (current if current > 0 else Decimal(1)) * multiplier
             current = Decimal(0)
+            # Hundreds may follow a thousand: "две тысячи триста" is 2300.
+            last_class = 0
             end = match.end()
             continue
         else:
-            flush()
+            flush_run()
             continue
 
+        rank = _numeral_class(value)
+        if started and last_class and rank >= last_class:
+            # "шестьдесят шесть шестьдесят": the second sixty cannot be part of
+            # the first number, so that number ends here and another begins.
+            close_number()
         if not started:
             start = match.start()
             started = True
         current += value
+        last_class = rank
         end = match.end()
 
-    flush()
-    return [candidate for candidate in candidates if candidate.value > 0]
+    flush_run()
+    return [candidate for candidate in found if candidate.value > 0]
+
+
+def _read_run(
+    numbers: tuple[_AmountCandidate, ...],
+    *,
+    dictated_point: bool,
+) -> list[_AmountCandidate]:
+    """One run's numbers as candidates, joining a price into a single amount."""
+
+    if len(numbers) == 2:
+        major, minor = numbers
+        fraction = _fraction(minor.value, dictated_point=dictated_point)
+        if fraction is not None:
+            return [
+                _AmountCandidate(
+                    start=major.start,
+                    end=minor.end,
+                    value=(major.value + fraction).quantize(Decimal("0.01")),
+                )
+            ]
+    return list(numbers)
+
+
+def _fraction(value: Decimal, *, dictated_point: bool) -> Decimal | None:
+    """The run's second number as a fraction of the first, or None."""
+
+    if value != value.to_integral_value() or value < 0 or value > 99:
+        return None
+    if dictated_point:
+        # "ноль целых пять" is 0,5; "две целых двадцать пять" is 2,25.
+        return value / Decimal(10 ** len(str(int(value))))
+    if value < 10:
+        # "три пять" could be 3,05 or 3,50, and is nobody's way of saying a
+        # price. Two candidates, and the caller reports the ambiguity.
+        return None
+    return value / Decimal(100)
 
 
 def _find_amount(
@@ -666,6 +751,15 @@ def _digit_amounts(haystack: str) -> list[_AmountCandidate]:
     return candidates
 
 
+#: Words that name a currency this table cannot resolve. A crown is Swedish,
+#: Norwegian, Danish, Czech or Icelandic, and a sentence does not say which, so
+#: the honest answer is the gap an unresolvable currency sign already gets
+#: rather than a silent euro.
+_AMBIGUOUS_CURRENCY_WORDS = frozenset(
+    {"крон", "крона", "кроны", "крону", "кроне", "кронах", "кронами"}
+)
+
+
 def _find_currency(haystack: str) -> _Currency:
     best: tuple[int, int, str] | None = None
     for match in _WORD.finditer(haystack):
@@ -682,6 +776,8 @@ def _find_currency(haystack: str) -> _Currency:
     understood = not any(
         unicodedata.category(character) == "Sc" and character not in _CURRENCY_SIGNS
         for character in haystack
+    ) and not any(
+        match.group() in _AMBIGUOUS_CURRENCY_WORDS for match in _WORD.finditer(haystack)
     )
     if best is None:
         return _Currency(code=DEFAULT_CURRENCY, span=None, understood=understood)
