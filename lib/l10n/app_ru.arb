@@ -1380,9 +1380,13 @@
       }
     }
   },
-  "appUpdateHandedToInstaller": "Файл скачан и проверен. Подтвердите установку в системном окне.",
+  "appUpdateHandedToInstaller": "Файл скачан и проверен. Подтвердите установку в системном окне — Android ставит обновление сам, и это занимает до минуты. Скачивать заново не нужно: файл сейчас нужен установщику.",
   "@appUpdateHandedToInstaller": {
     "description": "In-app update (ADR 0026)."
+  },
+  "appUpdateOpenInstallerAction": "Открыть окно установки снова",
+  "@appUpdateOpenInstallerAction": {
+    "description": "In-app update (ADR 0026): reopens the installer for the package already downloaded (issue 0010)."
   },
   "appUpdateNeedsPermission": "Android просит разрешить установку из этого приложения. Это делается один раз.",
   "@appUpdateNeedsPermission": {

@@ -42,6 +42,16 @@ final appUpdateControllerProvider =
 class AppUpdateController extends Notifier<AppUpdateState> {
   bool _busy = false;
 
+  /// The package already given to Android, and the build it carries.
+  ///
+  /// Android reads that file on its own schedule — tens of megabytes, while
+  /// this app considers the hand-off finished the moment the intent is fired.
+  /// Downloading again used to begin by deleting it, which pulled the file out
+  /// from under the open installer and produced a refusal naming nothing
+  /// (issue 0010). Kept so a second press reopens the installer instead.
+  File? _handedOver;
+  String? _handedOverVersion;
+
   FinanceEntryRepositoryClient get _repository =>
       ref.read(financeEntryRepositoryProvider);
 
@@ -51,6 +61,8 @@ class AppUpdateController extends Notifier<AppUpdateState> {
   AppUpdateState build() {
     ref.watch(authAccountEpochProvider);
     _busy = false;
+    _handedOver = null;
+    _handedOverVersion = null;
     return const AppUpdateIdle();
   }
 
@@ -123,6 +135,28 @@ class AppUpdateController extends Notifier<AppUpdateState> {
   Future<void> downloadAndInstall(AppRelease release) async {
     if (_busy) return;
     _busy = true;
+    final handedOver = _handedOver;
+    if (handedOver != null &&
+        _handedOverVersion == release.versionName &&
+        handedOver.existsSync()) {
+      // This build is already downloaded, verified and in Android's hands.
+      // Offering it again is the whole answer: fetching it a second time would
+      // delete the file the installer is reading.
+      try {
+        await _installer.install(handedOver);
+        if (ref.mounted) state = AppUpdateHandedToInstaller(release);
+      } on AppUpdateInstallFailed {
+        if (ref.mounted) {
+          state = AppUpdateFailed(
+            AppUpdateFailureReason.installerUnavailable,
+            release: release,
+          );
+        }
+      } finally {
+        _busy = false;
+      }
+      return;
+    }
     state = AppUpdateDownloading(release: release, receivedBytes: 0);
     File? package;
     try {
@@ -173,6 +207,8 @@ class AppUpdateController extends Notifier<AppUpdateState> {
       }
 
       await _installer.install(package);
+      _handedOver = package;
+      _handedOverVersion = release.versionName;
       if (ref.mounted) state = AppUpdateHandedToInstaller(release);
     } on AppUpdateInstallFailed {
       if (ref.mounted) {

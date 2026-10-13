@@ -205,6 +205,54 @@ void main() {
     expect(find.byKey(const Key('app-update-handed-over')), findsOneWidget);
   });
 
+  testWidgets('pressing again does not delete the package Android is reading', (
+    tester,
+  ) async {
+    // Issue 0010. Android reads the handed-over file on its own schedule, for
+    // 57 MB, while this app considers the hand-off finished. Someone who
+    // cannot tell a slow download from a stalled one presses again — and the
+    // download used to start by deleting the file under the open installer,
+    // which Android then reports as «Приложение не установлено».
+    final installer = _FakeInstaller();
+    final repository = _FakeRepository(release: _releaseJson());
+    await _pump(tester, repository: repository, installer: installer);
+
+    await _tapCheck(tester);
+    await tester.tap(find.byKey(const Key('app-update-download')));
+    await tester.pumpAndSettle();
+    final handed = installer.installed.single;
+    expect(handed.existsSync(), isTrue);
+
+    // Exactly what the owner did: checked again, was offered the same build,
+    // and pressed download a second time.
+    await _tapCheck(tester);
+    await tester.tap(find.byKey(const Key('app-update-download')));
+    await tester.pumpAndSettle();
+
+    expect(handed.existsSync(), isTrue);
+    expect(repository.downloads, hasLength(1));
+    // Offered again rather than fetched again: the expensive half is done.
+    expect(installer.installed, hasLength(2));
+  });
+
+  testWidgets('the handed-over state offers the installer again', (
+    tester,
+  ) async {
+    final installer = _FakeInstaller();
+    final repository = _FakeRepository(release: _releaseJson());
+    await _pump(tester, repository: repository, installer: installer);
+
+    await _tapCheck(tester);
+    await tester.tap(find.byKey(const Key('app-update-download')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('app-update-open-installer')));
+    await tester.pumpAndSettle();
+
+    expect(installer.installed, hasLength(2));
+    expect(repository.downloads, hasLength(1));
+  });
+
   testWidgets('an installer that will not open is reported, not swallowed', (
     tester,
   ) async {
