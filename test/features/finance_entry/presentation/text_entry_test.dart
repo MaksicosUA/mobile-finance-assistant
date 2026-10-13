@@ -296,6 +296,60 @@ void main() {
     expect(find.byKey(const Key('operation-category-picker')), findsOneWidget);
   });
 
+  testWidgets('a sentence about an exchange fills nothing and offers transfer', (
+    tester,
+  ) async {
+    // Issue 0009: «Перевёл 100 евро получил 5200 гривен» was recorded as
+    // income of 100 EUR. The form must stay empty and point at the screen that
+    // can actually record it.
+    final repository = _FakeRepository(
+      proposal: const OperationProposal(
+        type: FinanceOperationType.expense,
+        amount: null,
+        currency: 'EUR',
+        occurredOn: '2026-07-29',
+        sourceExpression: null,
+        categoryId: null,
+        category: null,
+        gaps: [OperationParseGap.transferNotAnOperation],
+      ),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'Перевёл 100 евро получил 5200 гривен',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    expect(_amountText(tester), '');
+    expect(_pickedCategory(tester), isNull);
+    expect(find.textContaining('перевод между кошельками'), findsOneWidget);
+    expect(
+      find.byKey(const Key('operation-sentence-open-transfer')),
+      findsOneWidget,
+    );
+    // Nothing was recorded by reading a sentence, as always.
+    expect(repository.evaluated, 0);
+  });
+
+  testWidgets('an ordinary sentence offers no transfer', (tester) async {
+    await _pumpPage(tester, repository: _FakeRepository());
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'потратил 12,50 на продукты',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('operation-sentence-open-transfer')),
+      findsNothing,
+    );
+  });
+
   testWidgets(
     'a sentence that matches nothing withdraws what a sentence filled',
     (tester) async {

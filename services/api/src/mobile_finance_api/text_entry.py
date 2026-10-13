@@ -41,6 +41,10 @@ ParseGapCode = Literal[
     # than quietly replaced by the default, because an unknown currency and an
     # unstated one are not the same thing.
     "CURRENCY_NOT_UNDERSTOOD",
+    # The sentence moves money between the person's own places rather than in
+    # or out of them. No amount is proposed, because booking either side as
+    # income or expense invents money that never entered or left (ADR 0029).
+    "TRANSFER_NOT_AN_OPERATION",
 ]
 
 #: The longest sentence accepted. A phrase is one operation, not a paragraph.
@@ -112,6 +116,21 @@ def parse_operation_text(
     # The date is cut out before looking for money, so "03.08" cannot be read
     # as the numbers 3 and 8.
     without_date = _blank_span(haystack, date_span)
+    # An exchange states both sides, and neither is income or expense. Booking
+    # one of them would put money in a month's totals that never entered or
+    # left the profile, so the sentence is refused as an operation and the two
+    # sides are offered as a transfer instead (ADR 0029).
+    if _transfer_sides(without_date) is not None:
+        return ParsedOperation(
+            operation_type=direction,
+            amount=None,
+            currency=DEFAULT_CURRENCY,
+            occurred_on=occurred_on,
+            source_expression=expression,
+            category_id=None,
+            category=None,
+            gaps=("TRANSFER_NOT_AN_OPERATION",),
+        )
     currency = _find_currency(without_date)
     amount, amount_gap = _find_amount(without_date, currency)
     category_id, category_text = _find_category(
@@ -758,6 +777,97 @@ def _digit_amounts(haystack: str) -> list[_AmountCandidate]:
 _AMBIGUOUS_CURRENCY_WORDS = frozenset(
     {"крон", "крона", "кроны", "крону", "кроне", "кронах", "кронами"}
 )
+
+
+# --- a transfer is not an operation ------------------------------------------
+
+#: Word starts that say money moved between the person's own places. A stem,
+#: because the parser already matches from a word start everywhere else:
+#: "перев" reads «перевёл», «перевел», «перевод» and «переведено».
+_TRANSFER_STEMS = ("перев", "обмен", "поменя", "конверт")
+
+
+@dataclass(frozen=True)
+class TransferSide:
+    """One half of an exchange, exactly as the sentence states it."""
+
+    amount: Decimal
+    currency: str
+
+
+def read_transfer_sides(
+    text: str, *, today: date
+) -> tuple[TransferSide, TransferSide] | None:
+    """Read a sentence as a transfer, or decide it is not one.
+
+    `today` is only needed to cut the date out before looking for money, the
+    same way an operation is read; this function never decides what today is.
+    """
+
+    try:
+        haystack = _normalized(text).casefold()
+    except ValueError:
+        return None
+    _, _, date_span, _ = _find_date(haystack, today=today)
+    return _transfer_sides(_blank_span(haystack, date_span))
+
+
+def _transfer_sides(haystack: str) -> tuple[TransferSide, TransferSide] | None:
+    """Both halves of an exchange, or None when the sentence is not one.
+
+    Deliberately narrow. A transfer word alone proves nothing — «перевёл 100
+    евро маме» is spending, and reading it as a transfer would lose a real
+    expense. What distinguishes the two is that an exchange states **both**
+    sides, so two different currencies must be named and each must have an
+    amount of its own. Anything less stays an ordinary operation, which is the
+    behaviour that was already right.
+    """
+
+    if not any(
+        word.group().startswith(stem)
+        for word in _WORD.finditer(haystack)
+        for stem in _TRANSFER_STEMS
+    ):
+        return None
+
+    mentions = _currency_mentions(haystack)
+    ordered: list[tuple[int, int, str]] = []
+    for mention in mentions:
+        if all(mention[2] != seen[2] for seen in ordered):
+            ordered.append(mention)
+    if len(ordered) < 2:
+        return None
+
+    candidates = _digit_amounts(haystack) or _spoken_amounts(haystack)
+    if len(candidates) < 2:
+        return None
+
+    first = _nearest_to_currency(candidates, (ordered[0][0], ordered[0][1]))
+    second = _nearest_to_currency(candidates, (ordered[1][0], ordered[1][1]))
+    # A tie, or both currencies claiming the same number, is a sentence this
+    # parser cannot read as two sides. It says so instead of inventing one.
+    if first is None or second is None or first is second:
+        return None
+    return (
+        TransferSide(amount=first.value, currency=ordered[0][2]),
+        TransferSide(amount=second.value, currency=ordered[1][2]),
+    )
+
+
+def _currency_mentions(haystack: str) -> list[tuple[int, int, str]]:
+    """Every currency the sentence names, in the order it names them."""
+
+    found: list[tuple[int, int, str]] = []
+    for match in _WORD.finditer(haystack):
+        code = _CURRENCY_WORDS.get(match.group())
+        if code is not None:
+            found.append((match.start(), match.end(), code))
+    for index, character in enumerate(haystack):
+        code = _CURRENCY_SIGNS.get(character)
+        if code is not None:
+            found.append((index, index + 1, code))
+    found.sort()
+    return found
 
 
 def _find_currency(haystack: str) -> _Currency:

@@ -54,6 +54,11 @@ ParseGap = Literal[
     "DATE_NOT_UNDERSTOOD",
     "CATEGORY_NOT_MATCHED",
     "CURRENCY_NOT_UNDERSTOOD",
+    # The sentence is a transfer, so no amount is proposed at all. A client
+    # that does not know this code drops it and sees a proposal with no
+    # amount, which is the safe reading: nothing is filled, nothing is
+    # confirmed, and no money is invented.
+    "TRANSFER_NOT_AN_OPERATION",
 ]
 
 TextEntryErrorCode = Literal["TEXT_ENTRY_UNAVAILABLE"]
@@ -96,6 +101,33 @@ class ParsedOperationProposal(TextEntryApiModel):
 class ParseOperationResponse(TextEntryApiModel):
     schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
     proposal: ParsedOperationProposal
+
+
+class ParsedTransferSide(TextEntryApiModel):
+    """One half of an exchange, exactly as the sentence states it."""
+
+    amount: MoneyInput
+    currency: CurrencyCode
+
+
+class ParsedTransferProposal(TextEntryApiModel):
+    """Both halves, in the order the sentence says them.
+
+    No wallets and no rate. The wallets are the client's to resolve — it holds
+    the list already — and a rate is never stored anywhere: it is implied by
+    two amounts the person witnessed (ADR 0029).
+    """
+
+    sent: ParsedTransferSide
+    received: ParsedTransferSide
+    occurred_on: OperationDate = Field(alias="occurredOn")
+
+
+class ParseTransferResponse(TextEntryApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    #: Null when the sentence is not an exchange. Saying so is the honest
+    #: answer; the caller asked a question and this is the answer to it.
+    proposal: ParsedTransferProposal | None = None
 
 
 class TextEntryErrorDetail(TextEntryApiModel):

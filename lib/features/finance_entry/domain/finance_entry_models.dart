@@ -2179,6 +2179,11 @@ enum OperationParseGap {
   dateNotUnderstood,
   categoryNotMatched,
   currencyNotUnderstood,
+
+  /// The sentence moves money between the person's own wallets, so no amount
+  /// is proposed at all: booking either side as income or expense would invent
+  /// money that never entered or left (ADR 0029).
+  transferNotAnOperation,
 }
 
 /// What one written sentence appears to mean.
@@ -2259,11 +2264,59 @@ List<OperationParseGap> _parseGaps(Object? raw) {
       'DATE_NOT_UNDERSTOOD' => OperationParseGap.dateNotUnderstood,
       'CATEGORY_NOT_MATCHED' => OperationParseGap.categoryNotMatched,
       'CURRENCY_NOT_UNDERSTOOD' => OperationParseGap.currencyNotUnderstood,
+      'TRANSFER_NOT_AN_OPERATION' => OperationParseGap.transferNotAnOperation,
       _ => null,
     };
     if (gap != null) gaps.add(gap);
   }
   return List<OperationParseGap>.unmodifiable(gaps);
+}
+
+/// One half of an exchange, exactly as the sentence stated it.
+@immutable
+final class TransferProposalSide {
+  const TransferProposalSide({required this.amount, required this.currency});
+
+  final String amount;
+  final String currency;
+}
+
+/// Both halves of an exchange read from one sentence (ADR 0029).
+///
+/// Carries no wallets and no rate: which wallet a currency means is resolved
+/// from the list this client already holds, and a rate is never stored
+/// anywhere — it is implied by two amounts the person witnessed.
+@immutable
+final class TransferProposal {
+  const TransferProposal({
+    required this.sent,
+    required this.received,
+    required this.occurredOn,
+  });
+
+  factory TransferProposal.fromJson(Map<String, Object?> json) {
+    _expectKeys(json, const {'schemaVersion', 'proposal'});
+    _requireSchemaVersion(json);
+    final proposal = _nestedObject(json, 'proposal');
+    _expectKeys(proposal, const {'sent', 'received', 'occurredOn'});
+    return TransferProposal(
+      sent: _transferSide(_nestedObject(proposal, 'sent')),
+      received: _transferSide(_nestedObject(proposal, 'received')),
+      occurredOn: _date(proposal, 'occurredOn'),
+    );
+  }
+
+  final TransferProposalSide sent;
+  final TransferProposalSide received;
+  final String occurredOn;
+}
+
+TransferProposalSide _transferSide(Map<String, Object?> json) {
+  _expectKeys(json, const {'amount', 'currency'});
+  return TransferProposalSide(
+    amount: _positiveMoney(json, 'amount'),
+    currency: _currency(json, 'currency'),
+  );
 }
 
 /// Who is signed in, and the durable facts of their account.

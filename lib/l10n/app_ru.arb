@@ -1110,6 +1110,14 @@
   "@entrySentenceGapCategory": {
     "description": "Natural-language entry (ADR 0022)."
   },
+  "entrySentenceGapTransfer": "Это перевод между кошельками, а не доход или трата — поэтому ничего не заполнил.",
+  "@entrySentenceGapTransfer": {
+    "description": "Natural-language entry (ADR 0022): the sentence is a transfer (ADR 0029)."
+  },
+  "entrySentenceOpenTransfer": "Открыть перевод",
+  "@entrySentenceOpenTransfer": {
+    "description": "Natural-language entry (ADR 0022): opens the transfer screen with both sides filled."
+  },
   "categoryKeywordsTitle": "Слова категории",
   "@categoryKeywordsTitle": {
     "description": "Category keywords (ADR 0020, step 3)."

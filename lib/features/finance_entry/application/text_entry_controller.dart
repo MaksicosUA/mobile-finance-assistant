@@ -111,6 +111,36 @@ class TextEntryController extends Notifier<TextEntryState> {
     }
   }
 
+  /// Reads the same sentence as an exchange, for the screen that moves money
+  /// between wallets.
+  ///
+  /// Kept out of [state] on purpose: this screen's state describes the form in
+  /// front of the person, and a transfer is a different screen's business. A
+  /// null answer — the sentence is not an exchange after all, or the request
+  /// failed — means the offer simply does not open anything.
+  Future<TransferProposal?> readTransfer(String text) async {
+    final sentence = text.trim();
+    if (sentence.isEmpty || sentence.length > maximumEntryTextLength) {
+      return null;
+    }
+    try {
+      final capture = await ref
+          .read(financeCaptureContextSourceProvider)
+          .capture(canonicalTimezone: ref.read(canonicalTimezoneProvider));
+      final result = await _repository.parseTransferText(
+        text: sentence,
+        capturedAt: capture.capturedAtUtc.toIso8601String(),
+        capturedTimezone: capture.capturedTimezone,
+      );
+      return switch (result) {
+        FinanceEntrySuccess(:final value) => value,
+        FinanceEntryFailureResult() => null,
+      };
+    } on Object {
+      return null;
+    }
+  }
+
   int _beginRequest() {
     _requestInFlight = true;
     _requestGeneration += 1;

@@ -16,17 +16,25 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from .auth import AuthenticatedUser, current_user
 from .category_contracts import ListCategoriesResponse
-from .text_entry import CategoryOption, parse_operation_text
+from .text_entry import CategoryOption, parse_operation_text, read_transfer_sides
 from .text_entry_contracts import (
     ParsedOperationProposal,
+    ParsedTransferProposal,
+    ParsedTransferSide,
     ParseOperationRequest,
     ParseOperationResponse,
+    ParseTransferResponse,
     TextEntryErrorCode,
     TextEntryErrorDetail,
     TextEntryErrorResponse,
 )
 
 router = APIRouter(prefix="/api/v1/operations", tags=["operations"])
+
+#: Reading a sentence as a transfer is the same kind of read as reading one as
+#: an operation — it decides nothing and writes nothing — so it lives here
+#: rather than beside the Finance Core write path it eventually feeds.
+transfer_router = APIRouter(prefix="/api/v1/transfers", tags=["transfers"])
 
 
 class CategoryReader(Protocol):
@@ -110,6 +118,58 @@ async def parse_operation(
         public_error = _unavailable()
     # Raised outside the active handler so the sentence itself, amounts, and
     # category names are not retained as public exception context.
+    raise public_error
+
+
+@transfer_router.post(
+    "/parse",
+    response_model=ParseTransferResponse,
+    response_model_by_alias=True,
+    responses={
+        401: {"description": "Authentication is required"},
+        422: {"description": "The request is malformed"},
+        503: {
+            "model": TextEntryErrorResponse,
+            "description": "The sentence cannot be read",
+        },
+    },
+)
+async def parse_transfer(
+    request: ParseOperationRequest,
+    user: CurrentUserDependency,
+) -> ParseTransferResponse:
+    """Read a sentence as an exchange, or say it is not one.
+
+    It needs no catalogue and no wallets: a transfer has no category, and which
+    wallets the two currencies mean is the client's to resolve from the list it
+    already holds. Nothing here is confirmable — the ordinary
+    evaluate/review/commit pair still writes the transfer (ADR 0029).
+    """
+
+    _user_id(user)
+    try:
+        today = request.captured_at.astimezone(
+            ZoneInfo(request.captured_timezone)
+        ).date()
+        sides = read_transfer_sides(request.text, today=today)
+        if sides is None:
+            return ParseTransferResponse(proposal=None)
+        sent, received = sides
+        # The day the money moved is read the same way an operation's is, so
+        # «вчера» means yesterday here too. No catalogue is passed: a transfer
+        # has no category.
+        occurred_on = parse_operation_text(text=request.text, today=today).occurred_on
+        return ParseTransferResponse(
+            proposal=ParsedTransferProposal(
+                sent=ParsedTransferSide(amount=sent.amount, currency=sent.currency),
+                received=ParsedTransferSide(
+                    amount=received.amount, currency=received.currency
+                ),
+                occurred_on=occurred_on,
+            )
+        )
+    except Exception:
+        public_error = _unavailable()
     raise public_error
 
 
