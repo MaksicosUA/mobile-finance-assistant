@@ -103,6 +103,33 @@ class ParseOperationResponse(TextEntryApiModel):
     proposal: ParsedOperationProposal
 
 
+class ParsedTransferSide(TextEntryApiModel):
+    """One half of an exchange, exactly as the sentence states it."""
+
+    amount: MoneyInput
+    currency: CurrencyCode
+
+
+class ParsedTransferProposal(TextEntryApiModel):
+    """Both halves, in the order the sentence says them.
+
+    No wallets and no rate. The wallets are the client's to resolve — it holds
+    the list already — and a rate is never stored anywhere: it is implied by
+    two amounts the person witnessed (ADR 0029).
+    """
+
+    sent: ParsedTransferSide
+    received: ParsedTransferSide
+    occurred_on: OperationDate = Field(alias="occurredOn")
+
+
+class ParseTransferResponse(TextEntryApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    #: Null when the sentence is not an exchange. Saying so is the honest
+    #: answer; the caller asked a question and this is the answer to it.
+    proposal: ParsedTransferProposal | None = None
+
+
 class TextEntryErrorDetail(TextEntryApiModel):
     code: TextEntryErrorCode
 

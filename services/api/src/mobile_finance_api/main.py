@@ -60,6 +60,7 @@ from .repository import (
     UnavailableHomeRepository,
 )
 from .text_entry_routes import router as text_entry_router
+from .text_entry_routes import transfer_router as transfer_text_entry_router
 from .timezones import validated_iana_timezone
 from .transfer_core import TransferCore, UnavailableTransferRepository
 from .transfer_routes import router as transfer_router
@@ -456,6 +457,7 @@ def create_app(
     # proposing and committing are the same resource, but only one of them
     # writes (ADR 0022).
     application.include_router(text_entry_router)
+    application.include_router(transfer_text_entry_router)
     application.include_router(router)
     return application
 

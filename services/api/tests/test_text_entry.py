@@ -853,3 +853,77 @@ def test_the_two_sides_of_an_exchange_are_read_in_order() -> None:
 
 def test_a_sentence_that_is_not_an_exchange_has_no_sides() -> None:
     assert read_transfer_sides("Потратил 12,50 на продукты", today=_TODAY) is None
+
+
+def test_the_transfer_route_reads_both_sides_and_the_day() -> None:
+    """The sentence the operation route refuses is read here, in full."""
+
+    async def scenario() -> None:
+        app = create_app(
+            current_user_authenticator=_StaticAuthenticator(),
+            category_repository=_FakeCategories(),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/transfers/parse",
+                json={
+                    "text": "Вчера перевёл 100 евро получил 5200 гривен",
+                    "capturedAt": "2026-08-13T09:00:00Z",
+                    "capturedTimezone": "Europe/Berlin",
+                },
+                headers=_AUTH,
+            )
+        assert response.status_code == 200, response.text
+        proposal = response.json()["proposal"]
+        assert proposal["sent"] == {"amount": "100", "currency": "EUR"}
+        assert proposal["received"] == {"amount": "5200", "currency": "UAH"}
+        assert proposal["occurredOn"] == "2026-08-12"
+        # No rate travels, and none is stored anywhere (ADR 0029).
+        assert set(proposal) == {"sent", "received", "occurredOn"}
+
+    asyncio.run(scenario())
+
+
+def test_the_transfer_route_says_plainly_when_a_sentence_is_not_one() -> None:
+    async def scenario() -> None:
+        app = create_app(
+            current_user_authenticator=_StaticAuthenticator(),
+            category_repository=_FakeCategories(),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/transfers/parse",
+                json={
+                    "text": "Потратил 12,50 на продукты",
+                    "capturedAt": "2026-08-13T09:00:00Z",
+                    "capturedTimezone": "Europe/Berlin",
+                },
+                headers=_AUTH,
+            )
+        assert response.status_code == 200, response.text
+        assert response.json()["proposal"] is None
+
+    asyncio.run(scenario())
+
+
+def test_the_transfer_route_needs_authentication() -> None:
+    async def scenario() -> None:
+        app = create_app(category_repository=_FakeCategories())
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/transfers/parse",
+                json={
+                    "text": "перевёл 100 евро получил 5200 гривен",
+                    "capturedAt": "2026-08-13T09:00:00Z",
+                    "capturedTimezone": "Europe/Berlin",
+                },
+            )
+        assert response.status_code == 401
+
+    asyncio.run(scenario())
