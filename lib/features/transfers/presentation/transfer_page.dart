@@ -17,7 +17,13 @@ import '../domain/implied_rate.dart';
 /// **shown** as they type and never sent or stored — it follows from the pair,
 /// and seeing it is how a zero typed one too many times gets noticed.
 class TransferPage extends ConsumerStatefulWidget {
-  const TransferPage({super.key});
+  const TransferPage({super.key, this.proposal});
+
+  /// Both sides read from a written sentence, when the screen was opened from
+  /// one. The amounts are filled exactly as they were said; the wallets are
+  /// resolved from the currencies, and anything that cannot be resolved is
+  /// left for the person to choose.
+  final TransferProposal? proposal;
 
   @override
   ConsumerState<TransferPage> createState() => _TransferPageState();
@@ -29,6 +35,7 @@ class _TransferPageState extends ConsumerState<TransferPage> {
   FinanceAccount? _from;
   FinanceAccount? _to;
   DateTime _occurredOn = DateTime.now();
+  bool _proposalApplied = false;
 
   @override
   void initState() {
@@ -65,6 +72,39 @@ class _TransferPageState extends ConsumerState<TransferPage> {
     );
   }
 
+  /// Fills the form from a sentence, once, when the wallets are known.
+  ///
+  /// Only the amounts are certain: they are what the person said. A wallet is
+  /// chosen only from the currency, and when no wallet holds that currency
+  /// nothing is chosen at all — the screen then shows the ordinary default and
+  /// the person picks, rather than being handed a wallet that cannot hold the
+  /// amount beside it.
+  void _applyProposal(TransferReady state) {
+    final proposal = widget.proposal;
+    if (proposal == null || _proposalApplied) return;
+    _proposalApplied = true;
+    _fromAmount.text = proposal.sent.amount;
+    _toAmount.text = proposal.received.amount;
+    _from = _walletHolding(state.wallets, proposal.sent.currency) ?? _from;
+    _to = _walletHolding(state.wallets, proposal.received.currency) ?? _to;
+    final day = DateTime.tryParse('${proposal.occurredOn}T00:00:00Z');
+    if (day != null) _occurredOn = day;
+  }
+
+  FinanceAccount? _walletHolding(
+    List<FinanceAccount> wallets,
+    String currency,
+  ) {
+    final holders = wallets.where((wallet) => wallet.currency == currency);
+    if (holders.isEmpty) return null;
+    // The default wallet when it holds that currency, because that is the one
+    // the person means by "my euros" when they keep more than one.
+    return holders.firstWhere(
+      (wallet) => wallet.isDefault,
+      orElse: () => holders.first,
+    );
+  }
+
   Widget _body(TransferState state, AppLocalizations l10n) {
     switch (state) {
       case TransferLoading():
@@ -87,6 +127,7 @@ class _TransferPageState extends ConsumerState<TransferPage> {
   }
 
   Widget _form(TransferReady state, AppLocalizations l10n) {
+    _applyProposal(state);
     final from = _from ??= state.wallets.firstWhere(
       (wallet) => wallet.isDefault,
       orElse: () => state.wallets.first,

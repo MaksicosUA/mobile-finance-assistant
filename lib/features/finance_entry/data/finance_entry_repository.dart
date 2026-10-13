@@ -116,6 +116,12 @@ abstract interface class FinanceEntryRepositoryClient {
     required String capturedTimezone,
   });
 
+  Future<FinanceEntryResult<TransferProposal?>> parseTransferText({
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  });
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories();
 
   Future<FinanceEntryResult<ManagedFinanceCategory>> createCategory(
@@ -504,6 +510,22 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
     // preflight a financial command does (ADR 0022).
     return _authorized(
       (accessToken) => _api.parseOperationText(
+        accessToken: accessToken,
+        text: text,
+        capturedAt: capturedAt,
+        capturedTimezone: capturedTimezone,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<TransferProposal?>> parseTransferText({
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  }) {
+    return _authorized(
+      (accessToken) => _api.parseTransferText(
         accessToken: accessToken,
         text: text,
         capturedAt: capturedAt,

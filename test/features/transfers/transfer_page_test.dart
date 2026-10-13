@@ -109,6 +109,39 @@ void main() {
     expect(find.byKey(const Key('transfer-confirm')), findsNothing);
   });
 
+  testWidgets('a sentence fills both sides and finds the wallets by currency', (
+    tester,
+  ) async {
+    // Issue 0009: «Перевёл 100 евро получил 5200 гривен» used to be recorded
+    // as income of 100 EUR. It arrives here instead, said as it was said.
+    await _pump(
+      tester,
+      repository: _FakeRepository(),
+      proposal: const TransferProposal(
+        sent: TransferProposalSide(amount: '100', currency: 'EUR'),
+        received: TransferProposalSide(amount: '5200', currency: 'UAH'),
+        occurredOn: '2026-09-07',
+      ),
+    );
+
+    expect(_amountIn(tester, const Key('transfer-from-amount')), '100');
+    expect(_amountIn(tester, const Key('transfer-to-amount')), '5200');
+    // Each side landed in the one wallet that holds its currency.
+    expect(_walletIn(tester, const Key('transfer-from')), _euro);
+    expect(_walletIn(tester, const Key('transfer-to')), _hryvnia);
+    // And the rate it implies is drawn from those two amounts, as always.
+    expect(find.textContaining('1 EUR = 52.0000 UAH'), findsOneWidget);
+  });
+
+  testWidgets('without a sentence the form opens empty, as before', (
+    tester,
+  ) async {
+    await _pump(tester, repository: _FakeRepository());
+
+    expect(_amountIn(tester, const Key('transfer-from-amount')), '');
+    expect(_amountIn(tester, const Key('transfer-to-amount')), '');
+  });
+
   testWidgets('one wallet is not enough to transfer between', (tester) async {
     await _pump(tester, repository: _FakeRepository(walletCount: 1));
 
@@ -135,6 +168,7 @@ Future<void> _fill(WidgetTester tester) async {
 Future<void> _pump(
   WidgetTester tester, {
   required _FakeRepository repository,
+  TransferProposal? proposal,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -169,12 +203,19 @@ Future<void> _pump(
         ],
         supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.light(AppAccent.teal),
-        home: const TransferPage(),
+        home: TransferPage(proposal: proposal),
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
+
+String? _walletIn(WidgetTester tester, Key key) => tester
+    .widget<DropdownButtonFormField<String>>(find.byKey(key))
+    .initialValue;
+
+String _amountIn(WidgetTester tester, Key key) =>
+    tester.widget<TextField>(find.byKey(key)).controller?.text ?? '';
 
 FinanceAccount _wallet({
   required String id,

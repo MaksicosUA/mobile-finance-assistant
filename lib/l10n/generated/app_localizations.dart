@@ -2571,6 +2571,18 @@ abstract class AppLocalizations {
   /// **'Категорию не подобрал — выберите её.'**
   String get entrySentenceGapCategory;
 
+  /// Natural-language entry (ADR 0022): the sentence is a transfer (ADR 0029).
+  ///
+  /// In ru, this message translates to:
+  /// **'Это перевод между кошельками, а не доход или трата — поэтому ничего не заполнил.'**
+  String get entrySentenceGapTransfer;
+
+  /// Natural-language entry (ADR 0022): opens the transfer screen with both sides filled.
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть перевод'**
+  String get entrySentenceOpenTransfer;
+
   /// Category keywords (ADR 0020, step 3).
   ///
   /// In ru, this message translates to:

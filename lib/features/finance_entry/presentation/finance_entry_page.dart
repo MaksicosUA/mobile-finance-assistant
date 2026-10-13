@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +15,7 @@ import '../application/finance_entry_controller.dart';
 import '../application/text_entry_controller.dart';
 import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
+import '../../transfers/presentation/transfer_page.dart';
 import 'widgets/category_picker.dart';
 
 class FinanceEntryPage extends ConsumerStatefulWidget {
@@ -455,6 +458,22 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     super.dispose();
   }
 
+  /// Reads the sentence again as an exchange and opens the transfer screen
+  /// with both sides filled in.
+  ///
+  /// A transfer is written by its own evaluate/commit pair, not by this form:
+  /// an exchange is neither income nor expense, and forcing it through here
+  /// would be the very thing that corrupted a month's totals (ADR 0029).
+  Future<void> _openTransfer() async {
+    final proposal = await ref
+        .read(textEntryControllerProvider.notifier)
+        .readTransfer(_sentenceController.text);
+    if (!mounted || proposal == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => TransferPage(proposal: proposal)),
+    );
+  }
+
   /// Fills the form from a proposal. It fills fields and nothing else: the
   /// operation is still written by the ordinary confirm path below (ADR 0022).
   void _applyProposal(OperationProposal proposal) {
@@ -543,6 +562,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
             onParse: () => ref
                 .read(textEntryControllerProvider.notifier)
                 .parse(_sentenceController.text),
+            onOpenTransfer: () => unawaited(_openTransfer()),
           ),
           if (widget.state.accountCreated) ...[
             const SizedBox(height: AppSpacing.md),
@@ -1334,6 +1354,7 @@ class _SentenceField extends StatelessWidget {
     required this.enabled,
     required this.accountCurrency,
     required this.onParse,
+    required this.onOpenTransfer,
   });
 
   final TextEditingController controller;
@@ -1345,6 +1366,11 @@ class _SentenceField extends StatelessWidget {
   /// the screen knows, and the parser cannot.
   final String accountCurrency;
   final VoidCallback onParse;
+
+  /// Opens the transfer screen for a sentence that turned out to describe one.
+  /// Offered rather than taken: a recognised transfer is still a proposal, and
+  /// moving someone off the form they are filling is not this screen's call.
+  final VoidCallback onOpenTransfer;
 
   @override
   Widget build(BuildContext context) {
@@ -1402,6 +1428,17 @@ class _SentenceField extends StatelessWidget {
             // refused to guess, so the user knows what to look at.
             message: _sentenceMessages(l10n, parsed.proposal).join(' '),
           ),
+          if (parsed.proposal.gaps.contains(
+            OperationParseGap.transferNotAnOperation,
+          )) ...[
+            const SizedBox(height: AppSpacing.sm),
+            OutlinedButton.icon(
+              key: const Key('operation-sentence-open-transfer'),
+              onPressed: enabled ? onOpenTransfer : null,
+              icon: const Icon(Icons.swap_horiz_rounded),
+              label: Text(l10n.entrySentenceOpenTransfer),
+            ),
+          ],
         ],
       ],
     );
@@ -1422,6 +1459,11 @@ class _SentenceField extends StatelessWidget {
     AppLocalizations l10n,
     OperationProposal proposal,
   ) {
+    if (proposal.gaps.contains(OperationParseGap.transferNotAnOperation)) {
+      // Nothing was filled, so saying what was filled would be a lie. The
+      // sentence describes a movement between the person's own wallets.
+      return [l10n.entrySentenceGapTransfer];
+    }
     return [
       l10n.entrySentenceFilled,
       for (final gap in proposal.gaps) _gapMessage(l10n, gap),
@@ -1438,6 +1480,7 @@ class _SentenceField extends StatelessWidget {
       OperationParseGap.dateNotUnderstood => l10n.entrySentenceGapDate,
       OperationParseGap.categoryNotMatched => l10n.entrySentenceGapCategory,
       OperationParseGap.currencyNotUnderstood => l10n.entrySentenceGapCurrency,
+      OperationParseGap.transferNotAnOperation => l10n.entrySentenceGapTransfer,
     };
   }
 }

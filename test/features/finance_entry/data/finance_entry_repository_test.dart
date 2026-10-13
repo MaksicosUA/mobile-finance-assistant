@@ -622,6 +622,13 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<TransferProposal?>> parseTransferText({
+    required String accessToken,
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<FinanceTransferEvaluation>> evaluateTransfer({
     required String accessToken,
     required FinanceTransferDraft draft,

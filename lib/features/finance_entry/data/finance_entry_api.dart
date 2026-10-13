@@ -156,6 +156,15 @@ abstract interface class FinanceEntryApiClient {
     required String capturedTimezone,
   });
 
+  /// Reads the same sentence as an exchange. Answers null inside a success
+  /// when it is not one.
+  Future<FinanceEntryResult<TransferProposal?>> parseTransferText({
+    required String accessToken,
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  });
+
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories({
     required String accessToken,
   });
@@ -987,6 +996,40 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
   }
 
   @override
+  Future<FinanceEntryResult<TransferProposal?>> parseTransferText({
+    required String accessToken,
+    required String text,
+    required String capturedAt,
+    required String capturedTimezone,
+  }) {
+    final sentence = text.trim();
+    if (sentence.isEmpty ||
+        sentence.length > maximumEntryTextLength ||
+        _containsControl(sentence)) {
+      return Future<FinanceEntryResult<TransferProposal?>>.value(
+        _failure(
+          kind: FinanceEntryFailureKind.invalidInput,
+          requestId: _safeRequestId(_requestIdFactory),
+        ),
+      );
+    }
+    return _request(
+      method: 'POST',
+      path: '/api/v1/transfers/parse',
+      accessToken: accessToken,
+      body: <String, Object?>{
+        'schemaVersion': '1',
+        'text': sentence,
+        'capturedAt': capturedAt,
+        'capturedTimezone': capturedTimezone,
+      },
+      acceptedStatuses: const {200},
+      contract: _ContractKind.textEntry,
+      parse: (json, statusCode) => _parseTransferProposal(json, statusCode),
+    );
+  }
+
+  @override
   Future<FinanceEntryResult<ManagedCategoryList>> listManagedCategories({
     required String accessToken,
   }) {
@@ -1514,6 +1557,16 @@ AnalyticsWindow _parseAnalyticsWindow(Map<String, Object?> json, int status) {
 OperationProposal _parseProposal(Map<String, Object?> json, int status) {
   if (status != 200) throw const FormatException('Invalid status.');
   return OperationProposal.fromJson(json);
+}
+
+TransferProposal? _parseTransferProposal(
+  Map<String, Object?> json,
+  int status,
+) {
+  if (status != 200) throw const FormatException('Invalid status.');
+  // A sentence that is not an exchange is a plain answer, not a failure.
+  if (json['proposal'] == null) return null;
+  return TransferProposal.fromJson(json);
 }
 
 OperationHistoryList _parseOperationHistory(

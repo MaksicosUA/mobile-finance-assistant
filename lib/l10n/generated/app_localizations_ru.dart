@@ -1418,6 +1418,13 @@ class AppLocalizationsRu extends AppLocalizations {
   String get entrySentenceGapCategory => 'Категорию не подобрал — выберите её.';
 
   @override
+  String get entrySentenceGapTransfer =>
+      'Это перевод между кошельками, а не доход или трата — поэтому ничего не заполнил.';
+
+  @override
+  String get entrySentenceOpenTransfer => 'Открыть перевод';
+
+  @override
   String get categoryKeywordsTitle => 'Слова категории';
 
   @override
