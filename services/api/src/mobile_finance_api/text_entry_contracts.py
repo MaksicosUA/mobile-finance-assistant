@@ -54,6 +54,11 @@ ParseGap = Literal[
     "DATE_NOT_UNDERSTOOD",
     "CATEGORY_NOT_MATCHED",
     "CURRENCY_NOT_UNDERSTOOD",
+    # The sentence is a transfer, so no amount is proposed at all. A client
+    # that does not know this code drops it and sees a proposal with no
+    # amount, which is the safe reading: nothing is filled, nothing is
+    # confirmed, and no money is invented.
+    "TRANSFER_NOT_AN_OPERATION",
 ]
 
 TextEntryErrorCode = Literal["TEXT_ENTRY_UNAVAILABLE"]
