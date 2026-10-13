@@ -124,9 +124,24 @@ class _Status extends ConsumerWidget {
             LinearProgressIndicator(value: progress),
           ],
         ),
-        AppUpdateHandedToInstaller() => Text(
-          l10n.appUpdateHandedToInstaller,
-          key: const Key('app-update-handed-over'),
+        AppUpdateHandedToInstaller(:final release) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l10n.appUpdateHandedToInstaller,
+              key: const Key('app-update-handed-over'),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            // A system dialog can be dismissed by accident, and the only thing
+            // worse than no way back is downloading 57 MB again to get one.
+            // This reopens the installer on the file already on disk.
+            OutlinedButton(
+              key: const Key('app-update-open-installer'),
+              onPressed: () =>
+                  unawaited(controller.downloadAndInstall(release)),
+              child: Text(l10n.appUpdateOpenInstallerAction),
+            ),
+          ],
         ),
         AppUpdateNeedsPermission() => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

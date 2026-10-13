@@ -295,6 +295,63 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('operation-category-picker')), findsOneWidget);
   });
+
+  testWidgets(
+    'a sentence that matches nothing withdraws what a sentence filled',
+    (tester) async {
+      // Issue 0011: the category stayed from the previous sentence, so the card
+      // went on asserting «Продукты» for a tank of fuel. What a parse filled is
+      // the parse's to withdraw.
+      final repository = _FakeRepository(
+        proposals: [_proposal(), _unmatchedProposal()],
+      );
+      await _pumpPage(tester, repository: repository);
+
+      await tester.enterText(
+        find.byKey(const Key('operation-sentence')),
+        'потратил 12,50 на продукты',
+      );
+      await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+      await tester.pumpAndSettle();
+      expect(_pickedCategory(tester), _groceriesId);
+
+      await tester.enterText(
+        find.byKey(const Key('operation-sentence')),
+        'потратил 40 на заправку',
+      );
+      await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+      await tester.pumpAndSettle();
+
+      expect(_pickedCategory(tester), isNull);
+      // The amount is still the parser's to fill: only the category was withdrawn.
+      expect(_amountText(tester), '40.00');
+    },
+  );
+
+  testWidgets(
+    'a category chosen by hand survives a sentence that matches nothing',
+    (tester) async {
+      // The mirror of the rule above, and the reason it is not "clear on every
+      // gap": a deliberate choice is not the parser's to undo.
+      final repository = _FakeRepository(proposals: [_unmatchedProposal()]);
+      await _pumpPage(tester, repository: repository);
+
+      await tester.tap(find.byKey(const Key('operation-category-picker')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Продукты').last);
+      await tester.pumpAndSettle();
+      expect(_pickedCategory(tester), _groceriesId);
+
+      await tester.enterText(
+        find.byKey(const Key('operation-sentence')),
+        'потратил 40 на заправку',
+      );
+      await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+      await tester.pumpAndSettle();
+
+      expect(_pickedCategory(tester), _groceriesId);
+    },
+  );
 }
 
 Future<void> _pumpPage(
@@ -340,6 +397,13 @@ Future<void> _pumpPage(
   await tester.pumpAndSettle();
 }
 
+/// What the picker currently holds, as the dropdown itself reports it.
+String? _pickedCategory(WidgetTester tester) => tester
+    .widget<DropdownButtonFormField<String?>>(
+      find.byKey(const Key('operation-category-picker')),
+    )
+    .initialValue;
+
 String _amountText(WidgetTester tester) =>
     tester
         .widget<TextFormField>(find.byKey(const Key('operation-amount')))
@@ -365,6 +429,19 @@ OperationProposal _proposal({
     gaps: gaps,
   );
 }
+
+/// A sentence the parser read, except for the category: the same direction, so
+/// nothing but the gap can explain what the picker does next.
+OperationProposal _unmatchedProposal() => const OperationProposal(
+  type: FinanceOperationType.expense,
+  amount: '40.00',
+  currency: 'EUR',
+  occurredOn: '2026-07-28',
+  sourceExpression: 'вчера',
+  categoryId: null,
+  category: null,
+  gaps: [OperationParseGap.categoryNotMatched],
+);
 
 final class _FixedCapture implements FinanceCaptureContextSource {
   const _FixedCapture();

@@ -2886,8 +2886,14 @@ abstract class AppLocalizations {
   /// In-app update (ADR 0026).
   ///
   /// In ru, this message translates to:
-  /// **'Файл скачан и проверен. Подтвердите установку в системном окне.'**
+  /// **'Файл скачан и проверен. Подтвердите установку в системном окне — Android ставит обновление сам, и это занимает до минуты. Скачивать заново не нужно: файл сейчас нужен установщику.'**
   String get appUpdateHandedToInstaller;
+
+  /// In-app update (ADR 0026): reopens the installer for the package already downloaded (issue 0010).
+  ///
+  /// In ru, this message translates to:
+  /// **'Открыть окно установки снова'**
+  String get appUpdateOpenInstallerAction;
 
   /// In-app update (ADR 0026).
   ///

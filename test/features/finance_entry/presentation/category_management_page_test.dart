@@ -138,6 +138,50 @@ void main() {
     );
   });
 
+  testWidgets('creating a category offers its words straight away', (
+    tester,
+  ) async {
+    // Issue 0011: a category created without words is matched only by its exact
+    // full name, and nothing ever said so. The screen that fixes that is where
+    // creating one now ends.
+    await _pumpPage(tester, repository: _FakeRepository());
+
+    await tester.tap(find.byKey(const Key('categories-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('categories-new-name')),
+      'Автомобиль',
+    );
+    await tester.tap(find.byKey(const Key('categories-create-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Слова категории'), findsOneWidget);
+    expect(find.text('Автомобиль'), findsWidgets);
+  });
+
+  testWidgets('a refused creation stays on the list', (tester) async {
+    // The words screen is a reward for a category that exists. Opening it over
+    // a refusal would hide the reason the name was rejected.
+    await _pumpPage(
+      tester,
+      repository: _FakeRepository(
+        writeFailure: FinanceEntryErrorCode.categoryNameTaken,
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('categories-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('categories-new-name')),
+      'Транспорт',
+    );
+    await tester.tap(find.byKey(const Key('categories-create-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Слова категории'), findsNothing);
+    expect(find.byKey(const Key('categories-failure-note')), findsOneWidget);
+  });
+
   testWidgets('an unreadable catalogue offers a retry', (tester) async {
     await _pumpPage(
       tester,
@@ -298,6 +342,18 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     final created = _category('created', command.name);
     _categories.add(created);
     return _accepted(created);
+  }
+
+  /// A category created here has no words yet, which is the whole point of
+  /// landing on that screen.
+  @override
+  Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords(
+    String categoryId,
+  ) async {
+    return FinanceEntrySuccess<CategoryKeywords>(
+      requestId: _requestId,
+      value: CategoryKeywords(categoryId: categoryId, keywords: const []),
+    );
   }
 
   @override

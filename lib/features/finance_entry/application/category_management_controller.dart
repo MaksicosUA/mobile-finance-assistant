@@ -169,9 +169,13 @@ class CategoryManagementController extends Notifier<CategoryManagementState> {
     state = current.copyWith(editedName: value, clearFailure: true);
   }
 
-  Future<void> submitCreate() async {
+  /// Creates a category and reports it back, so the screen can offer its words
+  /// while the person is still thinking about what this category is for. A
+  /// category with no words is matched only by its exact full name, and
+  /// nothing used to say so (issue 0011).
+  Future<ManagedFinanceCategory?> submitCreate() async {
     final current = state;
-    if (_requestInFlight || current is! CategoryManagementReady) return;
+    if (_requestInFlight || current is! CategoryManagementReady) return null;
 
     late final CreateCategoryCommand command;
     try {
@@ -181,10 +185,10 @@ class CategoryManagementController extends Notifier<CategoryManagementState> {
       );
     } on Object {
       state = current.copyWith(failure: _invalidInputFailure());
-      return;
+      return null;
     }
 
-    await _write(
+    return _write(
       current: current,
       request: () => _repository.createCategory(command),
       onAccepted: (latest, category) => latest.copyWith(
@@ -253,7 +257,10 @@ class CategoryManagementController extends Notifier<CategoryManagementState> {
     );
   }
 
-  Future<void> _write({
+  /// Runs one catalogue write and returns what the server accepted, or null if
+  /// it refused. Callers that need to act on the new row — creating one leads
+  /// to its words — use the value; the rest ignore it.
+  Future<ManagedFinanceCategory?> _write({
     required CategoryManagementReady current,
     required Future<FinanceEntryResult<ManagedFinanceCategory>> Function()
     request,
@@ -273,11 +280,11 @@ class CategoryManagementController extends Notifier<CategoryManagementState> {
     );
     try {
       final result = await request();
-      if (!_isCurrentRequest(requestGeneration)) return;
+      if (!_isCurrentRequest(requestGeneration)) return null;
       switch (result) {
         case FinanceEntrySuccess(:final value):
           final latest = state;
-          if (latest is! CategoryManagementReady) return;
+          if (latest is! CategoryManagementReady) return null;
           state = onAccepted(
             latest,
             value,
@@ -286,18 +293,20 @@ class CategoryManagementController extends Notifier<CategoryManagementState> {
           // offering a category this screen just hid.
           ref.invalidate(categoryCatalogueProvider);
           if (convergesHome) unawaited(_convergeHome());
+          return value;
         case FinanceEntryFailureResult(:final failure):
           if (_requiresAuthentication(failure)) {
             state = const CategoryManagementAuthenticationRequired();
-            return;
+            return null;
           }
           final latest = state;
-          if (latest is! CategoryManagementReady) return;
+          if (latest is! CategoryManagementReady) return null;
           state = latest.copyWith(
             isSubmitting: false,
             clearBusy: true,
             failure: failure,
           );
+          return null;
       }
     } on Object {
       final latest = state;
@@ -309,6 +318,7 @@ class CategoryManagementController extends Notifier<CategoryManagementState> {
           failure: _unexpectedFailure(),
         );
       }
+      return null;
     } finally {
       _endRequest(requestGeneration);
     }

@@ -412,6 +412,15 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   late FinanceOperationType _type;
   late DateTime _occurredOn;
   CategoryChoice _categoryChoice = const CategoryUnset();
+
+  /// Whether the category now showing was filled by a parsed sentence rather
+  /// than chosen by the person.
+  ///
+  /// The two must be told apart: a sentence that matches nothing has to
+  /// withdraw what an earlier sentence put there, or the card keeps asserting
+  /// a category the words no longer support (issue 0011). A deliberate choice
+  /// is not the parser's to undo.
+  bool _categoryFilledBySentence = false;
   bool _validateContinuously = false;
 
   @override
@@ -473,14 +482,32 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
       if (previous is CategoryFromCatalogue &&
           previous.category.direction != proposal.type) {
         _categoryChoice = const CategoryUnset();
+        _categoryFilledBySentence = false;
       }
       final categoryId = proposal.categoryId;
-      if (categoryId == null) return;
+      if (categoryId == null) {
+        // Unlike the amount, a category the parser filled is withdrawn when a
+        // later sentence matches nothing: the person rewrote the words, and
+        // leaving the old one would confirm an operation against a category
+        // the sentence contradicts. What they chose by hand stays.
+        if (_categoryFilledBySentence) {
+          _categoryChoice = const CategoryUnset();
+          _categoryFilledBySentence = false;
+        }
+        return;
+      }
       for (final category in catalogue.forDirection(proposal.type)) {
         if (category.categoryId != categoryId) continue;
         _categoryChoice = CategoryFromCatalogue(category);
+        _categoryFilledBySentence = true;
         _categoryController.clear();
         return;
+      }
+      // The proposal named a category this catalogue does not offer, so nothing
+      // was filled. Whatever an earlier sentence left behind is just as stale.
+      if (_categoryFilledBySentence) {
+        _categoryChoice = const CategoryUnset();
+        _categoryFilledBySentence = false;
       }
     });
   }
@@ -562,6 +589,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
                     // rejected.
                     if (_categoryChoice is CategoryFromCatalogue) {
                       _categoryChoice = const CategoryUnset();
+                      _categoryFilledBySentence = false;
                     }
                   }),
           ),
@@ -644,6 +672,9 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
                     is CategoryCatalogueUnavailable,
             onChanged: (choice) => setState(() {
               _categoryChoice = choice;
+              // Chosen deliberately, so a later sentence that matches nothing
+              // leaves it alone (issue 0011).
+              _categoryFilledBySentence = false;
               // Leaving free text behind would send a name the chosen category
               // does not have.
               if (choice is! CategoryFreeText) _categoryController.clear();

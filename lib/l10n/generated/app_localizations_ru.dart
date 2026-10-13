@@ -1609,7 +1609,10 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get appUpdateHandedToInstaller =>
-      'Файл скачан и проверен. Подтвердите установку в системном окне.';
+      'Файл скачан и проверен. Подтвердите установку в системном окне — Android ставит обновление сам, и это занимает до минуты. Скачивать заново не нужно: файл сейчас нужен установщику.';
+
+  @override
+  String get appUpdateOpenInstallerAction => 'Открыть окно установки снова';
 
   @override
   String get appUpdateNeedsPermission =>
