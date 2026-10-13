@@ -164,7 +164,15 @@ class _CategoryManagementPageState
             submitKey: const Key('categories-create-submit'),
             enabled: enabled,
             onChanged: controller.setNewName,
-            onSubmit: controller.submitCreate,
+            // A category with no words is matched only by its exact full name,
+            // so the moment it exists is the moment to offer them. A refusal
+            // returns nothing and leaves the reason on this screen, where it
+            // belongs (issue 0011).
+            onSubmit: () async {
+              final created = await controller.submitCreate();
+              if (created == null || !context.mounted) return;
+              _openKeywords(context, created);
+            },
             onCancel: controller.cancelCreating,
           )
         else
