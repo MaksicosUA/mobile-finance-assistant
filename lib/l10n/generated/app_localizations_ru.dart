@@ -57,7 +57,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get openSettingsLabel => 'Открыть настройки';
 
   @override
-  String get totalBalance => 'Общий баланс';
+  String get balanceTitle => 'Баланс';
 
   @override
   String get hideAmounts => 'Скрыть суммы';
@@ -70,9 +70,6 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get balanceDeltaUnavailable => 'Динамика за месяц недоступна';
-
-  @override
-  String get activeAccounts => 'Все активные счета';
 
   @override
   String get addBySentence => 'Записать фразой';

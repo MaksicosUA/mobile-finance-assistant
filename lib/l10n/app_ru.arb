@@ -41,12 +41,14 @@
   "notificationsTitle": "Уведомления",
   "notificationsStubDescription": "Центр уведомлений будет подключён на следующем этапе.",
   "openSettingsLabel": "Открыть настройки",
-  "totalBalance": "Общий баланс",
+  "balanceTitle": "Баланс",
+  "@balanceTitle": {
+    "description": "Balance card title when the snapshot names no wallet. The card shows the default wallet only and never a total across currencies (ADR 0029), so it must not claim one."
+  },
   "hideAmounts": "Скрыть суммы",
   "showAmounts": "Показать суммы",
   "monthDelta": "за месяц",
   "balanceDeltaUnavailable": "Динамика за месяц недоступна",
-  "activeAccounts": "Все активные счета",
   "addBySentence": "Записать фразой",
   "@addBySentence": {
     "description": "Home's one-tap entry. It opens the sentence field, not a microphone: voice will feed the same path once it exists."

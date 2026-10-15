@@ -95,7 +95,44 @@ void main() {
     // euro to hryvnia would need a rate the product does not have.
     expect(find.text('Гривна'), findsOneWidget);
     expect(find.textContaining('4 800,00'), findsOneWidget);
-    expect(find.text('Основной'), findsNothing);
+    // The card is named after the wallet it shows — the name the owner gave
+    // it — and only there: it is not repeated in the list beneath.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('balance-card')),
+        matching: find.text('Основной'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Основной'), findsOneWidget);
+    // It used to say «Общий баланс» over «Все активные счета» while showing one
+    // wallet of several, which is how an exchange came to look like a loss.
+    expect(find.text('Общий баланс'), findsNothing);
+    expect(find.text('Все активные счета'), findsNothing);
+  });
+
+  testWidgets('a snapshot without wallets claims no total either', (
+    tester,
+  ) async {
+    // A cached snapshot from before wallets existed carries no names. The card
+    // then says only what is certain: it is a balance.
+    await _pumpApp(
+      tester,
+      repository: _ValueHomeRepository(
+        loadHomeFixtureSnapshotSync('populated.json'),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('balance-card')),
+        matching: find.text('Баланс'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Общий баланс'), findsNothing);
+    expect(find.text('Все активные счета'), findsNothing);
   });
 
   testWidgets('a profile with one wallet shows no list', (tester) async {

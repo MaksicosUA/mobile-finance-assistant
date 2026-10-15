@@ -22,6 +22,21 @@ from .goal_contracts import apply_contribution, derive_progress_percent
 from .timezones import validated_iana_timezone_key
 
 _PERCENT_SCALE = Decimal("0.01")
+
+
+def percent_at_its_scale(value: Decimal | None) -> Decimal | None:
+    """A stored percent, returned at the scale it was computed at.
+
+    The projection keeps it in a NUMERIC(38, 18) column, so PostgreSQL hands
+    back -0.07 as -0.070000000000000000: the same number, carrying sixteen
+    zeros that went out on the wire and that the phone printed verbatim beside
+    the balance. Quantizing to the computed scale is exact — the digits it drops
+    were never anything but padding.
+    """
+
+    return None if value is None else value.quantize(_PERCENT_SCALE)
+
+
 _NUMERIC_38_18_MAX = Decimal("99999999999999999999.999999999999999999")
 
 
@@ -498,19 +513,14 @@ def _build_current_home_revision(
         start=Decimal(0),
     )
     month_net_flow = month_income - month_expense
-    # What the balance actually did this month. It is the net flow plus what was
-    # transferred in or out: showing "+240" beside a balance that fell by 500
-    # because money moved to another wallet would be two answers to one
-    # question on one card.
-    month_transferred = sum(
-        (
-            _transfer_delta(transfer, account_id=account.account_id)
-            for transfer in effective_transfers
-            if transfer.occurred_on >= period_start
-        ),
-        start=Decimal(0),
-    )
-    balance_month_change = month_net_flow + month_transferred
+    # The month's result is income minus expense, and a transfer between the
+    # person's own wallets is neither (ADR 0029). The balance above it still
+    # moves when money leaves for another wallet — that is a fact about this
+    # wallet — but the delta beside it answers "how did the month go", and an
+    # exchange is not an answer to that. It used to include transfers, and a
+    # real exchange then read as "−100,00 € за месяц", money apparently lost;
+    # the owner decided against that on 2026-10-15.
+    balance_month_change = month_net_flow
 
     warnings: list[ProjectedWarning] = []
     balance_delta_percent: Decimal | None
