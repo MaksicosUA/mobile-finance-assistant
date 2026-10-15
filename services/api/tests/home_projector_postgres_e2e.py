@@ -928,11 +928,20 @@ async def _assert_transfer_projection(
     # And it was neither income nor expense.
     assert _amount(payload["monthSummary"]["income"]) == income_before
     assert _amount(payload["monthSummary"]["expense"]) == expense_before
-    # The delta follows the balance, not the net flow, or the card would show a
-    # balance that fell beside a delta that did not.
+    # The month's result is income minus expense, and a transfer between one's
+    # own wallets is neither: the balance above moved, the delta did not. The
+    # owner decided this on 2026-10-15 after an exchange read as money lost.
     assert _amount(payload["balance"]["deltaAmount"]) == _amount(
         before.json()["balance"]["deltaAmount"]
-    ) - Decimal("100.00")
+    )
+    assert payload["balance"]["deltaPercent"] == before.json()["balance"][
+        "deltaPercent"
+    ]
+    # Read from a NUMERIC(38, 18) column, a percent used to leave with sixteen
+    # zeros of padding, and the phone printed every one of them.
+    percent = payload["balance"]["deltaPercent"]
+    if percent is not None:
+        assert len(percent.partition(".")[2]) <= 2, percent
 
 
 async def _assert_tampered_event_retry(

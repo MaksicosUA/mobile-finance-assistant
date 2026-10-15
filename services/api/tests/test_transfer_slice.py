@@ -564,12 +564,28 @@ def test_a_transfer_is_neither_income_nor_expense() -> None:
     assert revision.month_net_flow == 0
 
 
-def test_the_month_delta_follows_the_balance_and_not_the_net_flow() -> None:
-    """Otherwise Home shows a balance that fell and a delta that did not."""
+def test_a_transfer_leaves_the_month_delta_alone() -> None:
+    """Moving money between one's own wallets is not a result for the month.
+
+    The owner decided this on 2026-10-15, after a real exchange showed as
+    "−100,00 € за месяц" under the balance and read as money lost. The balance
+    itself still moves — the euros did leave this wallet — but the delta under
+    it is income minus expense, which a transfer is neither of (ADR 0029).
+    """
 
     revision = _revision(_projection_transfer())
 
-    assert revision.balance_delta_amount == Decimal("-100.00")
+    assert revision.balance_amount == Decimal("900.00")
+    assert revision.balance_delta_amount == 0
+    assert revision.balance_delta_amount == revision.month_net_flow
+
+
+def test_the_month_percent_ignores_a_transfer_too() -> None:
+    """A percent beside a zero delta that is not zero would be two answers."""
+
+    revision = _revision(_projection_transfer())
+
+    assert revision.balance_delta_percent in {None, Decimal("0.00")}
 
 
 def test_a_transfer_between_two_other_wallets_does_nothing_here() -> None:

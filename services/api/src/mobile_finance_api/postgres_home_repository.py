@@ -29,6 +29,7 @@ from .db_models import (
     UserRow,
 )
 from .decimal_math import wide_decimal_context
+from .home_projection import percent_at_its_scale
 from .models import (
     HomeBalance,
     HomeGoal,
@@ -429,7 +430,7 @@ def _projected_home(
         balance=HomeBalance(
             amount=snapshot.balance_amount,
             delta_amount=snapshot.balance_delta_amount,
-            delta_percent=snapshot.balance_delta_percent,
+            delta_percent=percent_at_its_scale(snapshot.balance_delta_percent),
         ),
         month_summary=HomeMonthSummary(
             from_=snapshot.period_start,

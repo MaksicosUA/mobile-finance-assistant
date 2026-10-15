@@ -23,6 +23,7 @@ from mobile_finance_api.home_projection import (
     ProjectionAccount,
     ProjectionOperation,
     build_current_home_revision,
+    percent_at_its_scale,
 )
 from mobile_finance_api.main import create_app
 from mobile_finance_api.models import (
@@ -1166,3 +1167,16 @@ class _StaticHomeRepository:
 
     async def get_home(self, **_: object) -> HomeResponse:
         return self._home
+
+
+def test_a_stored_percent_leaves_without_its_column_padding() -> None:
+    """PostgreSQL returns -0.07 from a NUMERIC(38, 18) column with sixteen zeros.
+
+    They reached the phone as «−0,0700000000000000%» beside the balance.
+    """
+
+    padded = Decimal("-0.070000000000000000")
+
+    assert str(percent_at_its_scale(padded)) == "-0.07"
+    assert percent_at_its_scale(padded) == padded
+    assert percent_at_its_scale(None) is None
