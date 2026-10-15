@@ -268,6 +268,14 @@ class HomeSnapshot {
   /// there is none (ADR 0029). Empty when the server has not sent them.
   final List<Wallet> wallets;
 
+  /// The wallet the balance card shows, or null when the server sent none.
+  Wallet? get defaultWallet {
+    for (final wallet in wallets) {
+      if (wallet.isDefault) return wallet;
+    }
+    return null;
+  }
+
   /// The wallets that are not the balance card, in the order they arrived.
   List<Wallet> get otherWallets =>
       wallets.where((wallet) => !wallet.isDefault).toList(growable: false);

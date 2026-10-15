@@ -172,11 +172,11 @@ abstract class AppLocalizations {
   /// **'Открыть настройки'**
   String get openSettingsLabel;
 
-  /// No description provided for @totalBalance.
+  /// Balance card title when the snapshot names no wallet. The card shows the default wallet only and never a total across currencies (ADR 0029), so it must not claim one.
   ///
   /// In ru, this message translates to:
-  /// **'Общий баланс'**
-  String get totalBalance;
+  /// **'Баланс'**
+  String get balanceTitle;
 
   /// No description provided for @hideAmounts.
   ///
@@ -201,12 +201,6 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Динамика за месяц недоступна'**
   String get balanceDeltaUnavailable;
-
-  /// No description provided for @activeAccounts.
-  ///
-  /// In ru, this message translates to:
-  /// **'Все активные счета'**
-  String get activeAccounts;
 
   /// Home's one-tap entry. It opens the sentence field, not a microphone: voice will feed the same path once it exists.
   ///

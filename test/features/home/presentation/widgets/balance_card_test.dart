@@ -64,7 +64,6 @@ Future<void> _pump(
           deltaPercent: null,
           monthDeltaLabel: 'за месяц',
           deltaUnavailableLabel: 'нет данных',
-          accountsLabel: 'Основной',
           privacyLabel: 'Скрыть суммы',
           privacyEnabled: trend == null,
           onTogglePrivacy: () {},

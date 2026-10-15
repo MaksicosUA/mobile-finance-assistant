@@ -32,7 +32,6 @@ class BalanceCard extends StatelessWidget {
     required this.deltaPercent,
     required this.monthDeltaLabel,
     required this.deltaUnavailableLabel,
-    required this.accountsLabel,
     required this.privacyLabel,
     required this.privacyEnabled,
     required this.onTogglePrivacy,
@@ -49,7 +48,6 @@ class BalanceCard extends StatelessWidget {
   final String? deltaPercent;
   final String monthDeltaLabel;
   final String deltaUnavailableLabel;
-  final String accountsLabel;
   final String privacyLabel;
   final bool privacyEnabled;
   final VoidCallback onTogglePrivacy;
@@ -145,10 +143,6 @@ class BalanceCard extends StatelessWidget {
                     Text(monthDeltaLabel, style: theme.textTheme.bodySmall),
                   ],
                 ),
-              const SizedBox(height: 10),
-              Divider(height: 1, color: colors.border),
-              const SizedBox(height: 10),
-              Text(accountsLabel, style: theme.textTheme.bodySmall),
             ],
           ),
         ),

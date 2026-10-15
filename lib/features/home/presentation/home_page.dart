@@ -400,7 +400,10 @@ class _PopulatedHome extends StatelessWidget {
           )
         else
           BalanceCard(
-            title: l10n.totalBalance,
+            // Named after the wallet it shows. It said «Общий баланс» over «Все
+            // активные счета» while showing one wallet of several — and there
+            // is no total to show: adding currencies needs a rate (ADR 0029).
+            title: snapshot.defaultWallet?.name ?? l10n.balanceTitle,
             balance: MoneyFormatter.format(
               balance.total,
               locale: locale,
@@ -429,7 +432,6 @@ class _PopulatedHome extends StatelessWidget {
                   ),
             monthDeltaLabel: l10n.monthDelta,
             deltaUnavailableLabel: l10n.balanceDeltaUnavailable,
-            accountsLabel: l10n.activeAccounts,
             privacyLabel: privacyEnabled ? l10n.showAmounts : l10n.hideAmounts,
             privacyEnabled: privacyEnabled,
             onTogglePrivacy: onTogglePrivacy,
