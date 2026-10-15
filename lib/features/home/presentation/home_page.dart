@@ -414,6 +414,9 @@ class _PopulatedHome extends StatelessWidget {
                     privacy: privacyEnabled,
                     showPositiveSign: true,
                   ),
+            deltaTrend: blockFailed(HomeBlock.balanceDelta) || privacyEnabled
+                ? null
+                : BalanceTrend.of(balance.deltaAmount.amount),
             deltaPercent:
                 blockFailed(HomeBlock.balanceDelta) ||
                     balance.deltaPercent == null

@@ -3,12 +3,32 @@ import 'package:flutter/material.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../app/theme/app_tokens.dart';
 
+/// Which way the month's result went.
+enum BalanceTrend {
+  up('↗'),
+  down('↘'),
+  flat('→');
+
+  const BalanceTrend(this.arrow);
+
+  final String arrow;
+
+  /// Read from the authoritative decimal string, never from a formatted one.
+  static BalanceTrend of(String amount) {
+    final isNegative = amount.startsWith('-');
+    final digits = amount.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.split('').every((digit) => digit == '0')) return flat;
+    return isNegative ? down : up;
+  }
+}
+
 class BalanceCard extends StatelessWidget {
   const BalanceCard({
     super.key,
     required this.title,
     required this.balance,
     required this.delta,
+    required this.deltaTrend,
     required this.deltaPercent,
     required this.monthDeltaLabel,
     required this.deltaUnavailableLabel,
@@ -21,6 +41,11 @@ class BalanceCard extends StatelessWidget {
   final String title;
   final String balance;
   final String? delta;
+
+  /// Null hides the arrow. Privacy mode passes null: the direction a month went
+  /// is itself something about the money, and an arrow beside a masked amount
+  /// would still tell an onlooker which way it went.
+  final BalanceTrend? deltaTrend;
   final String? deltaPercent;
   final String monthDeltaLabel;
   final String deltaUnavailableLabel;
@@ -101,9 +126,14 @@ class BalanceCard extends StatelessWidget {
                           vertical: 4,
                         ),
                         child: Text(
-                          deltaPercent == null
-                              ? '↗ $delta'
-                              : '↗ $delta  ·  $deltaPercent',
+                          // The arrow used to be a constant «↗», so a month
+                          // that lost money pointed up beside its own minus.
+                          [
+                            ?deltaTrend?.arrow,
+                            deltaPercent == null
+                                ? delta!
+                                : '$delta  ·  $deltaPercent',
+                          ].join(' '),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.primary,
                             fontSize: 13,
