@@ -52,12 +52,12 @@ from email_validator import EmailNotValidError
 from sqlalchemy import Table, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .account_data import user_tables
 from .auth_service import normalize_email
 from .config import require_database_url
 from .database import AsyncSessionFactory, create_database
 from .db_models import (
     AuthSessionRow,
-    Base,
     FinanceAccountRow,
     FinanceOperationRow,
     UserRow,
@@ -77,20 +77,6 @@ _CONFIRMATION_REFUSED = (
 
 class IncompleteErasure(RuntimeError):
     """Rows for the user were still present after the delete; it was rolled back."""
-
-
-def user_tables() -> tuple[Table, ...]:
-    """Every table that holds a user's rows, read from the schema itself.
-
-    Found rather than listed, so a table added later is counted and checked
-    without anyone remembering to add it here.
-    """
-
-    return tuple(
-        table
-        for table in Base.metadata.sorted_tables
-        if "user_id" in table.c and table.name != UserRow.__tablename__
-    )
 
 
 def same_address(first: str, second: str) -> bool:
