@@ -1,5 +1,6 @@
 package com.mobilefinanceassistant.mobile_finance_assistant
 
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -26,6 +27,10 @@ class MainActivity : FlutterActivity() {
     // installs our own app is trust with no return (ADR 0026).
     private val updateInstallerChannel =
         "com.mobilefinanceassistant/update_installer"
+
+    // A person's own exported record goes to the share sheet and nowhere else;
+    // they choose the destination (ADR 0030).
+    private val fileShareChannel = "com.mobilefinanceassistant/file_share"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -130,6 +135,64 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            fileShareChannel,
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "share") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val paths = call.argument<List<String>>("paths")
+            if (paths.isNullOrEmpty()) {
+                result.error("FILE_SHARE_FAILED", "Nothing to share.", null)
+            } else {
+                shareExportedFiles(paths, result)
+            }
+        }
+    }
+
+    private fun shareExportedFiles(paths: List<String>, result: MethodChannel.Result) {
+        try {
+            val exports = File(cacheDir, "exports").canonicalFile
+            val uris = ArrayList<Uri>()
+            for (path in paths) {
+                val file = File(path).canonicalFile
+                // Only files this app exported. Without this the channel could
+                // be told to share anything the provider can reach.
+                if (!file.path.startsWith(exports.path + File.separator) ||
+                    !file.isFile
+                ) {
+                    result.error(
+                        "FILE_SHARE_FAILED",
+                        "That file is not one this app exported.",
+                        null,
+                    )
+                    return
+                }
+                uris.add(FileProvider.getUriForFile(this, "$packageName.updates", file))
+            }
+            val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = "*/*"
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                // The grant has to ride on ClipData to survive the chooser.
+                clipData = ClipData.newRawUri(null, uris.first()).also { clip ->
+                    uris.drop(1).forEach { uri -> clip.addItem(ClipData.Item(uri)) }
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(
+                Intent.createChooser(send, null).apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
+            result.success(null)
+        } catch (_: RuntimeException) {
+            result.error("FILE_SHARE_FAILED", "The share sheet did not open.", null)
+        } catch (_: java.io.IOException) {
+            result.error("FILE_SHARE_FAILED", "The share sheet did not open.", null)
         }
     }
 

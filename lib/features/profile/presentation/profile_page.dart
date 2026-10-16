@@ -5,6 +5,7 @@ import '../../../app/settings/settings_widgets.dart';
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_tokens.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../account_data/presentation/account_data_section.dart';
 import '../../app_update/presentation/app_update_section.dart';
 import '../../finance_entry/domain/finance_entry_models.dart';
 import '../application/profile_controller.dart';
@@ -194,6 +195,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     onPressed: widget.onOperationHistory,
                   ),
                 ),
+                const SizedBox(height: AppSpacing.sm),
+                const AccountDataSection(),
                 const SizedBox(height: AppSpacing.lg),
                 const AppearanceSettingsSection(),
                 const SizedBox(height: AppSpacing.lg),

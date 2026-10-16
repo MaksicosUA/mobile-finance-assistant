@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_config.dart';
+import '../../../core/platform/file_share.dart';
 import '../../home/data/home_cache.dart';
 import '../../home/data/home_session_store.dart';
 import '../data/auth_api.dart';
@@ -81,6 +82,14 @@ final authSessionStoreProvider = Provider<AuthSessionStore>((ref) {
       ref.read(authSessionEpochProvider.notifier).advance();
       ref.read(authAccountEpochProvider.notifier).advance();
       await cache.clear();
+      // A copy of the previous person's record must not wait in the cache for
+      // whoever signs in next (ADR 0030). Best-effort: a stuck file must not
+      // stop anyone signing out.
+      try {
+        await ref.read(fileShareProvider).clearExports();
+      } on Object {
+        // The next export empties the folder anyway.
+      }
     },
     afterTokenRotation: () async {
       ref.read(authSessionEpochProvider.notifier).advance();

@@ -1390,6 +1390,38 @@
       }
     }
   },
+  "accountExportAction": "Выгрузить мои данные",
+  "@accountExportAction": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportDescription": "Полный файл со всеми данными и таблица операций для Excel",
+  "@accountExportDescription": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportPreparing": "Готовлю файлы…",
+  "@accountExportPreparing": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedUnreachable": "Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.",
+  "@accountExportFailedUnreachable": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedUnavailable": "Сервер не смог подготовить выгрузку. Попробуйте позже.",
+  "@accountExportFailedUnavailable": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedAuthentication": "Сессия закончилась — войдите снова.",
+  "@accountExportFailedAuthentication": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedShare": "Файлы готовы, но окно «Поделиться» не открылось.",
+  "@accountExportFailedShare": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedStorage": "Не удалось записать файлы на телефон.",
+  "@accountExportFailedStorage": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
   "appUpdateHandedToInstaller": "Файл скачан и проверен. Подтвердите установку в системном окне — Android ставит обновление сам, и это занимает до минуты. Скачивать заново не нужно: файл сейчас нужен установщику.",
   "@appUpdateHandedToInstaller": {
     "description": "In-app update (ADR 0026)."

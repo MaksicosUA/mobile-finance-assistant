@@ -108,6 +108,14 @@ abstract interface class FinanceEntryRepositoryClient {
     required void Function(int received, int total) onProgress,
   });
 
+  Future<FinanceEntryResult<void>> downloadAccountExport({
+    required String savePath,
+  });
+
+  Future<FinanceEntryResult<void>> downloadOperationsTable({
+    required String savePath,
+  });
+
   Future<FinanceEntryResult<UserProfile>> readProfile();
 
   Future<FinanceEntryResult<OperationProposal>> parseOperationText({
@@ -489,6 +497,30 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         accessToken: accessToken,
         savePath: savePath,
         onProgress: onProgress,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<void>> downloadAccountExport({
+    required String savePath,
+  }) {
+    return _authorized(
+      (accessToken) => _api.downloadAccountExport(
+        accessToken: accessToken,
+        savePath: savePath,
+      ),
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<void>> downloadOperationsTable({
+    required String savePath,
+  }) {
+    return _authorized(
+      (accessToken) => _api.downloadOperationsTable(
+        accessToken: accessToken,
+        savePath: savePath,
       ),
     );
   }

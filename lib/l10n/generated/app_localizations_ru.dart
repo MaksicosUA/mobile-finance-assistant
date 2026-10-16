@@ -1612,6 +1612,36 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String get accountExportAction => 'Выгрузить мои данные';
+
+  @override
+  String get accountExportDescription =>
+      'Полный файл со всеми данными и таблица операций для Excel';
+
+  @override
+  String get accountExportPreparing => 'Готовлю файлы…';
+
+  @override
+  String get accountExportFailedUnreachable =>
+      'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.';
+
+  @override
+  String get accountExportFailedUnavailable =>
+      'Сервер не смог подготовить выгрузку. Попробуйте позже.';
+
+  @override
+  String get accountExportFailedAuthentication =>
+      'Сессия закончилась — войдите снова.';
+
+  @override
+  String get accountExportFailedShare =>
+      'Файлы готовы, но окно «Поделиться» не открылось.';
+
+  @override
+  String get accountExportFailedStorage =>
+      'Не удалось записать файлы на телефон.';
+
+  @override
   String get appUpdateHandedToInstaller =>
       'Файл скачан и проверен. Подтвердите установку в системном окне — Android ставит обновление сам, и это занимает до минуты. Скачивать заново не нужно: файл сейчас нужен установщику.';
 

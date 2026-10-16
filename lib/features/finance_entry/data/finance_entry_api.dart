@@ -137,6 +137,18 @@ abstract interface class FinanceEntryApiClient {
     required void Function(int received, int total) onProgress,
   });
 
+  /// Saves every fact the person owns, as stored, to [savePath] (ADR 0030).
+  Future<FinanceEntryResult<void>> downloadAccountExport({
+    required String accessToken,
+    required String savePath,
+  });
+
+  /// Saves the person's operations, as a spreadsheet, to [savePath].
+  Future<FinanceEntryResult<void>> downloadOperationsTable({
+    required String accessToken,
+    required String savePath,
+  });
+
   Future<FinanceEntryResult<UserProfile>> readProfile({
     required String accessToken,
   });
@@ -850,6 +862,49 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     required String accessToken,
     required String savePath,
     required void Function(int received, int total) onProgress,
+  }) {
+    return _downloadTo(
+      '/api/v1/app/download',
+      accessToken: accessToken,
+      savePath: savePath,
+      onProgress: onProgress,
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<void>> downloadAccountExport({
+    required String accessToken,
+    required String savePath,
+  }) {
+    return _downloadTo(
+      '/api/v1/account/export',
+      accessToken: accessToken,
+      savePath: savePath,
+    );
+  }
+
+  @override
+  Future<FinanceEntryResult<void>> downloadOperationsTable({
+    required String accessToken,
+    required String savePath,
+  }) {
+    return _downloadTo(
+      '/api/v1/account/export/operations.csv',
+      accessToken: accessToken,
+      savePath: savePath,
+    );
+  }
+
+  /// Streams one authenticated response straight into a file.
+  ///
+  /// For the answers that are files rather than values — a build tens of
+  /// megabytes long, or a copy of someone's whole financial record — which are
+  /// written to disk as they arrive instead of being decoded in memory.
+  Future<FinanceEntryResult<void>> _downloadTo(
+    String path, {
+    required String accessToken,
+    required String savePath,
+    void Function(int received, int total)? onProgress,
   }) async {
     final requestId = _safeRequestId(_requestIdFactory);
     final token = _safeAccessToken(accessToken);
@@ -861,7 +916,7 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     }
     try {
       await _dio.download(
-        _baseUri.resolve('/api/v1/app/download').toString(),
+        _baseUri.resolve(path).toString(),
         savePath,
         onReceiveProgress: onProgress,
         options: Options(

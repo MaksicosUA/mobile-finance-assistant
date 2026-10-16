@@ -2889,6 +2889,54 @@ abstract class AppLocalizations {
   /// **'Скачиваем… {percent}%'**
   String appUpdateDownloading(int percent);
 
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Выгрузить мои данные'**
+  String get accountExportAction;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Полный файл со всеми данными и таблица операций для Excel'**
+  String get accountExportDescription;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Готовлю файлы…'**
+  String get accountExportPreparing;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.'**
+  String get accountExportFailedUnreachable;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер не смог подготовить выгрузку. Попробуйте позже.'**
+  String get accountExportFailedUnavailable;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сессия закончилась — войдите снова.'**
+  String get accountExportFailedAuthentication;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Файлы готовы, но окно «Поделиться» не открылось.'**
+  String get accountExportFailedShare;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось записать файлы на телефон.'**
+  String get accountExportFailedStorage;
+
   /// In-app update (ADR 0026).
   ///
   /// In ru, this message translates to:
