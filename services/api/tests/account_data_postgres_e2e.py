@@ -2,7 +2,8 @@
 
 Opt-in, like the other PostgreSQL scripts. Migrates itself:
 
-    MFA_TEST_DATABASE_URL=postgresql+asyncpg://... python tests/account_data_postgres_e2e.py
+    MFA_TEST_DATABASE_URL=postgresql+asyncpg://... \
+        python tests/account_data_postgres_e2e.py
 
 It reuses the erasure E2E's fixture, which fills the owner's account through the
 production wiring, and adds one removed operation so the spreadsheet has
