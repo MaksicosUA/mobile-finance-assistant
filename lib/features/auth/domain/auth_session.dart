@@ -18,6 +18,7 @@ final class AuthTokenBundle {
     required this.refreshExpiresAtUtc,
     required this.cacheScopeId,
     required this.user,
+    this.deletionCancelled = false,
   });
 
   final String accessToken;
@@ -26,6 +27,10 @@ final class AuthTokenBundle {
   final DateTime refreshExpiresAtUtc;
   final String cacheScopeId;
   final AuthUser user;
+
+  /// This sign-in cancelled an erasure the person had scheduled (ADR 0030).
+  /// Said once and never stored: it describes the sign-in, not the session.
+  final bool deletionCancelled;
 }
 
 /// Complete credential record held only in platform secure storage.

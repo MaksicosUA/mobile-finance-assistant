@@ -63,6 +63,10 @@ enum FinanceEntryErrorCode {
   analyticsUnavailable,
   malformedAnalyticsQuery,
   profileUnavailable,
+  // The person's own account: export and scheduled erasure (ADR 0030).
+  accountDataUnavailable,
+  malformedAccountRequest,
+  passwordRejected,
   textEntryUnavailable,
   // Asking about an installable update (ADR 0026).
   appReleaseUnavailable,

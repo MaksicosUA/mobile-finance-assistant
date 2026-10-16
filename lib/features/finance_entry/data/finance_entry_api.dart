@@ -149,6 +149,13 @@ abstract interface class FinanceEntryApiClient {
     required String savePath,
   });
 
+  /// Schedules erasure of the person's own account a week out and signs every
+  /// device out (ADR 0030). Answers when the erasure will happen.
+  Future<FinanceEntryResult<DateTime>> requestAccountDeletion({
+    required String accessToken,
+    required String password,
+  });
+
   Future<FinanceEntryResult<UserProfile>> readProfile({
     required String accessToken,
   });
@@ -895,6 +902,22 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     );
   }
 
+  @override
+  Future<FinanceEntryResult<DateTime>> requestAccountDeletion({
+    required String accessToken,
+    required String password,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/v1/account/deletion',
+      accessToken: accessToken,
+      body: <String, Object?>{'schemaVersion': '1', 'password': password},
+      acceptedStatuses: const {202},
+      contract: _ContractKind.accountData,
+      parse: (json, statusCode) => _parseDeletionScheduled(json, statusCode),
+    );
+  }
+
   /// Streams one authenticated response straight into a file.
   ///
   /// For the answers that are files rather than values — a build tens of
@@ -1609,6 +1632,16 @@ AnalyticsWindow _parseAnalyticsWindow(Map<String, Object?> json, int status) {
   return AnalyticsWindow.fromJson(json);
 }
 
+DateTime _parseDeletionScheduled(Map<String, Object?> json, int status) {
+  if (status != 202) throw const FormatException('Invalid status.');
+  _expectKeys(json, const {'schemaVersion', 'deletionDueAt'});
+  _requireSchema(json);
+  final raw = json['deletionDueAt'];
+  final due = raw is String ? DateTime.tryParse(raw) : null;
+  if (due == null) throw const FormatException('Invalid erasure date.');
+  return due.toUtc();
+}
+
 OperationProposal _parseProposal(Map<String, Object?> json, int status) {
   if (status != 200) throw const FormatException('Invalid status.');
   return OperationProposal.fromJson(json);
@@ -2129,6 +2162,22 @@ FinanceEntryResult<T> _httpFailure<T>({
       requestId: requestId,
     );
   }
+  // A wrong password when asking to be erased is a refusal of that request,
+  // not of the session — which is why the server answers 403 and never 401.
+  if (statusCode == 403 && contract == _ContractKind.accountData) {
+    final detail = _tryErrorDetail(bytes, contract: contract);
+    if (detail?.code == FinanceEntryErrorCode.passwordRejected) {
+      return _failure(
+        kind: FinanceEntryFailureKind.rejected,
+        requestId: requestId,
+        code: detail!.code,
+      );
+    }
+    return _failure(
+      kind: FinanceEntryFailureKind.malformedResponse,
+      requestId: requestId,
+    );
+  }
   if (statusCode == 404) {
     final detail = _tryErrorDetail(bytes, contract: contract);
     // A goal the client listed can be gone by the time it acts on it, which is
@@ -2262,6 +2311,7 @@ _ErrorDetail? _tryErrorDetail(
     final isCodeOnly =
         contract == _ContractKind.analytics ||
         contract == _ContractKind.profile ||
+        contract == _ContractKind.accountData ||
         contract == _ContractKind.textEntry ||
         contract == _ContractKind.category;
     _expectKeys(
@@ -2397,6 +2447,9 @@ bool _issueAllowed(FinanceIssueCode code, _ContractKind contract) {
     _ContractKind.analytics => false,
     // The profile is a read. Nothing is submitted, so nothing is rejected.
     _ContractKind.profile => false,
+    // Asking to be erased carries a password, not a draft; it is refused with
+    // a code alone.
+    _ContractKind.accountData => false,
     // Parsing proposes; it rejects nothing, because it decides nothing.
     _ContractKind.textEntry => false,
     // A timezone refusal is its own code space (ADR 0028); this list is
@@ -2497,6 +2550,11 @@ bool _errorAllowed(FinanceEntryErrorCode code, _ContractKind contract) {
     _ContractKind.profile => const {
       FinanceEntryErrorCode.profileUnavailable,
     }.contains(code),
+    _ContractKind.accountData => const {
+      FinanceEntryErrorCode.accountDataUnavailable,
+      FinanceEntryErrorCode.malformedAccountRequest,
+      FinanceEntryErrorCode.passwordRejected,
+    }.contains(code),
     _ContractKind.timezone => const {
       FinanceEntryErrorCode.malformedAccount,
       FinanceEntryErrorCode.accountUnavailable,
@@ -2583,6 +2641,9 @@ FinanceEntryErrorCode _errorCode(String value) => switch (value) {
     FinanceEntryErrorCode.categoryPersistenceUnavailable,
   'ANALYTICS_UNAVAILABLE' => FinanceEntryErrorCode.analyticsUnavailable,
   'PROFILE_UNAVAILABLE' => FinanceEntryErrorCode.profileUnavailable,
+  'ACCOUNT_DATA_UNAVAILABLE' => FinanceEntryErrorCode.accountDataUnavailable,
+  'MALFORMED_ACCOUNT_REQUEST' => FinanceEntryErrorCode.malformedAccountRequest,
+  'PASSWORD_REJECTED' => FinanceEntryErrorCode.passwordRejected,
   'TEXT_ENTRY_UNAVAILABLE' => FinanceEntryErrorCode.textEntryUnavailable,
   'MALFORMED_ANALYTICS_QUERY' => FinanceEntryErrorCode.malformedAnalyticsQuery,
   'MALFORMED_PLANNED_COST' => FinanceEntryErrorCode.malformedPlannedCost,
@@ -2794,6 +2855,8 @@ String? _optionalAccountDate(Map<String, Object?> json, String key) {
 
 enum _ContractKind {
   account,
+  // The person's own account: export and scheduled erasure (ADR 0030).
+  accountData,
   baseline,
   operation,
   operationReversal,

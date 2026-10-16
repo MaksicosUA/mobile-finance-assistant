@@ -7,7 +7,10 @@ sealed class AuthSubmissionResult {
 }
 
 final class AuthSubmissionSuccess extends AuthSubmissionResult {
-  const AuthSubmissionSuccess();
+  const AuthSubmissionSuccess({this.deletionCancelled = false});
+
+  /// The sign-in cancelled a scheduled erasure (ADR 0030).
+  final bool deletionCancelled;
 }
 
 final class AuthSubmissionFailure extends AuthSubmissionResult {
@@ -125,7 +128,9 @@ final class AuthRepository {
       case AuthSessionApiData(:final tokens):
         try {
           await _sessionStore.saveAuthenticatedSession(tokens);
-          return const AuthSubmissionSuccess();
+          return AuthSubmissionSuccess(
+            deletionCancelled: tokens.deletionCancelled,
+          );
         } on Object {
           try {
             await _api.logout(refreshToken: tokens.refreshToken);

@@ -260,6 +260,9 @@ final class AuthApi implements AuthApiClient {
       refreshExpiresAtUtc: now.add(Duration(seconds: refreshExpiresIn)),
       cacheScopeId: validScope,
       user: AuthUser(id: userId, displayName: displayName.trim()),
+      // Added after this parser shipped, and read leniently on purpose: a
+      // server that does not send it simply cancelled nothing.
+      deletionCancelled: json['deletionCancelled'] == true,
     );
   }
 }
