@@ -222,7 +222,7 @@ async def _fill_owner(client: AsyncClient, token: str) -> None:
 
 
 async def _counts(session_factory, user_id: str) -> dict[str, int]:  # type: ignore[no-untyped-def]
-    from mobile_finance_api.account_admin import user_tables
+    from mobile_finance_api.account_data import user_tables
 
     counts: dict[str, int] = {}
     async with session_factory() as session:

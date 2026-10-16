@@ -156,6 +156,7 @@ def _response(grant: AuthGrant) -> AuthTokenResponse:
             id=grant.user_id,
             display_name=grant.display_name,
         ),
+        deletion_cancelled=grant.deletion_cancelled,
     )
 
 

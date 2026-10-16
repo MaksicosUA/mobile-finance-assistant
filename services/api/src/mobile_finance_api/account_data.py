@@ -1,4 +1,4 @@
-"""A person's own data: what they can take with them (ADR 0030).
+"""A person's own data: what they can take with them, and erasing it (ADR 0030).
 
 The export carries every authoritative fact the person owns, **as stored** —
 the database's own table and column names — so it cannot drift from the data it
@@ -12,14 +12,16 @@ from __future__ import annotations
 import csv
 import io
 from collections.abc import Iterable, Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Table, select
+from sqlalchemy import Table, delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import AsyncSessionFactory
 from .db_models import (
+    AuthSessionRow,
     Base,
     FinanceAccountRow,
     FinanceCategoryRow,
@@ -27,8 +29,13 @@ from .db_models import (
     UserRow,
     operation_counts,
 )
+from .passwords import PasswordService
 
 EXPORT_SCHEMA_VERSION = "1"
+
+#: How long a requested erasure waits. Signing in during it cancels the request
+#: — the owner chose a week to undo a mistaken tap over erasing at once.
+DELETION_GRACE = timedelta(days=7)
 
 
 def user_tables() -> tuple[Table, ...]:
@@ -127,9 +134,58 @@ class AccountDataUnavailable(Exception):
     """The authoritative store could not safely produce the person's data."""
 
 
+class PasswordRejected(Exception):
+    """The password given to confirm a destructive request did not match."""
+
+
+class IncompleteErasure(RuntimeError):
+    """Rows for the user were still present after the delete; it was rolled back."""
+
+
 class PostgresAccountDataRepository:
-    def __init__(self, *, session_factory: AsyncSessionFactory) -> None:
+    def __init__(
+        self,
+        *,
+        session_factory: AsyncSessionFactory,
+        passwords: PasswordService | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._passwords = passwords if passwords is not None else PasswordService()
+
+    async def request_deletion(
+        self, *, user_id: UUID, password: str, now: datetime
+    ) -> datetime:
+        """Schedule erasure a week out and sign the person out everywhere.
+
+        The password is asked because an unlocked phone alone must not be enough
+        to destroy someone's history. It is checked before the row is locked —
+        Argon2 is deliberately slow — and the hash is compared again under the
+        lock, so a password changed in between cannot slip through.
+        """
+
+        async with self._session_factory() as database:
+            stored = await database.scalar(
+                select(UserRow.password_hash).where(UserRow.id == user_id)
+            )
+        if not await self._passwords.verify(password, stored):
+            raise PasswordRejected
+        due = now + DELETION_GRACE
+        async with self._session_factory() as database, database.begin():
+            user = await database.scalar(
+                select(UserRow).where(UserRow.id == user_id).with_for_update()
+            )
+            if user is None or user.password_hash != stored:
+                raise PasswordRejected
+            user.deletion_requested_at = now
+            user.deletion_due_at = due
+            user.updated_at = now
+            # Every bearer request joins its session, so deleting them all is
+            # what signs every device out — no separate "blocked" state needed.
+            # Refresh tokens hang off their sessions and go with them.
+            await database.execute(
+                delete(AuthSessionRow).where(AuthSessionRow.user_id == user_id)
+            )
+        return due
 
     async def export(
         self, *, user_id: UUID, exported_at: datetime
@@ -205,6 +261,12 @@ class PostgresAccountDataRepository:
 
 
 class UnavailableAccountDataRepository:
+    async def request_deletion(
+        self, *, user_id: UUID, password: str, now: datetime
+    ) -> datetime:
+        del user_id, password, now
+        raise AccountDataUnavailable
+
     async def export(
         self, *, user_id: UUID, exported_at: datetime
     ) -> dict[str, object]:
@@ -214,6 +276,73 @@ class UnavailableAccountDataRepository:
     async def operations_csv(self, *, user_id: UUID) -> str:
         del user_id
         raise AccountDataUnavailable
+
+
+async def erase_user(session: AsyncSession, user_id: UUID) -> dict[str, int]:
+    """Erase one person inside the caller's transaction, and prove it.
+
+    One `DELETE` of the user row; every table holding a `user_id` cascades. The
+    count is taken again before the transaction commits, so a cascade that
+    stopped short raises and rolls everything back instead of committing half an
+    erasure. Returns what was removed, per table.
+    """
+
+    tables = user_tables()
+    removed: dict[str, int] = {}
+    for table in tables:
+        count = await _count(session, table, user_id)
+        if count:
+            removed[table.name] = count
+    await session.execute(delete(UserRow).where(UserRow.id == user_id))
+    remaining = [
+        table.name for table in tables if await _count(session, table, user_id)
+    ]
+    still_there = await session.scalar(
+        select(func.count()).select_from(UserRow).where(UserRow.id == user_id)
+    )
+    if remaining or still_there:
+        raise IncompleteErasure(", ".join(sorted(remaining)) or "users")
+    return removed
+
+
+async def erase_due_accounts(
+    session_factory: AsyncSessionFactory, *, now: datetime
+) -> int:
+    """Erase every account whose week has run out. Returns how many.
+
+    Each account in its own transaction, re-checked under its row lock: a
+    sign-in that cancelled the request a moment ago must win, and one account
+    that cannot be erased must not stop the others from being erased.
+    """
+
+    async with session_factory() as database:
+        due = list(
+            await database.scalars(
+                select(UserRow.id).where(UserRow.deletion_due_at <= now)
+            )
+        )
+    erased = 0
+    for user_id in due:
+        async with session_factory() as database, database.begin():
+            still_due = await database.scalar(
+                select(UserRow.id)
+                .where(UserRow.id == user_id, UserRow.deletion_due_at <= now)
+                .with_for_update()
+            )
+            if still_due is None:
+                continue
+            await erase_user(database, user_id)
+        erased += 1
+    return erased
+
+
+async def _count(session: AsyncSession, table: Table, user_id: UUID) -> int:
+    return int(
+        await session.scalar(
+            select(func.count()).select_from(table).where(table.c.user_id == user_id)
+        )
+        or 0
+    )
 
 
 def plain(value: object) -> object:

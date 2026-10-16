@@ -8,7 +8,9 @@ import logging
 import math
 import time
 from collections.abc import Awaitable, Callable, Sequence
+from datetime import UTC, datetime
 
+from .account_data import erase_due_accounts
 from .config import require_database_url
 from .database import AsyncSessionFactory, create_database
 from .postgres_home_projector import PostgresHomeProjector
@@ -187,6 +189,11 @@ async def _run_once(
                 # Extend repeating plans first: the instances it writes publish
                 # their own invalidations, which the same cycle then consumes.
                 materialised = await recurrences.materialise_active_rules()
+                # Accounts whose week has run out go before anything is built
+                # for them (ADR 0030).
+                erased = await erase_due_accounts(
+                    session_factory, now=datetime.now(UTC)
+                )
                 # Reconcile healthy users before processing event streams.
                 reconciliation = await projector.reconcile_all()
                 projection = await projector.drain_available(max_candidates=max_cycles)
@@ -205,10 +212,11 @@ async def _run_once(
                     set_status("idle")
                 _LOGGER.info(
                     "Home projector cycle complete consumed=%d "
-                    "reconciled=%d materialised=%d pruned=%d failures=%s",
+                    "reconciled=%d materialised=%d erased=%d pruned=%d failures=%s",
                     projection.published,
                     reconciliation.published,
                     materialised,
+                    erased,
                     pruned,
                     failures_present,
                 )
@@ -240,6 +248,7 @@ async def _run_forever(
     maximum_lag_seconds: float,
     retention_seconds: float,
     materialise_seconds: float,
+    erasure_seconds: float,
     retry_policy: EventRetryPolicy,
     retention_policy: RevisionRetentionPolicy,
 ) -> None:
@@ -287,6 +296,7 @@ async def _run_forever(
                             maximum_lag_seconds=maximum_lag_seconds,
                             retention_seconds=retention_seconds,
                             materialise_seconds=materialise_seconds,
+                            erasure_seconds=erasure_seconds,
                             session_factory=session_factory,
                             recurrences=recurrences,
                             retention_policy=retention_policy,
@@ -324,6 +334,7 @@ async def _run_leader_loop(
     maximum_lag_seconds: float,
     retention_seconds: float,
     materialise_seconds: float,
+    erasure_seconds: float,
     session_factory: AsyncSessionFactory,
     recurrences: PostgresPlannedCostRecurrenceRepository,
     retention_policy: RevisionRetentionPolicy,
@@ -336,6 +347,7 @@ async def _run_leader_loop(
     next_health = 0.0
     next_retention = 0.0
     next_materialisation = 0.0
+    next_erasure = 0.0
     while True:
         consumed = 0
         reconciled = 0
@@ -391,6 +403,26 @@ async def _run_leader_loop(
                 cycle_failed = True
                 _LOGGER.error(
                     "Planned cost recurrence materialisation failed error_type=%s",
+                    type(error).__name__,
+                )
+
+        if now >= next_erasure:
+            try:
+                # People who asked to be erased and did not come back within
+                # the week (ADR 0030). Counted, never named: the log learns how
+                # many, not who.
+                erased = await erase_due_accounts(
+                    session_factory, now=datetime.now(UTC)
+                )
+                next_erasure = now + erasure_seconds
+                if erased:
+                    _LOGGER.info("Scheduled account erasure erased=%d", erased)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                cycle_failed = True
+                _LOGGER.error(
+                    "Scheduled account erasure failed error_type=%s",
                     type(error).__name__,
                 )
 
@@ -514,6 +546,8 @@ def _parser() -> argparse.ArgumentParser:
     # Hourly: a plan's next months are never urgent, and creating a rule
     # materialises its own instances immediately anyway.
     parser.add_argument("--materialise-seconds", type=float, default=3600.0)
+    # Hourly too: a week's grace has no need of a tighter clock (ADR 0030).
+    parser.add_argument("--erasure-seconds", type=float, default=3600.0)
     parser.add_argument("--retention-minimum-revisions", type=int, default=2)
     parser.add_argument("--retention-grace-days", type=int, default=30)
     parser.add_argument("--retention-maximum-per-cycle", type=int, default=100)
@@ -572,6 +606,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 maximum_lag_seconds=args.maximum_lag_seconds,
                 retention_seconds=args.retention_seconds,
                 materialise_seconds=args.materialise_seconds,
+                erasure_seconds=args.erasure_seconds,
                 retry_policy=retry_policy,
                 retention_policy=retention_policy,
             )

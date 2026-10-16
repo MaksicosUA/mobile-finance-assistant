@@ -48,6 +48,9 @@ class AuthGrant:
     refresh_expires_in: int
     user_id: UUID
     display_name: str
+    #: This sign-in cancelled an erasure the person had scheduled (ADR 0030),
+    #: so the app can say so in words rather than leave them wondering.
+    deletion_cancelled: bool = False
 
 
 class AuthenticationService(Protocol):
@@ -187,6 +190,14 @@ class PostgresAuthenticationService:
                 if replacement_hash is not None:
                     locked_user.password_hash = replacement_hash
                     locked_user.updated_at = now
+                # Signing in during the week cancels a requested erasure
+                # (ADR 0030). The operator's block is a different fact and was
+                # already refused above; it is never cleared here.
+                deletion_cancelled = locked_user.deletion_requested_at is not None
+                if deletion_cancelled:
+                    locked_user.deletion_requested_at = None
+                    locked_user.deletion_due_at = None
+                    locked_user.updated_at = now
                 session, raw_refresh, refresh_expires_at = await _new_session(
                     database=database,
                     user_id=locked_user.id,
@@ -198,6 +209,7 @@ class PostgresAuthenticationService:
             raw_refresh=raw_refresh,
             refresh_expires_at=refresh_expires_at,
             now=now,
+            deletion_cancelled=deletion_cancelled,
         )
 
     async def refresh(self, *, refresh_token: str) -> AuthGrant:
@@ -324,6 +336,7 @@ class PostgresAuthenticationService:
         raw_refresh: str,
         refresh_expires_at: datetime,
         now: datetime,
+        deletion_cancelled: bool = False,
     ) -> AuthGrant:
         return AuthGrant(
             access_token=self._access_tokens.issue(
@@ -339,6 +352,7 @@ class PostgresAuthenticationService:
             ),
             user_id=user.id,
             display_name=user.display_name,
+            deletion_cancelled=deletion_cancelled,
         )
 
 

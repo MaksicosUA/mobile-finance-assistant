@@ -10,23 +10,26 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
 from httpx import ASGITransport, AsyncClient
 
 from mobile_finance_api.account_data import (
+    DELETION_GRACE,
     EXCLUDED_TABLES,
     EXPORTED_TABLES,
     OPERATIONS_CSV_COLUMNS,
     WITHHELD_COLUMNS,
     AccountDataUnavailable,
+    PasswordRejected,
     operations_table,
     plain,
     user_tables,
 )
 from mobile_finance_api.auth import AuthenticatedUser
+from mobile_finance_api.auth_service import AuthGrant
 from mobile_finance_api.db_models import Base
 from mobile_finance_api.main import create_app
 
@@ -241,3 +244,150 @@ def test_a_failure_never_echoes_what_it_was_reading() -> None:
         }
         assert "Продукты" not in response.text  # type: ignore[attr-defined]
         assert "secret-detail" not in response.text  # type: ignore[attr-defined]
+
+
+# --- scheduled erasure -----------------------------------------------------------
+
+
+class _FakeDeletion(_FakeData):
+    def __init__(self, *, reject: bool = False, fail: bool = False) -> None:
+        super().__init__(fail=fail)
+        self.reject = reject
+        self.passwords: list[str] = []
+
+    async def request_deletion(
+        self, *, user_id: UUID, password: str, now: datetime
+    ) -> datetime:
+        self.requested.append(user_id)
+        self.passwords.append(password)
+        if self.reject:
+            raise PasswordRejected
+        if self.fail:
+            raise AccountDataUnavailable("secret-detail")
+        return now + DELETION_GRACE
+
+
+def _post_deletion(
+    body: object, *, data: _FakeDeletion, authenticated: bool = True
+) -> object:
+    async def scenario() -> object:
+        app = create_app(
+            current_user_authenticator=_StaticAuthenticator(),
+            account_data_repository=data,
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return await client.post(
+                "/api/v1/account/deletion",
+                json=body,
+                headers=_AUTH if authenticated else {},
+            )
+
+    return asyncio.run(scenario())
+
+
+_PASSWORD = "synthetic-password-123"
+
+
+def test_a_confirmed_request_schedules_erasure_a_week_out() -> None:
+    data = _FakeDeletion()
+    response = _post_deletion({"schemaVersion": "1", "password": _PASSWORD}, data=data)
+
+    assert response.status_code == 202, response.text  # type: ignore[attr-defined]
+    assert data.requested == [_USER_ID]
+    assert data.passwords == [_PASSWORD]
+    due = datetime.fromisoformat(
+        response.json()["deletionDueAt"].replace("Z", "+00:00")  # type: ignore[attr-defined]
+    )
+    assert timedelta(days=6, hours=23) < due - datetime.now(UTC) <= DELETION_GRACE
+
+
+def test_a_wrong_password_is_forbidden_never_unauthorized() -> None:
+    """A 401 would tell the app its session expired and sign the person out."""
+
+    response = _post_deletion(
+        {"schemaVersion": "1", "password": "not-the-password"},
+        data=_FakeDeletion(reject=True),
+    )
+
+    assert response.status_code == 403  # type: ignore[attr-defined]
+    assert response.json() == {"detail": {"code": "PASSWORD_REJECTED"}}  # type: ignore[attr-defined]
+
+
+def test_a_malformed_request_never_echoes_the_password() -> None:
+    data = _FakeDeletion()
+    secret = "x" * 200  # past the length limit, so validation refuses it
+    response = _post_deletion({"schemaVersion": "1", "password": secret}, data=data)
+
+    assert response.status_code == 422  # type: ignore[attr-defined]
+    assert response.json() == {"detail": {"code": "MALFORMED_ACCOUNT_REQUEST"}}  # type: ignore[attr-defined]
+    assert secret not in response.text  # type: ignore[attr-defined]
+    assert data.requested == []
+
+
+def test_nobody_schedules_an_erasure_without_signing_in() -> None:
+    data = _FakeDeletion()
+    response = _post_deletion(
+        {"schemaVersion": "1", "password": _PASSWORD},
+        data=data,
+        authenticated=False,
+    )
+
+    assert response.status_code == 401  # type: ignore[attr-defined]
+    assert data.requested == []
+
+
+def test_an_unavailable_store_says_so_and_nothing_more() -> None:
+    response = _post_deletion(
+        {"schemaVersion": "1", "password": _PASSWORD},
+        data=_FakeDeletion(fail=True),
+    )
+
+    assert response.status_code == 503  # type: ignore[attr-defined]
+    assert "secret-detail" not in response.text  # type: ignore[attr-defined]
+
+
+def test_sign_in_says_when_it_cancelled_an_erasure() -> None:
+    """Older apps ignore the field; this one can tell the person in words."""
+
+    class _Service:
+        async def login(self, *, email: str, password: str) -> AuthGrant:
+            del email, password
+            return AuthGrant(
+                access_token="synthetic-access-token-value",
+                refresh_token="synthetic-refresh-token-value",
+                access_expires_in=900,
+                refresh_expires_in=2_592_000,
+                user_id=_USER_ID,
+                display_name="Synthetic",
+                deletion_cancelled=True,
+            )
+
+    async def scenario() -> object:
+        app = create_app(authentication_service=_Service())  # type: ignore[arg-type]
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            return await client.post(
+                "/api/v1/auth/login",
+                json={"email": "owner@example.com", "password": _PASSWORD},
+            )
+
+    response = asyncio.run(scenario())
+
+    assert response.status_code == 200, response.text  # type: ignore[attr-defined]
+    assert response.json()["deletionCancelled"] is True  # type: ignore[attr-defined]
+
+
+def test_a_grant_cancels_nothing_unless_it_says_so() -> None:
+    grant = AuthGrant(
+        access_token="a",
+        refresh_token="r",
+        access_expires_in=900,
+        refresh_expires_in=2_592_000,
+        user_id=_USER_ID,
+        display_name="Synthetic",
+    )
+
+    assert grant.deletion_cancelled is False

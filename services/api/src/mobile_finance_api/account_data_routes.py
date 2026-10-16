@@ -1,4 +1,4 @@
-"""The person's own account: taking their data with them (ADR 0030).
+"""The person's own account: taking their data along, and erasing it (ADR 0030).
 
 Everything here answers only for the authenticated caller — no route takes an
 identifier, so another person's data is unrepresentable rather than merely
@@ -13,8 +13,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from .account_data import PasswordRejected
 from .auth import AuthenticatedUser, current_user
 
 router = APIRouter(prefix="/api/v1/account", tags=["account"])
@@ -22,7 +23,7 @@ router = APIRouter(prefix="/api/v1/account", tags=["account"])
 #: A copy of someone's whole financial life is not something any cache keeps.
 _PRIVATE = {"Cache-Control": "no-store"}
 
-AccountDataErrorCode = Literal["ACCOUNT_DATA_UNAVAILABLE"]
+AccountDataErrorCode = Literal["ACCOUNT_DATA_UNAVAILABLE", "PASSWORD_REJECTED"]
 
 
 class AccountDataErrorDetail(BaseModel):
@@ -37,8 +38,30 @@ class AccountDataErrorResponse(BaseModel):
     detail: AccountDataErrorDetail
 
 
+class RequestDeletionCommand(BaseModel):
+    """Erase my account a week from now. The password says it is really me."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    schema_version: Literal["1"] = Field(alias="schemaVersion")
+    password: SecretStr = Field(min_length=1, max_length=128)
+
+
+class DeletionScheduledResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    #: When the account will be erased unless its owner signs in before then.
+    deletion_due_at: datetime = Field(alias="deletionDueAt")
+
+
 class AccountDataReader(Protocol):
     """Structural type of the adapter these routes need."""
+
+    async def request_deletion(
+        self, *, user_id: UUID, password: str, now: datetime
+    ) -> datetime:
+        """Schedule erasure and sign out everywhere; returns when it happens."""
 
     async def export(
         self, *, user_id: UUID, exported_at: datetime
@@ -121,6 +144,47 @@ async def export_operations_csv(
     raise public_error
 
 
+@router.post(
+    "/deletion",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=DeletionScheduledResponse,
+    response_model_by_alias=True,
+    responses={
+        403: {
+            "model": AccountDataErrorResponse,
+            "description": "The password did not match; nothing was scheduled",
+        },
+        422: {"description": "The request is malformed"},
+        **_UNAVAILABLE_RESPONSE,
+    },
+)
+async def request_deletion(
+    command: RequestDeletionCommand,
+    repository: AccountDataRepositoryDependency,
+    user: CurrentUserDependency,
+) -> DeletionScheduledResponse:
+    """Schedule erasure a week from now, and sign every device out.
+
+    A wrong password is 403, never 401: a 401 tells the app its session has
+    expired, and it would sign the person out over a typo.
+    """
+
+    user_id = _user_id(user)
+    try:
+        due = await repository.request_deletion(
+            user_id=user_id,
+            password=command.password.get_secret_value(),
+            now=datetime.now(UTC),
+        )
+    except PasswordRejected:
+        public_error = _error(status.HTTP_403_FORBIDDEN, "PASSWORD_REJECTED")
+    except Exception:
+        public_error = _unavailable()
+    else:
+        return DeletionScheduledResponse(deletion_due_at=due)
+    raise public_error
+
+
 def _user_id(user: AuthenticatedUser) -> UUID:
     try:
         return UUID(user.subject)
@@ -129,7 +193,9 @@ def _user_id(user: AuthenticatedUser) -> UUID:
 
 
 def _unavailable() -> HTTPException:
-    detail = AccountDataErrorDetail(code="ACCOUNT_DATA_UNAVAILABLE").model_dump(
-        mode="json"
-    )
-    return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
+    return _error(status.HTTP_503_SERVICE_UNAVAILABLE, "ACCOUNT_DATA_UNAVAILABLE")
+
+
+def _error(status_code: int, code: AccountDataErrorCode) -> HTTPException:
+    detail = AccountDataErrorDetail(code=code).model_dump(mode="json")
+    return HTTPException(status_code=status_code, detail=detail)

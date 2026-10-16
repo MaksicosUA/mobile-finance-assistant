@@ -433,6 +433,12 @@ def create_app(
                 status_code=422,
                 content={"detail": {"code": "MALFORMED_GOAL_COMMAND", "issues": []}},
             )
+        if request.url.path.startswith("/api/v1/account/"):
+            # Carries a password; the default handler would echo it back.
+            return JSONResponse(
+                status_code=422,
+                content={"detail": {"code": "MALFORMED_ACCOUNT_REQUEST"}},
+            )
         if not request.url.path.startswith("/api/v1/auth/"):
             return await request_validation_exception_handler(request, error)
         safe_errors = [
