@@ -52,12 +52,12 @@ from email_validator import EmailNotValidError
 from sqlalchemy import Table, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .account_data import IncompleteErasure, erase_user
 from .auth_service import normalize_email
 from .config import require_database_url
 from .database import AsyncSessionFactory, create_database
 from .db_models import (
     AuthSessionRow,
-    Base,
     FinanceAccountRow,
     FinanceOperationRow,
     UserRow,
@@ -73,24 +73,6 @@ EXIT_REFUSED = 2
 _CONFIRMATION_REFUSED = (
     "Refusing to erase: --confirm must repeat the same address. Nothing was touched."
 )
-
-
-class IncompleteErasure(RuntimeError):
-    """Rows for the user were still present after the delete; it was rolled back."""
-
-
-def user_tables() -> tuple[Table, ...]:
-    """Every table that holds a user's rows, read from the schema itself.
-
-    Found rather than listed, so a table added later is counted and checked
-    without anyone remembering to add it here.
-    """
-
-    return tuple(
-        table
-        for table in Base.metadata.sorted_tables
-        if "user_id" in table.c and table.name != UserRow.__tablename__
-    )
 
 
 def same_address(first: str, second: str) -> bool:
@@ -281,6 +263,7 @@ async def _list(session_factory: AsyncSessionFactory, *, out: TextIO) -> int:
             UserRow.email_normalized,
             UserRow.display_name,
             UserRow.disabled_at,
+            UserRow.deletion_due_at,
             UserRow.created_at,
             last_seen.c.last_seen,
             func.coalesce(wallets.c.wallets, 0),
@@ -295,14 +278,23 @@ async def _list(session_factory: AsyncSessionFactory, *, out: TextIO) -> int:
         rows = (await session.execute(query)).all()
 
     print(
-        f"{'EMAIL':<34} {'NAME':<22} {'STATUS':<8} {'CREATED':<10} "
+        f"{'EMAIL':<34} {'NAME':<22} {'STATUS':<11} {'CREATED':<10} "
         f"{'LAST SEEN':<10} {'WALLETS':>7} {'RECORDS':>7}",
         file=out,
     )
-    for email, name, disabled_at, created_at, seen, wallet_count, record_count in rows:
+    for (
+        email,
+        name,
+        disabled_at,
+        deletion_due_at,
+        created_at,
+        seen,
+        wallet_count,
+        record_count,
+    ) in rows:
         print(
             f"{email:<34} {name:<22} "
-            f"{'blocked' if disabled_at is not None else 'active':<8} "
+            f"{_status(disabled_at, deletion_due_at):<11} "
             f"{created_at:%Y-%m-%d} "
             f"{(f'{seen:%Y-%m-%d}' if seen is not None else '—'):<10} "
             f"{wallet_count:>7} {record_count:>7}",
@@ -310,6 +302,17 @@ async def _list(session_factory: AsyncSessionFactory, *, out: TextIO) -> int:
         )
     print(f"\n{len(rows)} account(s)", file=out)
     return EXIT_OK
+
+
+def _status(disabled_at: datetime | None, deletion_due_at: datetime | None) -> str:
+    """Blocked by the operator, leaving by their own request, or neither."""
+
+    if disabled_at is not None:
+        return "blocked"
+    if deletion_due_at is not None:
+        # They asked to be erased (ADR 0030); signing in before this cancels it.
+        return f"erase {deletion_due_at:%m-%d}"
+    return "active"
 
 
 async def _set_blocked(
@@ -405,7 +408,6 @@ async def _erase(
     if normalized is None:
         print("That is not a valid address.", file=err)
         return EXIT_NOT_FOUND
-    tables = user_tables()
     async with session_factory() as session, session.begin():
         user_id = await session.scalar(
             select(UserRow.id)
@@ -416,24 +418,9 @@ async def _erase(
             print("No account uses that address.", file=err)
             return EXIT_NOT_FOUND
 
-        removed: dict[str, int] = {}
-        for table in tables:
-            count = await _count(session, table, user_id)
-            if count:
-                removed[table.name] = count
-
-        await session.execute(delete(UserRow).where(UserRow.id == user_id))
-
-        # Checked inside the transaction, so a cascade that stopped short rolls
-        # everything back instead of committing half an erasure.
-        remaining = [
-            table.name for table in tables if await _count(session, table, user_id)
-        ]
-        still_there = await session.scalar(
-            select(func.count()).select_from(UserRow).where(UserRow.id == user_id)
-        )
-        if remaining or still_there:
-            raise IncompleteErasure(", ".join(sorted(remaining)) or "users")
+        # The same verified cascade the scheduled erasure uses (ADR 0030): one
+        # definition of what erasing a person means.
+        removed = await erase_user(session, user_id)
 
     total = sum(removed.values())
     print(

@@ -1390,6 +1390,141 @@
       }
     }
   },
+  "accountExportAction": "Выгрузить мои данные",
+  "@accountExportAction": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportDescription": "Полный файл со всеми данными и таблица операций для Excel",
+  "@accountExportDescription": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportPreparing": "Готовлю файлы…",
+  "@accountExportPreparing": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedUnreachable": "Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.",
+  "@accountExportFailedUnreachable": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedUnavailable": "Сервер не смог подготовить выгрузку. Попробуйте позже.",
+  "@accountExportFailedUnavailable": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedAuthentication": "Сессия закончилась — войдите снова.",
+  "@accountExportFailedAuthentication": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedShare": "Файлы готовы, но окно «Поделиться» не открылось.",
+  "@accountExportFailedShare": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountExportFailedStorage": "Не удалось записать файлы на телефон.",
+  "@accountExportFailedStorage": {
+    "description": "Exporting the person's own data (ADR 0030)."
+  },
+  "accountDeletionAction": "Удалить аккаунт",
+  "@accountDeletionAction": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionActionDescription": "Через 7 дней. Передумали — просто войдите снова",
+  "@accountDeletionActionDescription": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionTitle": "Удаление аккаунта",
+  "@accountDeletionTitle": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionHeadline": "Аккаунт удалится через 7 дней",
+  "@accountDeletionHeadline": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionWhat": "Удалится всё: кошельки, операции, переводы, категории, планы, бюджеты и цели. Вернуть их потом будет нельзя.",
+  "@accountDeletionWhat": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionSignedOut": "Вы сразу выйдете на всех устройствах. Если передумаете — войдите в течение 7 дней, и удаление отменится.",
+  "@accountDeletionSignedOut": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionBackups": "В резервных копиях сервера данные хранятся ещё до 14 дней, потом исчезают и оттуда.",
+  "@accountDeletionBackups": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionExportFirst": "Сначала выгрузить мои данные",
+  "@accountDeletionExportFirst": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionUnsent": "Операций на этом телефоне, ещё не дошедших до сервера: {count}. Их нет в выгрузке, и они пропадут вместе с аккаунтом. Лучше дождаться отправки.",
+  "@accountDeletionUnsent": {
+    "description": "Erasing the person's own account (ADR 0030).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "accountDeletionPasswordLabel": "Пароль",
+  "@accountDeletionPasswordLabel": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionPasswordHelp": "Тот же, которым вы входите. Нужен, чтобы удалить аккаунт мог только его владелец.",
+  "@accountDeletionPasswordHelp": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionPasswordRejected": "Неверный пароль",
+  "@accountDeletionPasswordRejected": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionSubmit": "Удалить аккаунт",
+  "@accountDeletionSubmit": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionConfirmTitle": "Удалить аккаунт?",
+  "@accountDeletionConfirmTitle": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionConfirmBody": "Вы выйдете на всех устройствах. Через 7 дней все данные будут удалены, если вы не войдёте раньше.",
+  "@accountDeletionConfirmBody": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionConfirmCancel": "Отмена",
+  "@accountDeletionConfirmCancel": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionConfirmAccept": "Удалить",
+  "@accountDeletionConfirmAccept": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionUnreachable": "Не удалось связаться с сервером. Ничего не удалено — проверьте интернет и попробуйте ещё раз.",
+  "@accountDeletionUnreachable": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionUnavailable": "Сервер не смог принять запрос. Ничего не удалено — попробуйте позже.",
+  "@accountDeletionUnavailable": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionAuthentication": "Сессия закончилась — войдите снова. Ничего не удалено.",
+  "@accountDeletionAuthentication": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionScheduledNotice": "Аккаунт будет удалён {date}. Чтобы отменить удаление, просто войдите до этого дня.",
+  "@accountDeletionScheduledNotice": {
+    "description": "Erasing the person's own account (ADR 0030).",
+    "placeholders": {
+      "date": {
+        "type": "DateTime",
+        "format": "yMMMMd"
+      }
+    }
+  },
+  "accountDeletionScheduledNoticeUndated": "Аккаунт будет удалён через 7 дней. Чтобы отменить удаление, просто войдите до этого срока.",
+  "@accountDeletionScheduledNoticeUndated": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
+  "accountDeletionCancelled": "Удаление аккаунта отменено — вы вошли, и все данные на месте.",
+  "@accountDeletionCancelled": {
+    "description": "Erasing the person's own account (ADR 0030)."
+  },
   "appUpdateHandedToInstaller": "Файл скачан и проверен. Подтвердите установку в системном окне — Android ставит обновление сам, и это занимает до минуты. Скачивать заново не нужно: файл сейчас нужен установщику.",
   "@appUpdateHandedToInstaller": {
     "description": "In-app update (ADR 0026)."

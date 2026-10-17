@@ -622,6 +622,22 @@ FinanceEntrySuccess<FinanceOperationCommit> _successOperation(
 
 class _ListApi implements FinanceEntryApiClient {
   @override
+  Future<FinanceEntryResult<DateTime>> requestAccountDeletion({
+    required String accessToken,
+    required String password,
+  }) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<void>> downloadAccountExport({
+    required String accessToken,
+    required String savePath,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<void>> downloadOperationsTable({
+    required String accessToken,
+    required String savePath,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<TransferProposal?>> parseTransferText({
     required String accessToken,
     required String text,

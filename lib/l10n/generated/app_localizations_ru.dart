@@ -1612,6 +1612,123 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String get accountExportAction => 'Выгрузить мои данные';
+
+  @override
+  String get accountExportDescription =>
+      'Полный файл со всеми данными и таблица операций для Excel';
+
+  @override
+  String get accountExportPreparing => 'Готовлю файлы…';
+
+  @override
+  String get accountExportFailedUnreachable =>
+      'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.';
+
+  @override
+  String get accountExportFailedUnavailable =>
+      'Сервер не смог подготовить выгрузку. Попробуйте позже.';
+
+  @override
+  String get accountExportFailedAuthentication =>
+      'Сессия закончилась — войдите снова.';
+
+  @override
+  String get accountExportFailedShare =>
+      'Файлы готовы, но окно «Поделиться» не открылось.';
+
+  @override
+  String get accountExportFailedStorage =>
+      'Не удалось записать файлы на телефон.';
+
+  @override
+  String get accountDeletionAction => 'Удалить аккаунт';
+
+  @override
+  String get accountDeletionActionDescription =>
+      'Через 7 дней. Передумали — просто войдите снова';
+
+  @override
+  String get accountDeletionTitle => 'Удаление аккаунта';
+
+  @override
+  String get accountDeletionHeadline => 'Аккаунт удалится через 7 дней';
+
+  @override
+  String get accountDeletionWhat =>
+      'Удалится всё: кошельки, операции, переводы, категории, планы, бюджеты и цели. Вернуть их потом будет нельзя.';
+
+  @override
+  String get accountDeletionSignedOut =>
+      'Вы сразу выйдете на всех устройствах. Если передумаете — войдите в течение 7 дней, и удаление отменится.';
+
+  @override
+  String get accountDeletionBackups =>
+      'В резервных копиях сервера данные хранятся ещё до 14 дней, потом исчезают и оттуда.';
+
+  @override
+  String get accountDeletionExportFirst => 'Сначала выгрузить мои данные';
+
+  @override
+  String accountDeletionUnsent(int count) {
+    return 'Операций на этом телефоне, ещё не дошедших до сервера: $count. Их нет в выгрузке, и они пропадут вместе с аккаунтом. Лучше дождаться отправки.';
+  }
+
+  @override
+  String get accountDeletionPasswordLabel => 'Пароль';
+
+  @override
+  String get accountDeletionPasswordHelp =>
+      'Тот же, которым вы входите. Нужен, чтобы удалить аккаунт мог только его владелец.';
+
+  @override
+  String get accountDeletionPasswordRejected => 'Неверный пароль';
+
+  @override
+  String get accountDeletionSubmit => 'Удалить аккаунт';
+
+  @override
+  String get accountDeletionConfirmTitle => 'Удалить аккаунт?';
+
+  @override
+  String get accountDeletionConfirmBody =>
+      'Вы выйдете на всех устройствах. Через 7 дней все данные будут удалены, если вы не войдёте раньше.';
+
+  @override
+  String get accountDeletionConfirmCancel => 'Отмена';
+
+  @override
+  String get accountDeletionConfirmAccept => 'Удалить';
+
+  @override
+  String get accountDeletionUnreachable =>
+      'Не удалось связаться с сервером. Ничего не удалено — проверьте интернет и попробуйте ещё раз.';
+
+  @override
+  String get accountDeletionUnavailable =>
+      'Сервер не смог принять запрос. Ничего не удалено — попробуйте позже.';
+
+  @override
+  String get accountDeletionAuthentication =>
+      'Сессия закончилась — войдите снова. Ничего не удалено.';
+
+  @override
+  String accountDeletionScheduledNotice(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return 'Аккаунт будет удалён $dateString. Чтобы отменить удаление, просто войдите до этого дня.';
+  }
+
+  @override
+  String get accountDeletionScheduledNoticeUndated =>
+      'Аккаунт будет удалён через 7 дней. Чтобы отменить удаление, просто войдите до этого срока.';
+
+  @override
+  String get accountDeletionCancelled =>
+      'Удаление аккаунта отменено — вы вошли, и все данные на месте.';
+
+  @override
   String get appUpdateHandedToInstaller =>
       'Файл скачан и проверен. Подтвердите установку в системном окне — Android ставит обновление сам, и это занимает до минуты. Скачивать заново не нужно: файл сейчас нужен установщику.';
 

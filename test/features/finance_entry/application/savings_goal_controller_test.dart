@@ -534,6 +534,19 @@ class _FailingListRepository extends _FakeRepository {
 
 class _FakeRepository implements FinanceEntryRepositoryClient {
   @override
+  Future<FinanceEntryResult<DateTime>> requestAccountDeletion({
+    required String password,
+  }) => throw UnimplementedError();
+  @override
+  Future<FinanceEntryResult<void>> downloadAccountExport({
+    required String savePath,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<FinanceEntryResult<void>> downloadOperationsTable({
+    required String savePath,
+  }) => throw UnimplementedError();
+  @override
   Future<FinanceEntryResult<TransferProposal?>> parseTransferText({
     required String text,
     required String capturedAt,

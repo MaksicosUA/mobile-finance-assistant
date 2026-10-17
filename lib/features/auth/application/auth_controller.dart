@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_config.dart';
+import '../../../core/platform/file_share.dart';
 import '../../home/data/home_cache.dart';
 import '../../home/data/home_session_store.dart';
 import '../data/auth_api.dart';
@@ -10,7 +11,17 @@ import '../data/auth_session_store.dart';
 
 enum AuthMode { login, register }
 
-enum AuthNotice { none, sessionExpired, signedOut }
+enum AuthNotice {
+  none,
+  sessionExpired,
+  signedOut,
+
+  /// The person asked to be erased; every device was signed out (ADR 0030).
+  deletionScheduled,
+
+  /// Signing in cancelled that request.
+  deletionCancelled,
+}
 
 sealed class AuthState {
   const AuthState();
@@ -25,11 +36,15 @@ final class AuthSignedOut extends AuthState {
     this.mode = AuthMode.login,
     this.notice = AuthNotice.none,
     this.issue,
+    this.deletionDueAt,
   });
 
   final AuthMode mode;
   final AuthNotice notice;
   final AuthFailureKind? issue;
+
+  /// When the account will be erased, for [AuthNotice.deletionScheduled].
+  final DateTime? deletionDueAt;
 }
 
 final class AuthSubmitting extends AuthState {
@@ -43,7 +58,11 @@ final class AuthSigningOut extends AuthState {
 }
 
 final class AuthSignedIn extends AuthState {
-  const AuthSignedIn();
+  const AuthSignedIn({this.notice = AuthNotice.none});
+
+  /// Something worth saying once the person is in — today only that their
+  /// sign-in cancelled a scheduled erasure.
+  final AuthNotice notice;
 }
 
 final authSessionEpochProvider = NotifierProvider<AuthSessionEpoch, int>(
@@ -81,6 +100,14 @@ final authSessionStoreProvider = Provider<AuthSessionStore>((ref) {
       ref.read(authSessionEpochProvider.notifier).advance();
       ref.read(authAccountEpochProvider.notifier).advance();
       await cache.clear();
+      // A copy of the previous person's record must not wait in the cache for
+      // whoever signs in next (ADR 0030). Best-effort: a stuck file must not
+      // stop anyone signing out.
+      try {
+        await ref.read(fileShareProvider).clearExports();
+      } on Object {
+        // The next export empties the folder anyway.
+      }
     },
     afterTokenRotation: () async {
       ref.read(authSessionEpochProvider.notifier).advance();
@@ -204,6 +231,26 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  /// The server accepted an erasure request and has already deleted every
+  /// session, so there is nothing to revoke — only the local copy to drop.
+  Future<void> accountDeletionScheduled(DateTime dueAt) async {
+    final intentEpoch = ++_intentEpoch;
+    try {
+      await ref.read(authRepositoryProvider).clearLocalSession();
+    } on Object {
+      if (intentEpoch == _intentEpoch) {
+        state = const AuthSignedOut(issue: AuthFailureKind.localStorage);
+      }
+      return;
+    }
+    if (intentEpoch == _intentEpoch) {
+      state = AuthSignedOut(
+        notice: AuthNotice.deletionScheduled,
+        deletionDueAt: dueAt,
+      );
+    }
+  }
+
   Future<void> requireSignIn() async {
     final intentEpoch = ++_intentEpoch;
     try {
@@ -221,7 +268,11 @@ class AuthController extends Notifier<AuthState> {
 
   void _applySubmission(AuthSubmissionResult result, AuthMode mode) {
     state = switch (result) {
-      AuthSubmissionSuccess() => const AuthSignedIn(),
+      AuthSubmissionSuccess(:final deletionCancelled) => AuthSignedIn(
+        notice: deletionCancelled
+            ? AuthNotice.deletionCancelled
+            : AuthNotice.none,
+      ),
       AuthSubmissionFailure(:final kind) => AuthSignedOut(
         mode: mode,
         issue: kind,

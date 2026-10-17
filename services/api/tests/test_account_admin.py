@@ -12,6 +12,7 @@ import io
 import pytest
 
 from mobile_finance_api import account_admin
+from mobile_finance_api.account_data import user_tables
 from mobile_finance_api.db_models import Base
 
 
@@ -51,7 +52,7 @@ def test_an_address_sign_in_would_reject_never_confirms_anything() -> None:
 
 
 def test_every_table_with_user_rows_is_found_from_the_schema() -> None:
-    names = {table.name for table in account_admin.user_tables()}
+    names = {table.name for table in user_tables()}
 
     assert "users" not in names
     assert {"auth_sessions", "finance_accounts", "finance_operations"} <= names
@@ -82,9 +83,7 @@ def test_every_user_table_is_erased_with_its_user() -> None:
     behind as orphans the projector then trips over."""
 
     unreachable = [
-        table.name
-        for table in account_admin.user_tables()
-        if not _cascade_path_to_users(table.name)
+        table.name for table in user_tables() if not _cascade_path_to_users(table.name)
     ]
 
     assert unreachable == []

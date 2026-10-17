@@ -895,6 +895,15 @@ def test_one_shot_processes_healthy_streams_then_reports_aggregate_failure(
     )
     monkeypatch.setattr(projector_runtime, "prune_home_revisions", prune)
 
+    async def no_due_erasures(session_factory: object, **kwargs: object) -> int:
+        # Scheduled erasure (ADR 0030) is proved against PostgreSQL elsewhere;
+        # here the cycle only has to run past it.
+        assert session_factory == "synthetic-session-factory"
+        del kwargs
+        return 0
+
+    monkeypatch.setattr(projector_runtime, "erase_due_accounts", no_due_erasures)
+
     @asynccontextmanager
     async def leadership(**kwargs):  # type: ignore[no-untyped-def]
         assert isinstance(kwargs["engine"], _Engine)

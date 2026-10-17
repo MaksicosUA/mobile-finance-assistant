@@ -3,4 +3,7 @@
      channel be told to share something else. -->
 <paths>
     <cache-path name="updates" path="updates/" />
+    <!-- A person's own exported record, shared only where they choose (ADR
+         0030). Each channel still refuses any file outside its own folder. -->
+    <cache-path name="exports" path="exports/" />
 </paths>

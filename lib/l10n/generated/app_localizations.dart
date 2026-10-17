@@ -2889,6 +2889,192 @@ abstract class AppLocalizations {
   /// **'Скачиваем… {percent}%'**
   String appUpdateDownloading(int percent);
 
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Выгрузить мои данные'**
+  String get accountExportAction;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Полный файл со всеми данными и таблица операций для Excel'**
+  String get accountExportDescription;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Готовлю файлы…'**
+  String get accountExportPreparing;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.'**
+  String get accountExportFailedUnreachable;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер не смог подготовить выгрузку. Попробуйте позже.'**
+  String get accountExportFailedUnavailable;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сессия закончилась — войдите снова.'**
+  String get accountExportFailedAuthentication;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Файлы готовы, но окно «Поделиться» не открылось.'**
+  String get accountExportFailedShare;
+
+  /// Exporting the person's own data (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось записать файлы на телефон.'**
+  String get accountExportFailedStorage;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить аккаунт'**
+  String get accountDeletionAction;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Через 7 дней. Передумали — просто войдите снова'**
+  String get accountDeletionActionDescription;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Удаление аккаунта'**
+  String get accountDeletionTitle;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт удалится через 7 дней'**
+  String get accountDeletionHeadline;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалится всё: кошельки, операции, переводы, категории, планы, бюджеты и цели. Вернуть их потом будет нельзя.'**
+  String get accountDeletionWhat;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы сразу выйдете на всех устройствах. Если передумаете — войдите в течение 7 дней, и удаление отменится.'**
+  String get accountDeletionSignedOut;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'В резервных копиях сервера данные хранятся ещё до 14 дней, потом исчезают и оттуда.'**
+  String get accountDeletionBackups;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сначала выгрузить мои данные'**
+  String get accountDeletionExportFirst;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Операций на этом телефоне, ещё не дошедших до сервера: {count}. Их нет в выгрузке, и они пропадут вместе с аккаунтом. Лучше дождаться отправки.'**
+  String accountDeletionUnsent(int count);
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пароль'**
+  String get accountDeletionPasswordLabel;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Тот же, которым вы входите. Нужен, чтобы удалить аккаунт мог только его владелец.'**
+  String get accountDeletionPasswordHelp;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Неверный пароль'**
+  String get accountDeletionPasswordRejected;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить аккаунт'**
+  String get accountDeletionSubmit;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить аккаунт?'**
+  String get accountDeletionConfirmTitle;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Вы выйдете на всех устройствах. Через 7 дней все данные будут удалены, если вы не войдёте раньше.'**
+  String get accountDeletionConfirmBody;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get accountDeletionConfirmCancel;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить'**
+  String get accountDeletionConfirmAccept;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось связаться с сервером. Ничего не удалено — проверьте интернет и попробуйте ещё раз.'**
+  String get accountDeletionUnreachable;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер не смог принять запрос. Ничего не удалено — попробуйте позже.'**
+  String get accountDeletionUnavailable;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сессия закончилась — войдите снова. Ничего не удалено.'**
+  String get accountDeletionAuthentication;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт будет удалён {date}. Чтобы отменить удаление, просто войдите до этого дня.'**
+  String accountDeletionScheduledNotice(DateTime date);
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Аккаунт будет удалён через 7 дней. Чтобы отменить удаление, просто войдите до этого срока.'**
+  String get accountDeletionScheduledNoticeUndated;
+
+  /// Erasing the person's own account (ADR 0030).
+  ///
+  /// In ru, this message translates to:
+  /// **'Удаление аккаунта отменено — вы вошли, и все данные на месте.'**
+  String get accountDeletionCancelled;
+
   /// In-app update (ADR 0026).
   ///
   /// In ru, this message translates to:

@@ -55,3 +55,7 @@ class AuthTokenResponse(AuthApiModel):
     refresh_expires_in: int = Field(alias="refreshExpiresIn", gt=0)
     cache_scope_id: str = Field(alias="cacheScopeId")
     user: AuthUserResponse
+    #: True when this sign-in cancelled a scheduled erasure (ADR 0030). Added
+    #: after clients shipped; they read the token fields they know and ignore
+    #: the rest, so an older app simply does not mention it.
+    deletion_cancelled: bool = Field(default=False, alias="deletionCancelled")

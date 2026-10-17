@@ -7,6 +7,7 @@ runtime auth configuration and fails immediately when secrets are absent.
 from __future__ import annotations
 
 from .account_core import AccountCore
+from .account_data import PostgresAccountDataRepository
 from .app_release import FilesystemAppReleaseStore, NoAppReleaseStore
 from .auth import PostgresCurrentUserAuthenticator
 from .auth_service import PostgresAuthenticationService
@@ -100,6 +101,9 @@ app = create_app(
         session_factory=session_factory,
     ),
     profile_repository=PostgresProfileRepository(session_factory=session_factory),
+    account_data_repository=PostgresAccountDataRepository(
+        session_factory=session_factory,
+    ),
     app_release_store=(
         NoAppReleaseStore()
         if (release_directory := load_release_directory()) is None

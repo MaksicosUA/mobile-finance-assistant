@@ -934,9 +934,9 @@ async def _assert_transfer_projection(
     assert _amount(payload["balance"]["deltaAmount"]) == _amount(
         before.json()["balance"]["deltaAmount"]
     )
-    assert payload["balance"]["deltaPercent"] == before.json()["balance"][
-        "deltaPercent"
-    ]
+    assert (
+        payload["balance"]["deltaPercent"] == before.json()["balance"]["deltaPercent"]
+    )
     # Read from a NUMERIC(38, 18) column, a percent used to leave with sixteen
     # zeros of padding, and the phone printed every one of them.
     percent = payload["balance"]["deltaPercent"]

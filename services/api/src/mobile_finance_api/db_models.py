@@ -51,6 +51,19 @@ class UserRow(Base):
             "canonical_timezone NOT IN ('Factory', 'localtime', 'posixrules'))",
             name="ck_users_canonical_timezone_revision",
         ),
+        # Set and cleared together, and erasure always after the request
+        # (ADR 0030).
+        CheckConstraint(
+            "(deletion_requested_at IS NULL AND deletion_due_at IS NULL) OR "
+            "(deletion_requested_at IS NOT NULL AND deletion_due_at IS NOT NULL "
+            "AND deletion_due_at > deletion_requested_at)",
+            name="ck_users_deletion_schedule",
+        ),
+        Index(
+            "ix_users_deletion_due_at",
+            "deletion_due_at",
+            postgresql_where=text("deletion_due_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
@@ -84,6 +97,17 @@ class UserRow(Base):
         nullable=False,
     )
     disabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    #: When the person asked for their account to be erased, and when it will
+    #: be. Signing in before then clears both (ADR 0030). Separate from
+    #: `disabled_at`, which is the operator's block and is never cleared by it.
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    deletion_due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

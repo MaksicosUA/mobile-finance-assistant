@@ -1158,6 +1158,84 @@ void main() {
       );
     });
   });
+
+  group("asking for one's own account to be erased (ADR 0030)", () {
+    test('answers when the erasure will happen', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(202, const {
+          'schemaVersion': '1',
+          'deletionDueAt': '2026-10-23T12:00:00Z',
+        }),
+      ]);
+
+      final result = await _api(adapter).requestAccountDeletion(
+        accessToken: 'access-token',
+        password: 'synthetic-password',
+      );
+
+      expect(
+        (result as FinanceEntrySuccess<DateTime>).value,
+        DateTime.utc(2026, 10, 23, 12),
+      );
+      final request = adapter.requests.single;
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/api/v1/account/deletion');
+      expect(request.data, {
+        'schemaVersion': '1',
+        'password': 'synthetic-password',
+      });
+    });
+
+    test(
+      'a wrong password is a refusal of the request, not the session',
+      () async {
+        final adapter = _QueueAdapter([
+          _JsonResponse(403, const {
+            'detail': {'code': 'PASSWORD_REJECTED'},
+          }),
+        ]);
+
+        final result = await _api(adapter).requestAccountDeletion(
+          accessToken: 'access-token',
+          password: 'wrong',
+        );
+
+        final failure = (result as FinanceEntryFailureResult<DateTime>).failure;
+        expect(failure.kind, FinanceEntryFailureKind.rejected);
+        expect(failure.code, FinanceEntryErrorCode.passwordRejected);
+      },
+    );
+
+    test('any other refusal shape fails closed', () async {
+      final adapter = _QueueAdapter([
+        _JsonResponse(403, const {
+          'detail': {'code': 'PROFILE_UNAVAILABLE'},
+        }),
+        _JsonResponse(202, const {
+          'schemaVersion': '1',
+          'deletionDueAt': '2026-10-23T12:00:00Z',
+          'erasedAt': null,
+        }),
+        _JsonResponse(202, const {
+          'schemaVersion': '1',
+          'deletionDueAt': 'next week',
+        }),
+      ]);
+      final api = _api(adapter);
+
+      for (var attempt = 0; attempt < 3; attempt += 1) {
+        final result = await api.requestAccountDeletion(
+          accessToken: 'access-token',
+          password: 'synthetic-password',
+        );
+        expect(
+          (result as FinanceEntryFailureResult<DateTime>).failure.kind,
+          FinanceEntryFailureKind.malformedResponse,
+          reason: 'attempt $attempt',
+        );
+      }
+    });
+  });
 }
 
 const _recurrenceId = '99999999-9999-4999-8999-999999999999';

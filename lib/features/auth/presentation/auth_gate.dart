@@ -41,15 +41,40 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     }
 
     final state = ref.watch(authControllerProvider);
+    ref.listen<AuthState>(authControllerProvider, (previous, next) {
+      // Said once, as the person arrives: their sign-in cancelled the erasure
+      // they had asked for (ADR 0030).
+      if (next is AuthSignedIn &&
+          next.notice == AuthNotice.deletionCancelled &&
+          previous is! AuthSignedIn) {
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            key: const Key('auth-deletion-cancelled'),
+            content: Text(
+              AppLocalizations.of(context).accountDeletionCancelled,
+            ),
+          ),
+        );
+      }
+    });
     _setProtection(state is AuthSignedIn ? settings.privacyMode : true);
     return switch (state) {
       AuthBootstrapping() || AuthSigningOut() => const _AuthLoadingPage(),
-      AuthSignedOut(:final mode, :final notice, :final issue) => AuthPage(
-        mode: mode,
-        notice: notice,
-        issue: issue,
-        isSubmitting: false,
-      ),
+      AuthSignedOut(
+        :final mode,
+        :final notice,
+        :final issue,
+        :final deletionDueAt,
+      ) =>
+        AuthPage(
+          mode: mode,
+          notice: notice,
+          issue: issue,
+          deletionDueAt: deletionDueAt,
+          isSubmitting: false,
+        ),
       AuthSubmitting(:final mode) => AuthPage(mode: mode, isSubmitting: true),
       AuthSignedIn() => const AppShell(),
     };

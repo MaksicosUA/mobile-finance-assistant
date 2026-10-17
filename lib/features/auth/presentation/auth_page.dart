@@ -16,12 +16,17 @@ class AuthPage extends ConsumerStatefulWidget {
     this.isSubmitting = false,
     this.notice = AuthNotice.none,
     this.issue,
+    this.deletionDueAt,
   });
 
   final AuthMode mode;
   final bool isSubmitting;
   final AuthNotice notice;
   final AuthFailureKind? issue;
+
+  /// When a requested erasure will happen, shown so the person knows how long
+  /// they have to change their mind (ADR 0030).
+  final DateTime? deletionDueAt;
 
   @override
   ConsumerState<AuthPage> createState() => _AuthPageState();
@@ -350,6 +355,12 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       AuthNotice.none => null,
       AuthNotice.sessionExpired => l10n.authSessionExpiredNotice,
       AuthNotice.signedOut => l10n.signedOutNotice,
+      AuthNotice.deletionScheduled => switch (widget.deletionDueAt) {
+        final due? => l10n.accountDeletionScheduledNotice(due.toLocal()),
+        null => l10n.accountDeletionScheduledNoticeUndated,
+      },
+      // Said on arrival instead, once the person is signed in.
+      AuthNotice.deletionCancelled => null,
     };
   }
 

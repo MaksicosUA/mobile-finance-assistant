@@ -20,6 +20,8 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .account_core import AccountCore, UnavailableFinanceAccountRepository
+from .account_data import UnavailableAccountDataRepository
+from .account_data_routes import router as account_data_router
 from .account_routes import router as account_router
 from .analytics_routes import router as analytics_router
 from .app_release import AppReleaseStore, NoAppReleaseStore
@@ -292,6 +294,7 @@ def create_app(
     finance_operation_repository: object | None = None,
     analytics_repository: object | None = None,
     profile_repository: object | None = None,
+    account_data_repository: object | None = None,
     app_release_store: AppReleaseStore | None = None,
     app_download_link_secret: bytes | None = None,
     database_engine: AsyncEngine | None = None,
@@ -397,6 +400,11 @@ def create_app(
         if profile_repository is not None
         else UnavailableProfileRepository()
     )
+    application.state.account_data_repository = (
+        account_data_repository
+        if account_data_repository is not None
+        else UnavailableAccountDataRepository()
+    )
     application.state.analytics_repository = (
         analytics_repository
         if analytics_repository is not None
@@ -425,6 +433,12 @@ def create_app(
                 status_code=422,
                 content={"detail": {"code": "MALFORMED_GOAL_COMMAND", "issues": []}},
             )
+        if request.url.path.startswith("/api/v1/account/"):
+            # Carries a password; the default handler would echo it back.
+            return JSONResponse(
+                status_code=422,
+                content={"detail": {"code": "MALFORMED_ACCOUNT_REQUEST"}},
+            )
         if not request.url.path.startswith("/api/v1/auth/"):
             return await request_validation_exception_handler(request, error)
         safe_errors = [
@@ -452,6 +466,7 @@ def create_app(
     application.include_router(category_router)
     application.include_router(analytics_router)
     application.include_router(profile_router)
+    application.include_router(account_data_router)
     application.include_router(app_release_router)
     # Shares the /api/v1/operations prefix with the write routes on purpose:
     # proposing and committing are the same resource, but only one of them

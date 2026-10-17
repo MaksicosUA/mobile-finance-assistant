@@ -56,6 +56,22 @@ class _StubRecurrences:
         return 0
 
 
+async def _no_due_erasures(session_factory: object, **kwargs: object) -> int:
+    """Stands in for the scheduled erasure the leader also runs (ADR 0030).
+
+    Erasure has its own tests against PostgreSQL; here it only has to be
+    present and quiet, like the materialiser above.
+    """
+
+    del session_factory, kwargs
+    return 0
+
+
+@pytest.fixture(autouse=True)
+def _quiet_erasure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(projector_runtime, "erase_due_accounts", _no_due_erasures)
+
+
 class _HealthyBlockingLease:
     def __init__(self) -> None:
         self.calls = 0
@@ -370,6 +386,7 @@ def test_continuous_runtime_reacquires_after_heartbeat_loss(
                 maximum_lag_seconds=10,
                 retention_seconds=10,
                 materialise_seconds=10,
+                erasure_seconds=10,
                 retry_policy=EventRetryPolicy(),
                 retention_policy=RevisionRetentionPolicy(),
             )
@@ -499,6 +516,7 @@ def test_failed_continuous_cycle_advances_backoff_exactly_once(
                 maximum_lag_seconds=1,
                 retention_seconds=1,
                 materialise_seconds=1,
+                erasure_seconds=1,
                 session_factory=object(),  # type: ignore[arg-type]
                 recurrences=_StubRecurrences(),  # type: ignore[arg-type]
                 retention_policy=RevisionRetentionPolicy(),
