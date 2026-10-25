@@ -927,3 +927,119 @@ def test_the_transfer_route_needs_authentication() -> None:
         assert response.status_code == 401
 
     asyncio.run(scenario())
+
+
+# --- what the first voice measurement found ------------------------------------
+#
+# 22 phrases were recorded on a phone and transcribed (2026-10-26). Every amount
+# was heard right; these three were read wrong by the parser, and each is wrong
+# when typed too, so none of them is a voice defect.
+
+
+@pytest.mark.parametrize(
+    ("text", "expected", "amount"),
+    [
+        ("Третьего августа заплатил 150 за страховку", date(2026, 8, 3), "150"),
+        ("Пятнадцатого июля купил билеты за 240", date(2026, 7, 15), "240"),
+        ("Десятого августа заплатил 45", date(2026, 8, 10), "45"),
+        # The tens word belongs to the date, not to the money.
+        ("Двадцать восьмого июля купил телефон за 600", date(2026, 7, 28), "600"),
+        (
+            "Двадцать восьмого июля купил телефон за шестьсот",
+            date(2026, 7, 28),
+            "600",
+        ),
+        ("Тридцатого июля заплатил 12", date(2026, 7, 30), "12"),
+        # How recognition writes «третьего» when it prefers digits.
+        ("3-го августа заплатил 150 за страховку", date(2026, 8, 3), "150"),
+        ("3го августа заплатил 150 за страховку", date(2026, 8, 3), "150"),
+    ],
+)
+def test_a_day_said_as_an_ordinal_is_a_date(
+    text: str, expected: date, amount: str
+) -> None:
+    """«Третьего августа» used to fall back to today without a word."""
+
+    parsed = _parse(text)
+
+    assert parsed.occurred_on == expected
+    assert parsed.amount == Decimal(amount)
+    assert parsed.source_expression is None
+    assert "DATE_NOT_UNDERSTOOD" not in parsed.gaps
+    assert "AMBIGUOUS_AMOUNT" not in parsed.gaps
+
+
+def test_an_ordinal_day_without_a_year_takes_the_most_recent_one() -> None:
+    """On 13 August, «третьего сентября» is last September, not next."""
+
+    assert _parse("Третьего сентября заплатил 150").occurred_on == date(2025, 9, 3)
+
+
+@pytest.mark.parametrize(
+    ("text", "today", "expected"),
+    [
+        ("Первого числа заплатил 900 за аренду", _TODAY, date(2026, 8, 1)),
+        ("5-го числа заплатил 70", _TODAY, date(2026, 8, 5)),
+        # The day has not come yet this month, so it is last month's.
+        ("Двадцатого числа заплатил 70", _TODAY, date(2026, 7, 20)),
+        # July has a 31st; a month without one is skipped rather than invented.
+        ("Тридцать первого числа заплатил 70", date(2026, 10, 26), date(2026, 8, 31)),
+    ],
+)
+def test_a_day_of_the_month_is_its_most_recent_occurrence(
+    text: str, today: date, expected: date
+) -> None:
+    parsed = parse_operation_text(text=text, today=today, categories=())
+
+    assert parsed.occurred_on == expected
+    assert parsed.amount is not None
+    assert "AMBIGUOUS_AMOUNT" not in parsed.gaps
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Поза вчера заплатил 80 за свет", "Поза-вчера заплатил 80 за свет"],
+)
+def test_the_day_before_yesterday_split_in_two_is_still_two_days(text: str) -> None:
+    """Recognition writes «поза вчера»; reading only «вчера» lost a day silently."""
+
+    parsed = _parse(text)
+
+    assert parsed.occurred_on == date(2026, 8, 11)
+    assert parsed.source_expression is None
+    assert parsed.amount == Decimal("80")
+
+
+@pytest.mark.parametrize(
+    ("text", "amount", "currency"),
+    [
+        ("Пришла оплата за заказ 13 900 гривен", "13900", "UAH"),
+        # As recognition heard it.
+        ("Пришла плата за заказ. 13 900 гривен.", "13900", "UAH"),
+        ("Поступил платёж 500", "500", "EUR"),
+        ("Пришли деньги 200 евро", "200", "EUR"),
+    ],
+)
+def test_money_that_arrived_is_income(text: str, amount: str, currency: str) -> None:
+    """«Пришла оплата» was booked as a payment made: «оплата» is an expense word
+    and only the neuter «пришло» was known to mean money coming in."""
+
+    parsed = _parse(text)
+
+    assert parsed.operation_type == "income"
+    assert parsed.amount == Decimal(amount)
+    assert parsed.currency == currency
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Пришла в кафе и заплатила 20",
+        "Пришёл в магазин, купил хлеб за 3",
+        "Оплата интернета 20",
+    ],
+)
+def test_a_verb_of_arrival_alone_proves_nothing(text: str) -> None:
+    """A person arrives too. Only the verb next to what arrived means income."""
+
+    assert _parse(text).operation_type == "expense"
