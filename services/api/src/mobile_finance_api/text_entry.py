@@ -215,8 +215,43 @@ _EXPENSE_WORDS = (
 )
 
 
+# Money arriving is said with a verb of motion, and the verb alone proves
+# nothing: «пришла в кафе» is a person. Only the verb next to what arrived reads
+# as income, and it has to be read, because «оплата» on its own is an expense
+# word: without the pair, «пришла оплата» was booked as a payment made.
+_ARRIVAL_VERBS = (
+    "пришла",
+    "пришёл",
+    "пришел",
+    "пришли",
+    "поступила",
+    "поступил",
+    "поступили",
+)
+_ARRIVING_MONEY = (
+    "оплата",
+    # How recognition hears «оплата» after «пришла».
+    "плата",
+    "зарплата",
+    "премия",
+    "деньги",
+    "платёж",
+    "платеж",
+    "перевод",
+    "возврат",
+    "аванс",
+    "выплата",
+    "кэшбэк",
+    "кешбэк",
+    "гонорар",
+)
+_INCOME_PHRASES = tuple(
+    f"{verb} {money}" for verb in _ARRIVAL_VERBS for money in _ARRIVING_MONEY
+)
+
+
 def _find_direction(haystack: str) -> OperationDirection:
-    income = _first_index(haystack, _INCOME_WORDS)
+    income = _first_index(haystack, _INCOME_WORDS + _INCOME_PHRASES)
     expense = _first_index(haystack, _EXPENSE_WORDS)
     if income is None:
         return "expense"
@@ -269,6 +304,10 @@ _MONTHS = {
 # date, because sending it would be rejected as unsupported (ADR 0007).
 _RELATIVE_DAYS: tuple[tuple[str, int, SupportedDateExpression | None], ...] = (
     ("позавчера", 2, None),
+    # Recognition writes it in two; read as «вчера» it lost a day in silence.
+    # Both must come before «вчера», which they contain.
+    ("поза вчера", 2, None),
+    ("поза-вчера", 2, None),
     ("вчера", 1, "вчера"),
     ("сегодня", 0, "сегодня"),
 )
@@ -279,10 +318,50 @@ _RELATIVE_DAYS: tuple[tuple[str, int, SupportedDateExpression | None], ...] = (
 _NUMERIC_DATE = re.compile(
     r"\b(\d{1,2})([./])(\d{1,2})(?:\2(\d{4}|\d{2}))?\b",
 )
-# 3 августа, 3 августа 2026
+# «числа» stands where a month would: the day of the month, the most recent one.
+_THIS_MONTH = "числа"
+_MONTH_WORDS = "|".join(sorted(_MONTHS, key=len, reverse=True)) + "|" + _THIS_MONTH
+
+# 3 августа, 3-го августа, 3го августа, 3 августа 2026, 5-го числа
 _NAMED_DATE = re.compile(
-    r"\b(\d{1,2})\s+("
-    + "|".join(sorted(_MONTHS, key=len, reverse=True))
+    r"\b(\d{1,2})(?:-?го)?\s+(" + _MONTH_WORDS + r")(?:\s+(\d{4}))?\b"
+)
+
+# A day said as an ordinal: «третьего сентября», «двадцать восьмого июля»,
+# «первого числа». The tens word is part of the match so it is cut out with
+# the date instead of being read as money.
+_ORDINAL_DAYS = {
+    "первого": 1,
+    "второго": 2,
+    "третьего": 3,
+    "четвертого": 4,
+    "четвёртого": 4,
+    "пятого": 5,
+    "шестого": 6,
+    "седьмого": 7,
+    "восьмого": 8,
+    "девятого": 9,
+    "десятого": 10,
+    "одиннадцатого": 11,
+    "двенадцатого": 12,
+    "тринадцатого": 13,
+    "четырнадцатого": 14,
+    "пятнадцатого": 15,
+    "шестнадцатого": 16,
+    "семнадцатого": 17,
+    "восемнадцатого": 18,
+    "девятнадцатого": 19,
+    "двадцатого": 20,
+    "тридцатого": 30,
+}
+_ORDINAL_TENS = {"двадцать": 20, "тридцать": 30}
+_ORDINAL_DATE = re.compile(
+    r"\b(?:("
+    + "|".join(_ORDINAL_TENS)
+    + r")\s+)?("
+    + "|".join(sorted(_ORDINAL_DAYS, key=len, reverse=True))
+    + r")\s+("
+    + _MONTH_WORDS
     + r")(?:\s+(\d{4}))?\b"
 )
 
@@ -300,12 +379,23 @@ def _find_date(
         span = (index, index + len(phrase))
         return today - timedelta(days=offset), expression, span, True
 
+    match = _ORDINAL_DATE.search(haystack)
+    if match is not None:
+        unit = _ORDINAL_DAYS[match.group(2)]
+        tens = _ORDINAL_TENS.get(match.group(1) or "", 0)
+        # «двадцать двадцатого» is not a day; a gap, not a guess.
+        day = tens + unit if not tens or unit < 10 else 0
+        year = int(match.group(4)) if match.group(4) else None
+        resolved = _named_day(day=day, month=match.group(3), year=year, today=today)
+        if resolved is None:
+            return today, None, match.span(), False
+        return resolved, None, match.span(), True
+
     match = _NAMED_DATE.search(haystack)
     if match is not None:
         day = int(match.group(1))
-        month = _MONTHS[match.group(2)]
         year = int(match.group(3)) if match.group(3) else None
-        resolved = _calendar_date(day=day, month=month, year=year, today=today)
+        resolved = _named_day(day=day, month=match.group(2), year=year, today=today)
         if resolved is None:
             return today, None, match.span(), False
         return resolved, None, match.span(), True
@@ -342,6 +432,28 @@ def _leaves_an_amount(haystack: str, span: tuple[int, int]) -> bool:
     start, end = span
     remainder = haystack[:start] + " " * (end - start) + haystack[end:]
     return bool(_digit_amounts(remainder) or _spoken_amounts(remainder))
+
+
+def _named_day(*, day: int, month: str, year: int | None, today: date) -> date | None:
+    if month != _THIS_MONTH:
+        return _calendar_date(day=day, month=_MONTHS[month], year=year, today=today)
+    if year is not None or not 1 <= day <= 31:
+        return None
+    # The most recent month that has this day and has reached it: on
+    # 26 October, «тридцать первого числа» is 31 August, because September has
+    # no 31st and October's has not come.
+    year, month_number = today.year, today.month
+    for _ in range(12):
+        try:
+            candidate = date(year, month_number, day)
+        except ValueError:
+            candidate = None
+        if candidate is not None and candidate <= today:
+            return candidate
+        year, month_number = (
+            (year, month_number - 1) if month_number > 1 else (year - 1, 12)
+        )
+    return None
 
 
 def _calendar_date(
