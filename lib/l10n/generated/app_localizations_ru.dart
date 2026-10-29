@@ -2114,4 +2114,58 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get operationWalletField => 'Кошелёк';
+
+  @override
+  String get spokenSentenceKept =>
+      'Фраза сохранена на телефоне. Когда появится интернет, она будет ждать разбора здесь и на главной — до 30 дней.';
+
+  @override
+  String get spokenSentenceNotKept =>
+      'Эту фразу сохранить не удалось. Скажите её снова, когда появится интернет.';
+
+  @override
+  String entrySentenceSaidAt(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat(
+      'd MMMM, HH:mm',
+      localeName,
+    );
+    final String dateString = dateDateFormat.format(date);
+
+    return 'Сказано $dateString — даты считаются от этого момента';
+  }
+
+  @override
+  String waitingPhrasesTitle(int count) {
+    return 'Ждут разбора: $count';
+  }
+
+  @override
+  String get waitingPhrasesDescription =>
+      'Сказано без интернета. Нажмите фразу, чтобы разобрать её; после разбора она удаляется с телефона.';
+
+  @override
+  String get waitingPhraseHidden => 'Фраза скрыта';
+
+  @override
+  String waitingPhraseSaidAt(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat(
+      'd MMMM, HH:mm',
+      localeName,
+    );
+    final String dateString = dateDateFormat.format(date);
+
+    return 'Сказано $dateString';
+  }
+
+  @override
+  String get waitingPhraseForget => 'Удалить фразу';
+
+  @override
+  String get waitingPhrasesNoticeDescription =>
+      'Сказано без интернета — нажмите, чтобы разобрать';
+
+  @override
+  String waitingPhrasesNoticeLabel(int count) {
+    return 'Фразы, сказанные без интернета, ждут разбора: $count. Открыть';
+  }
 }

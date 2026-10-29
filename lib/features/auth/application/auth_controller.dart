@@ -5,6 +5,7 @@ import '../../../core/network/api_config.dart';
 import '../../../core/platform/file_share.dart';
 import '../../home/data/home_cache.dart';
 import '../../home/data/home_session_store.dart';
+import '../../voice_entry/data/waiting_phrase_store.dart';
 import '../data/auth_api.dart';
 import '../data/auth_repository.dart';
 import '../data/auth_session_store.dart';
@@ -214,6 +215,7 @@ class AuthController extends Notifier<AuthState> {
     if (state is AuthSigningOut) return;
     final intentEpoch = ++_intentEpoch;
     state = const AuthSigningOut();
+    await _forgetWaitingPhrases();
     try {
       await ref.read(authRepositoryProvider).logout();
     } on Object {
@@ -235,6 +237,7 @@ class AuthController extends Notifier<AuthState> {
   /// session, so there is nothing to revoke — only the local copy to drop.
   Future<void> accountDeletionScheduled(DateTime dueAt) async {
     final intentEpoch = ++_intentEpoch;
+    await _forgetWaitingPhrases();
     try {
       await ref.read(authRepositoryProvider).clearLocalSession();
     } on Object {
@@ -248,6 +251,18 @@ class AuthController extends Notifier<AuthState> {
         notice: AuthNotice.deletionScheduled,
         deletionDueAt: dueAt,
       );
+    }
+  }
+
+  /// Phrases said without a connection go with the person who said them
+  /// (ADR 0032). Only on a deliberate exit: a session that merely expired keeps
+  /// them for the same account to read after signing in again.
+  Future<void> _forgetWaitingPhrases() async {
+    try {
+      await ref.read(waitingPhraseStoreProvider).clear();
+    } on Object {
+      // The file is scoped to this account and unreadable without its key;
+      // another account signing in deletes it on first read.
     }
   }
 

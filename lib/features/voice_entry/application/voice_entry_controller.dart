@@ -1,36 +1,54 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/canonical_timezone.dart';
 import '../../../core/platform/speech_input.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../finance_entry/application/finance_entry_controller.dart';
+import '../domain/waiting_phrase.dart';
+import 'waiting_phrases_controller.dart';
 
 /// The language the recogniser listens for. Russian because the sentence
 /// parser reads Russian (ADR 0022): recognising another language would only
 /// produce a sentence nothing can read.
 const voiceEntryLanguageTag = 'ru-RU';
 
+/// What the recogniser heard, on its way to the entry form.
+@immutable
+final class HeardSentence {
+  const HeardSentence(this.text, {this.kept});
+
+  final String text;
+
+  /// The same words, kept on the phone until the server has read them
+  /// (ADR 0032). Null when they could not be kept.
+  final WaitingPhrase? kept;
+}
+
 /// A sentence spoken on Home, waiting for the entry form to take it.
 ///
 /// Taken once: the form reads it when it first appears and it is gone, so a
 /// form rebuilt later — after switching wallets, say — does not read the same
 /// words over what the person has since typed. Dropped on any other
-/// navigation and with the account, never stored.
-final spokenSentenceProvider = NotifierProvider<SpokenSentence, String?>(
+/// navigation and with the account. What outlives this hand-off is the kept
+/// copy in [waitingPhrasesProvider], not this.
+final spokenSentenceProvider = NotifierProvider<SpokenSentence, HeardSentence?>(
   SpokenSentence.new,
 );
 
-class SpokenSentence extends Notifier<String?> {
+class SpokenSentence extends Notifier<HeardSentence?> {
   @override
-  String? build() {
+  HeardSentence? build() {
     ref.watch(authAccountEpochProvider);
     return null;
   }
 
-  void put(String text) => state = text;
+  void put(HeardSentence sentence) => state = sentence;
 
-  String? take() {
-    final text = state;
+  HeardSentence? take() {
+    final sentence = state;
     state = null;
-    return text;
+    return sentence;
   }
 
   void discard() => state = null;
@@ -54,7 +72,9 @@ final voiceEntryControllerProvider =
 ///
 /// What it hears is a proposal source like typing is, nothing more: the
 /// sentence goes to the same field and the same parser, and the same
-/// confirmation is still what writes an operation.
+/// confirmation is still what writes an operation. It is kept on the phone
+/// first, with the moment it was said, so that no connection — or no entry
+/// screen — loses it (ADR 0032).
 class VoiceEntryController extends Notifier<bool> {
   @override
   bool build() => false;
@@ -69,7 +89,10 @@ class VoiceEntryController extends Notifier<bool> {
           .listen(languageTag: voiceEntryLanguageTag, prompt: prompt);
       switch (result) {
         case SpeechHeard(:final text):
-          ref.read(spokenSentenceProvider.notifier).put(text);
+          final kept = await _keep(text);
+          ref
+              .read(spokenSentenceProvider.notifier)
+              .put(HeardSentence(text, kept: kept));
           return VoiceEntryOutcome.heard;
         case SpeechCancelled():
           return VoiceEntryOutcome.cancelled;
@@ -84,6 +107,20 @@ class VoiceEntryController extends Notifier<bool> {
       }
     } finally {
       if (ref.mounted) state = false;
+    }
+  }
+
+  Future<WaitingPhrase?> _keep(String text) async {
+    try {
+      final capture = await ref
+          .read(financeCaptureContextSourceProvider)
+          .capture(canonicalTimezone: ref.read(canonicalTimezoneProvider));
+      return await ref
+          .read(waitingPhrasesProvider.notifier)
+          .keep(text: text, capture: capture);
+    } on Object {
+      // Not kept is not a refusal: the words still reach the form below.
+      return null;
     }
   }
 }

@@ -17,6 +17,8 @@ import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
 import '../../transfers/presentation/transfer_page.dart';
 import '../../voice_entry/application/voice_entry_controller.dart';
+import '../../voice_entry/application/waiting_phrases_controller.dart';
+import '../../voice_entry/domain/waiting_phrase.dart';
 import 'widgets/category_picker.dart';
 
 class FinanceEntryPage extends ConsumerStatefulWidget {
@@ -149,10 +151,31 @@ class _FinanceEntryBody extends ConsumerWidget {
           child: const Center(child: CircularProgressIndicator()),
         ),
       ),
-      FinanceEntryLoadFailure(:final failure) => _FailureCard(
-        failure: failure,
-        title: l10n.financeEntryLoadFailed,
-        onRetry: controller.load,
+      FinanceEntryLoadFailure(:final failure) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _FailureCard(
+            failure: failure,
+            title: l10n.financeEntryLoadFailed,
+            onRetry: controller.load,
+          ),
+          // Spoken a moment ago and not yet read: say whether the words are
+          // safe, since this screen cannot show them (ADR 0032).
+          if (ref.watch(spokenSentenceProvider) case final heard?) ...[
+            const SizedBox(height: AppSpacing.md),
+            heard.kept == null
+                ? _StatusMessage(
+                    key: const Key('spoken-sentence-not-kept'),
+                    icon: Icons.error_outline_rounded,
+                    message: l10n.spokenSentenceNotKept,
+                  )
+                : _StatusMessage(
+                    key: const Key('spoken-sentence-kept'),
+                    icon: Icons.schedule_send_outlined,
+                    message: l10n.spokenSentenceKept,
+                  ),
+          ],
+        ],
       ),
       FinanceEntryAuthenticationRequired() => _MessageCard(
         key: const Key('finance-auth-required'),
@@ -427,6 +450,13 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   bool _categoryFilledBySentence = false;
   bool _validateContinuously = false;
 
+  /// The waiting phrase whose words are in the sentence field, if any.
+  ///
+  /// It is read as of the moment it was said, so «вчера» keeps meaning the day
+  /// before it was said; correcting a misheard word does not change when it
+  /// was said. Emptying the field lets it go: what is typed next is new.
+  WaitingPhrase? _phraseInField;
+
   @override
   void initState() {
     super.initState();
@@ -434,7 +464,8 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     _amountController = TextEditingController(text: input.amount);
     _categoryController = TextEditingController(text: input.category);
     _merchantController = TextEditingController(text: input.merchant);
-    _sentenceController = TextEditingController();
+    _sentenceController = TextEditingController()
+      ..addListener(_releasePhraseWhenEmptied);
     _type = input.type;
     _occurredOn = input.occurredOn;
     if ((input.category ?? '').isNotEmpty && input.categoryId == null) {
@@ -448,9 +479,12 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
       // not peeked at, so a form rebuilt later does not read them again over
       // whatever the person has changed since.
       final spoken = ref.read(spokenSentenceProvider.notifier).take();
-      if (spoken != null && spoken.isNotEmpty) {
-        _sentenceController.text = spoken;
-        ref.read(textEntryControllerProvider.notifier).parse(spoken);
+      if (spoken != null && spoken.text.isNotEmpty) {
+        _sentenceController.text = spoken.text;
+        setState(() => _phraseInField = spoken.kept);
+        ref
+            .read(textEntryControllerProvider.notifier)
+            .parse(spoken.text, phrase: spoken.kept);
         return;
       }
       // Opened from Home's entry action: the keyboard belongs on the sentence,
@@ -469,6 +503,21 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     super.dispose();
   }
 
+  void _releasePhraseWhenEmptied() {
+    if (_phraseInField != null && _sentenceController.text.trim().isEmpty) {
+      setState(() => _phraseInField = null);
+    }
+  }
+
+  /// Puts a phrase said earlier into the field and reads it as of then.
+  void _readWaitingPhrase(WaitingPhrase phrase) {
+    _sentenceController.text = phrase.text;
+    setState(() => _phraseInField = phrase);
+    ref
+        .read(textEntryControllerProvider.notifier)
+        .parse(phrase.text, phrase: phrase);
+  }
+
   /// Reads the sentence again as an exchange and opens the transfer screen
   /// with both sides filled in.
   ///
@@ -478,7 +527,7 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   Future<void> _openTransfer() async {
     final proposal = await ref
         .read(textEntryControllerProvider.notifier)
-        .readTransfer(_sentenceController.text);
+        .readTransfer(_sentenceController.text, phrase: _phraseInField);
     if (!mounted || proposal == null) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => TransferPage(proposal: proposal)),
@@ -547,6 +596,10 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     final l10n = AppLocalizations.of(context);
     final account = widget.state.account;
     final textEntry = ref.watch(textEntryControllerProvider);
+    final waitingPhrases = ref
+        .watch(waitingPhrasesProvider)
+        .where((phrase) => phrase.id != _phraseInField?.id)
+        .toList(growable: false);
     ref.listen<TextEntryState>(textEntryControllerProvider, (previous, next) {
       if (next is TextEntryParsed) _applyProposal(next.proposal);
     });
@@ -564,15 +617,29 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
             description: l10n.manualOperationDescription,
           ),
           const SizedBox(height: AppSpacing.md),
+          if (waitingPhrases.isNotEmpty) ...[
+            _WaitingPhraseList(
+              phrases: waitingPhrases,
+              privacyEnabled: widget.privacyEnabled,
+              enabled:
+                  !widget.state.isSubmitting && textEntry is! TextEntryParsing,
+              onRead: _readWaitingPhrase,
+              onForget: (phrase) => unawaited(
+                ref.read(waitingPhrasesProvider.notifier).forget(phrase.id),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
           _SentenceField(
             controller: _sentenceController,
             focusNode: _sentenceFocus,
             state: textEntry,
             enabled: !widget.state.isSubmitting,
             accountCurrency: widget.state.account.currency,
+            saidAt: _phraseInField?.saidAt,
             onParse: () => ref
                 .read(textEntryControllerProvider.notifier)
-                .parse(_sentenceController.text),
+                .parse(_sentenceController.text, phrase: _phraseInField),
             onOpenTransfer: () => unawaited(_openTransfer()),
           ),
           if (widget.state.accountCreated) ...[
@@ -1366,12 +1433,16 @@ class _SentenceField extends StatelessWidget {
     required this.accountCurrency,
     required this.onParse,
     required this.onOpenTransfer,
+    this.saidAt,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final TextEntryState state;
   final bool enabled;
+
+  /// When the words in the field were said, for a phrase said earlier.
+  final DateTime? saidAt;
 
   /// The currency this account keeps — the one thing about a proposal only
   /// the screen knows, and the parser cannot.
@@ -1404,6 +1475,10 @@ class _SentenceField extends StatelessWidget {
           decoration: InputDecoration(
             labelText: l10n.entrySentenceField,
             hintText: l10n.entrySentenceHint,
+            helperText: saidAt == null
+                ? null
+                : l10n.entrySentenceSaidAt(saidAt!.toLocal()),
+            helperMaxLines: 2,
             counterText: '',
           ),
         ),
@@ -1584,6 +1659,66 @@ class _InfoRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Phrases said earlier that the server has not read yet (ADR 0032).
+///
+/// A tap reads one, as of the moment it was said, and reading it is what lets
+/// it go. In privacy mode the words stay hidden: they carry amounts.
+class _WaitingPhraseList extends StatelessWidget {
+  const _WaitingPhraseList({
+    required this.phrases,
+    required this.privacyEnabled,
+    required this.enabled,
+    required this.onRead,
+    required this.onForget,
+  });
+
+  final List<WaitingPhrase> phrases;
+  final bool privacyEnabled;
+  final bool enabled;
+  final ValueChanged<WaitingPhrase> onRead;
+  final ValueChanged<WaitingPhrase> onForget;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Column(
+      key: const Key('waiting-phrases'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          l10n.waitingPhrasesTitle(phrases.length),
+          style: theme.textTheme.titleMedium,
+        ),
+        const SizedBox(height: AppSpacing.xxs),
+        Text(l10n.waitingPhrasesDescription, style: theme.textTheme.bodySmall),
+        for (final phrase in phrases)
+          Card(
+            key: Key('waiting-phrase-${phrase.id}'),
+            margin: const EdgeInsets.only(top: AppSpacing.xs),
+            child: ListTile(
+              enabled: enabled,
+              onTap: () => onRead(phrase),
+              leading: const Icon(Icons.record_voice_over_outlined),
+              title: Text(
+                privacyEnabled ? l10n.waitingPhraseHidden : phrase.text,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(l10n.waitingPhraseSaidAt(phrase.saidAt.toLocal())),
+              trailing: IconButton(
+                key: Key('waiting-phrase-forget-${phrase.id}'),
+                tooltip: l10n.waitingPhraseForget,
+                onPressed: enabled ? () => onForget(phrase) : null,
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
