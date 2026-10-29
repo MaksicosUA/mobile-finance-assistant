@@ -294,7 +294,7 @@ final class EncryptedFileHomeCache implements HomeCache {
       if (keyBytes.length != _keyLength) {
         throw const FormatException('Invalid cache key length');
       }
-      return await _algorithm.newSecretKeyFromBytes(keyBytes);
+      return _ownedKey(keyBytes);
     } finally {
       keyBytes.fillRange(0, keyBytes.length, 0);
     }
@@ -318,11 +318,21 @@ final class EncryptedFileHomeCache implements HomeCache {
         throw StateError('Unexpected AES-GCM key length');
       }
       await _keyStore.write(keyBytes);
-      return await _algorithm.newSecretKeyFromBytes(keyBytes);
+      return _ownedKey(keyBytes);
     } finally {
       keyBytes.fillRange(0, keyBytes.length, 0);
     }
   }
+
+  /// A key over its own copy of [bytes], wiped when it is destroyed.
+  ///
+  /// Not `newSecretKeyFromBytes`: the pure-Dart AES keeps a reference to the
+  /// list it is given and expands it only at the first use, so wiping the
+  /// caller's bytes in the `finally` above sealed every snapshot under a key
+  /// of zeros. A snapshot sealed that way no longer authenticates and is
+  /// discarded as a miss, which the cache is built to survive.
+  static SecretKey _ownedKey(List<int> bytes) =>
+      SecretKeyData(Uint8List.fromList(bytes), overwriteWhenDestroyed: true);
 
   _CacheEnvelope _decodeEnvelope(List<int> bytes) {
     final decoded = _decodeJsonObject(bytes);
