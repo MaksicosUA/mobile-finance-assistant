@@ -59,5 +59,11 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Finds the phone's voice input screen. No microphone permission:
+             that screen records in its own process, and only the recognised
+             text comes back (ADR 0031). -->
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH"/>
+        </intent>
     </queries>
 </manifest>

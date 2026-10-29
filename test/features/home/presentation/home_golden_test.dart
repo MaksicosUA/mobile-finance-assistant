@@ -279,6 +279,7 @@ class _GoldenFinanceApp extends ConsumerWidget {
           localClock: () => _localNow,
           onNotificationsPressed: _ignore,
           onEntryPressed: _ignore,
+          onVoicePressed: _ignore,
           onAnalyticsPressed: _ignore,
           onGoalPressed: _ignore,
           onSignOutRequested: _ignore,
