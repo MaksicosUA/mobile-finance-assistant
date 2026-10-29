@@ -3740,6 +3740,66 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Кошелёк'**
   String get operationWalletField;
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Фраза сохранена на телефоне. Когда появится интернет, она будет ждать разбора здесь и на главной — до 30 дней.'**
+  String get spokenSentenceKept;
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Эту фразу сохранить не удалось. Скажите её снова, когда появится интернет.'**
+  String get spokenSentenceNotKept;
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сказано {date} — даты считаются от этого момента'**
+  String entrySentenceSaidAt(DateTime date);
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Ждут разбора: {count}'**
+  String waitingPhrasesTitle(int count);
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сказано без интернета. Нажмите фразу, чтобы разобрать её; после разбора она удаляется с телефона.'**
+  String get waitingPhrasesDescription;
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Фраза скрыта'**
+  String get waitingPhraseHidden;
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сказано {date}'**
+  String waitingPhraseSaidAt(DateTime date);
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Удалить фразу'**
+  String get waitingPhraseForget;
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сказано без интернета — нажмите, чтобы разобрать'**
+  String get waitingPhrasesNoticeDescription;
+
+  /// A phrase said without a connection waits on the phone (ADR 0032).
+  ///
+  /// In ru, this message translates to:
+  /// **'Фразы, сказанные без интернета, ждут разбора: {count}. Открыть'**
+  String waitingPhrasesNoticeLabel(int count);
 }
 
 class _AppLocalizationsDelegate

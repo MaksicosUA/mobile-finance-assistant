@@ -8,6 +8,7 @@ import '../../../app/theme/app_tokens.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../notifications/application/notifications_controller.dart';
 import '../../voice_entry/application/voice_entry_controller.dart';
+import '../../voice_entry/application/waiting_phrases_controller.dart';
 import '../application/home_controller.dart';
 import '../data/home_repository.dart';
 import '../domain/home_snapshot.dart';
@@ -23,6 +24,7 @@ import 'widgets/home_status_banner.dart';
 import 'widgets/upcoming_payments_list.dart';
 import 'widgets/quick_entry_cta.dart';
 import 'widgets/voice_entry_cta.dart';
+import 'widgets/waiting_phrases_notice.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({
@@ -34,6 +36,7 @@ class HomePage extends ConsumerStatefulWidget {
     required this.onSignOutRequested,
     this.onManualEntryPressed,
     this.onVoicePressed,
+    this.onWaitingPhrasesPressed,
     this.operationDeliveryStatus,
     this.localClock,
   });
@@ -44,6 +47,9 @@ class HomePage extends ConsumerStatefulWidget {
   /// Opens the phone's recogniser (ADR 0031). Null where there is no entry
   /// screen for the sentence to land on, as in the fixture build.
   final VoidCallback? onVoicePressed;
+
+  /// Opens the phrases said without a connection (ADR 0032).
+  final VoidCallback? onWaitingPhrasesPressed;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
   final VoidCallback onSignOutRequested;
@@ -168,6 +174,8 @@ class _HomePageState extends ConsumerState<HomePage>
                   onEntryPressed: widget.onEntryPressed,
                   onVoicePressed: widget.onVoicePressed,
                   voiceListening: ref.watch(voiceEntryControllerProvider),
+                  waitingPhrases: ref.watch(waitingPhrasesProvider).length,
+                  onWaitingPhrasesPressed: widget.onWaitingPhrasesPressed,
                   onManualEntryPressed: widget.onManualEntryPressed,
                   onAnalyticsPressed: widget.onAnalyticsPressed,
                   onGoalPressed: widget.onGoalPressed,
@@ -191,6 +199,8 @@ class _HomeStateBody extends StatelessWidget {
     required this.onEntryPressed,
     required this.onVoicePressed,
     required this.voiceListening,
+    required this.waitingPhrases,
+    required this.onWaitingPhrasesPressed,
     required this.onManualEntryPressed,
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
@@ -204,6 +214,8 @@ class _HomeStateBody extends StatelessWidget {
   final VoidCallback onEntryPressed;
   final VoidCallback? onVoicePressed;
   final bool voiceListening;
+  final int waitingPhrases;
+  final VoidCallback? onWaitingPhrasesPressed;
   final VoidCallback? onManualEntryPressed;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
@@ -274,6 +286,8 @@ class _HomeStateBody extends StatelessWidget {
           onEntryPressed: onEntryPressed,
           onVoicePressed: onVoicePressed,
           voiceListening: voiceListening,
+          waitingPhrases: waitingPhrases,
+          onWaitingPhrasesPressed: onWaitingPhrasesPressed,
           onAnalyticsPressed: onAnalyticsPressed,
           onGoalPressed: onGoalPressed,
         ),
@@ -350,6 +364,8 @@ class _PopulatedHome extends StatelessWidget {
     required this.voiceListening,
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
+    this.waitingPhrases = 0,
+    this.onWaitingPhrasesPressed,
     this.failedBlocks = const <HomeBlock>{},
   });
 
@@ -361,6 +377,8 @@ class _PopulatedHome extends StatelessWidget {
   final bool voiceListening;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
+  final int waitingPhrases;
+  final VoidCallback? onWaitingPhrasesPressed;
   final Set<HomeBlock> failedBlocks;
 
   @override
@@ -492,6 +510,17 @@ class _PopulatedHome extends StatelessWidget {
           secondary: true,
           onPressed: voiceAvailable ? onEntryPressed : null,
         ),
+        // Said without a connection and not read yet (ADR 0032). Only when
+        // there are any: an empty notice would be a block saying nothing.
+        if (waitingPhrases > 0) ...[
+          const SizedBox(height: AppSpacing.sm),
+          WaitingPhrasesNotice(
+            title: l10n.waitingPhrasesTitle(waitingPhrases),
+            description: l10n.waitingPhrasesNoticeDescription,
+            semanticsLabel: l10n.waitingPhrasesNoticeLabel(waitingPhrases),
+            onPressed: voiceAvailable ? onWaitingPhrasesPressed : null,
+          ),
+        ],
         const SizedBox(height: AppSpacing.lg),
         if (blockFailed(HomeBlock.upcomingPayments))
           HomeBlockUnavailableCard(

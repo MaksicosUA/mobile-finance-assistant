@@ -13,6 +13,12 @@ import 'package:mobile_finance_assistant/features/finance_entry/domain/finance_e
 import 'package:mobile_finance_assistant/features/finance_entry/domain/finance_entry_result.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/presentation/finance_entry_page.dart';
 import 'package:mobile_finance_assistant/features/voice_entry/application/voice_entry_controller.dart';
+import 'package:mobile_finance_assistant/features/voice_entry/application/waiting_phrases_controller.dart';
+import 'package:mobile_finance_assistant/features/voice_entry/data/waiting_phrase_store.dart';
+import 'package:mobile_finance_assistant/features/voice_entry/domain/waiting_phrase.dart';
+
+import '../../voice_entry/waiting_phrases_test.dart'
+    show MemoryWaitingPhraseStore;
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 const _groceriesId = '44444444-4444-4444-8444-444444444444';
@@ -444,6 +450,171 @@ void main() {
       expect(_pickedCategory(tester), _groceriesId);
     },
   );
+
+  group('phrases said without a connection (ADR 0032)', () {
+    testWidgets('a waiting phrase is read as of when it was said, then goes', (
+      tester,
+    ) async {
+      final waiting = MemoryWaitingPhraseStore(initial: [_waitingPhrase()]);
+      final repository = _FakeRepository();
+      await _pumpPage(tester, repository: repository, waiting: waiting);
+
+      expect(find.byKey(const Key('waiting-phrases')), findsOneWidget);
+      expect(find.text('Вчера заплатил 80 за свет'), findsOneWidget);
+      expect(repository.parsed, isEmpty, reason: 'nothing read unasked');
+
+      await tester.tap(find.text('Вчера заплатил 80 за свет'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('operation-sentence')))
+            .controller
+            ?.text,
+        'Вчера заплатил 80 за свет',
+      );
+      // Said on the 26th; the form is open on the 29th.
+      expect(repository.parsed.single.capturedAt, '2026-07-26T18:30:00.000Z');
+      expect(repository.parsed.single.capturedTimezone, 'Europe/Kyiv');
+      expect(find.textContaining('Сказано 26 июля'), findsOneWidget);
+      // Read, so it no longer waits — on the phone or in the list.
+      expect(waiting.phrases, isEmpty);
+      expect(find.byKey(const Key('waiting-phrases')), findsNothing);
+      // And still nothing is recorded until the card is confirmed.
+      expect(repository.evaluated, 0);
+    });
+
+    testWidgets('reading it again after a correction keeps when it was said', (
+      tester,
+    ) async {
+      final repository = _FakeRepository();
+      await _pumpPage(
+        tester,
+        repository: repository,
+        waiting: MemoryWaitingPhraseStore(initial: [_waitingPhrase()]),
+      );
+      await tester.tap(find.text('Вчера заплатил 80 за свет'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('operation-sentence')),
+        'Вчера заплатил 85 за свет',
+      );
+      await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+      await tester.pumpAndSettle();
+
+      expect(repository.parsed.last.capturedAt, '2026-07-26T18:30:00.000Z');
+
+      // Emptied and rewritten: a new sentence, said now.
+      await tester.enterText(find.byKey(const Key('operation-sentence')), '');
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('operation-sentence')),
+        'Потратил 10 сегодня',
+      );
+      await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+      await tester.pumpAndSettle();
+
+      expect(repository.parsed.last.capturedAt, '2026-07-29T10:00:00.000Z');
+      expect(find.textContaining('Сказано'), findsNothing);
+    });
+
+    testWidgets('a phrase that could not be read stays waiting', (
+      tester,
+    ) async {
+      final waiting = MemoryWaitingPhraseStore(initial: [_waitingPhrase()]);
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(failure: FinanceEntryFailureKind.offline),
+        waiting: waiting,
+      );
+
+      await tester.tap(find.text('Вчера заплатил 80 за свет'));
+      await tester.pumpAndSettle();
+
+      expect(waiting.phrases, hasLength(1));
+      expect(find.byKey(const Key('operation-sentence-error')), findsOneWidget);
+    });
+
+    testWidgets('privacy mode hides the words, not the phrase', (tester) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(),
+        waiting: MemoryWaitingPhraseStore(initial: [_waitingPhrase()]),
+        privacy: true,
+      );
+
+      expect(find.byKey(const Key('waiting-phrases')), findsOneWidget);
+      expect(find.text('Вчера заплатил 80 за свет'), findsNothing);
+      expect(find.text('Фраза скрыта'), findsOneWidget);
+    });
+
+    testWidgets('a phrase can be deleted unread', (tester) async {
+      final waiting = MemoryWaitingPhraseStore(initial: [_waitingPhrase()]);
+      final repository = _FakeRepository();
+      await _pumpPage(tester, repository: repository, waiting: waiting);
+
+      await tester.tap(
+        find.byKey(Key('waiting-phrase-forget-${_waitingPhrase().id}')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(waiting.phrases, isEmpty);
+      expect(repository.parsed, isEmpty);
+      expect(find.byKey(const Key('waiting-phrases')), findsNothing);
+    });
+
+    testWidgets('a spoken phrase is read as of when it was said', (
+      tester,
+    ) async {
+      final phrase = _waitingPhrase();
+      final waiting = MemoryWaitingPhraseStore(initial: [phrase]);
+      final repository = _FakeRepository();
+      await _pumpPage(
+        tester,
+        repository: repository,
+        waiting: waiting,
+        heard: HeardSentence(phrase.text, kept: phrase),
+      );
+
+      expect(repository.parsed.single.capturedAt, '2026-07-26T18:30:00.000Z');
+      expect(waiting.phrases, isEmpty);
+      // The one in the field is not offered a second time above it.
+      expect(find.byKey(const Key('waiting-phrases')), findsNothing);
+    });
+
+    testWidgets('offline, the screen says the spoken words are safe', (
+      tester,
+    ) async {
+      final phrase = _waitingPhrase();
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(
+          accountsFailure: FinanceEntryFailureKind.offline,
+        ),
+        waiting: MemoryWaitingPhraseStore(initial: [phrase]),
+        heard: HeardSentence(phrase.text, kept: phrase),
+      );
+
+      expect(find.byKey(const Key('spoken-sentence-kept')), findsOneWidget);
+      expect(find.textContaining('до 30 дней'), findsOneWidget);
+    });
+
+    testWidgets('offline, words that could not be kept are said to be lost', (
+      tester,
+    ) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(
+          accountsFailure: FinanceEntryFailureKind.offline,
+        ),
+        heard: const HeardSentence('Вчера заплатил 80 за свет'),
+      );
+
+      expect(find.byKey(const Key('spoken-sentence-not-kept')), findsOneWidget);
+      expect(find.byKey(const Key('spoken-sentence-kept')), findsNothing);
+    });
+  });
 }
 
 Future<void> _pumpPage(
@@ -451,22 +622,35 @@ Future<void> _pumpPage(
   required _FakeRepository repository,
   bool focusSentence = false,
   String? spoken,
+  HeardSentence? heard,
+  MemoryWaitingPhraseStore? waiting,
+  bool privacy = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(390, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        initialAppSettingsProvider.overrideWithValue(const AppSettings()),
+        initialAppSettingsProvider.overrideWithValue(
+          AppSettings(privacyMode: privacy),
+        ),
         financeEntryRepositoryProvider.overrideWithValue(repository),
+        waitingPhraseStoreProvider.overrideWithValue(
+          waiting ?? MemoryWaitingPhraseStore(),
+        ),
+        waitingPhraseScopeProvider.overrideWithValue(() async => 'scope-a'),
+        waitingPhraseClockProvider.overrideWithValue(
+          () => DateTime.utc(2026, 7, 29, 10),
+        ),
         financeEntryClockProvider.overrideWithValue(
           () => DateTime.utc(2026, 7, 29, 10),
         ),
         financeCaptureContextSourceProvider.overrideWithValue(
           const _FixedCapture(),
         ),
-        if (spoken != null)
-          spokenSentenceProvider.overrideWith(() => _Spoken(spoken)),
+        if (heard ?? (spoken == null ? null : HeardSentence(spoken))
+            case final sentence?)
+          spokenSentenceProvider.overrideWith(() => _Spoken(sentence)),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -508,14 +692,21 @@ String _amountText(WidgetTester tester) =>
 
 void _ignore() {}
 
+WaitingPhrase _waitingPhrase() => WaitingPhrase(
+  id: '00000000-0000-4000-8000-000000000001',
+  text: 'Вчера заплатил 80 за свет',
+  saidAt: DateTime.utc(2026, 7, 26, 18, 30),
+  saidInTimezone: 'Europe/Kyiv',
+);
+
 /// A sentence the recogniser handed over on Home before the form opened.
 class _Spoken extends SpokenSentence {
-  _Spoken(this._text);
+  _Spoken(this._sentence);
 
-  final String _text;
+  final HeardSentence _sentence;
 
   @override
-  String? build() => _text;
+  HeardSentence? build() => _sentence;
 }
 
 OperationProposal _proposal({
@@ -609,18 +800,27 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     OperationProposal? proposal,
     List<OperationProposal>? proposals,
     this.failure,
+    this.accountsFailure,
   }) : proposal = proposal ?? _proposal(),
        _queued = List<OperationProposal>.of(proposals ?? const []);
 
   final OperationProposal proposal;
   final List<OperationProposal> _queued;
   final FinanceEntryFailureKind? failure;
+
+  /// Why the account cannot be read, when it cannot — offline, say.
+  final FinanceEntryFailureKind? accountsFailure;
   final List<({String text, String capturedAt, String capturedTimezone})>
   parsed = [];
   int evaluated = 0;
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {
+    if (accountsFailure case final kind?) {
+      return FinanceEntryFailureResult<FinanceAccountSetup>(
+        FinanceEntryFailure(kind: kind, requestId: 'req_synthetic'),
+      );
+    }
     return FinanceEntrySuccess<FinanceAccountSetup>(
       requestId: 'req_synthetic',
       value: FinanceAccountSetup(

@@ -15,6 +15,8 @@ import 'package:mobile_finance_assistant/features/home/data/home_session_store.d
 import 'package:mobile_finance_assistant/features/home/domain/home_snapshot.dart';
 import 'package:mobile_finance_assistant/features/home/presentation/home_page.dart';
 import 'package:mobile_finance_assistant/features/voice_entry/application/voice_entry_controller.dart';
+import 'package:mobile_finance_assistant/features/voice_entry/application/waiting_phrases_controller.dart';
+import 'package:mobile_finance_assistant/features/voice_entry/domain/waiting_phrase.dart';
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 import '../../../support/home_contract_fixture.dart';
@@ -239,6 +241,57 @@ void main() {
     await tester.tap(find.byKey(const Key('quick-entry-cta')));
     expect(voiceRequests, 1);
     expect(entryRequests, 1);
+  });
+
+  // ADR 0032: phrases said without a connection are counted on Home, and
+  // their words are shown nowhere here.
+  testWidgets('phrases said offline are counted, and open from Home', (
+    tester,
+  ) async {
+    var opened = 0;
+    await _pumpHomePage(
+      tester,
+      repository: _ValueHomeRepository(
+        loadHomeFixtureSnapshotSync('populated.json'),
+      ),
+      recovery: const ScenarioHomeSessionRecovery(),
+      onSignOutRequested: _ignore,
+      onWaitingPhrasesPressed: () => opened += 1,
+      waiting: [
+        for (final index in [1, 2])
+          WaitingPhrase(
+            id: '00000000-0000-4000-8000-00000000000$index',
+            text: 'Заплатил 80 за свет',
+            saidAt: DateTime.utc(2026, 7, 10, 18),
+            saidInTimezone: 'Europe/Berlin',
+          ),
+      ],
+    );
+    await tester.pump();
+
+    expect(find.text('Ждут разбора: 2'), findsOneWidget);
+    expect(find.textContaining('за свет'), findsNothing);
+    expect(find.bySemanticsLabel(RegExp('ждут разбора: 2')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('waiting-phrases-notice')));
+    expect(opened, 1);
+  });
+
+  testWidgets('with nothing waiting, Home says nothing about it', (
+    tester,
+  ) async {
+    await _pumpHomePage(
+      tester,
+      repository: _ValueHomeRepository(
+        loadHomeFixtureSnapshotSync('populated.json'),
+      ),
+      recovery: const ScenarioHomeSessionRecovery(),
+      onSignOutRequested: _ignore,
+      onWaitingPhrasesPressed: _ignore,
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('waiting-phrases-notice')), findsNothing);
   });
 
   testWidgets('an open recogniser cannot be opened a second time', (
@@ -706,6 +759,8 @@ Future<void> _pumpHomePage(
   VoidCallback? onManualEntryPressed,
   VoidCallback? onVoicePressed,
   VoidCallback onEntryPressed = _ignore,
+  VoidCallback? onWaitingPhrasesPressed,
+  List<WaitingPhrase> waiting = const [],
   bool listening = false,
 }) async {
   await tester.pumpWidget(
@@ -713,6 +768,7 @@ Future<void> _pumpHomePage(
       overrides: [
         if (listening)
           voiceEntryControllerProvider.overrideWith(_ListeningController.new),
+        waitingPhrasesProvider.overrideWith(() => _Waiting(waiting)),
         homeRepositoryProvider.overrideWithValue(repository),
         homeSessionRecoveryProvider.overrideWithValue(recovery),
         homeSessionStoreProvider.overrideWithValue(
@@ -736,6 +792,7 @@ Future<void> _pumpHomePage(
             onNotificationsPressed: _ignore,
             onEntryPressed: onEntryPressed,
             onVoicePressed: onVoicePressed,
+            onWaitingPhrasesPressed: onWaitingPhrasesPressed,
             onAnalyticsPressed: _ignore,
             onGoalPressed: _ignore,
             onSignOutRequested: onSignOutRequested,
@@ -755,6 +812,15 @@ void _ignore() {}
 class _ListeningController extends VoiceEntryController {
   @override
   bool build() => true;
+}
+
+class _Waiting extends WaitingPhrases {
+  _Waiting(this._phrases);
+
+  final List<WaitingPhrase> _phrases;
+
+  @override
+  List<WaitingPhrase> build() => _phrases;
 }
 
 class _NullHomeSessionStore implements HomeSessionStore {

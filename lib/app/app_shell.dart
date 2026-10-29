@@ -23,6 +23,7 @@ import '../features/profile/presentation/profile_page.dart';
 import '../features/timezone/presentation/timezone_page.dart';
 import '../features/transfers/presentation/transfer_page.dart';
 import '../features/voice_entry/application/voice_entry_controller.dart';
+import '../features/voice_entry/application/waiting_phrases_controller.dart';
 import '../features/wallets/presentation/wallet_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
@@ -143,6 +144,17 @@ class _AppShellState extends ConsumerState<AppShell>
         ),
       ),
     );
+  }
+
+  /// The phrases said without a connection, listed above the sentence field
+  /// (ADR 0032). No keyboard: the next step is choosing one, not typing.
+  void _openWaitingPhrases() {
+    ref.read(spokenSentenceProvider.notifier).discard();
+    unawaited(ref.read(waitingPhrasesProvider.notifier).refresh());
+    setState(() {
+      _section = AppSection.chat;
+      _quickEntryRequested = false;
+    });
   }
 
   /// Home's written entry: the same screen, with the sentence field ready.
@@ -279,6 +291,7 @@ class _AppShellState extends ConsumerState<AppShell>
           HomePage(
             onNotificationsPressed: _openNotifications,
             onEntryPressed: _openQuickEntry,
+            onWaitingPhrasesPressed: _openWaitingPhrases,
             // The fixture build has no entry screen for a sentence to land on.
             onVoicePressed: isNetworkBackendConfigured
                 ? () => unawaited(_openVoiceEntry())

@@ -18,7 +18,7 @@ void main() {
 
     expect(outcome, VoiceEntryOutcome.heard);
     final spoken = container.read(spokenSentenceProvider.notifier);
-    expect(spoken.take(), 'Потратил 20 на кофе');
+    expect(spoken.take()?.text, 'Потратил 20 на кофе');
     // Taken, not peeked: a form rebuilt later does not read it again.
     expect(spoken.take(), isNull);
   });

@@ -15,6 +15,7 @@ import 'package:mobile_finance_assistant/features/auth/data/auth_repository.dart
 import 'package:mobile_finance_assistant/features/auth/data/auth_session_store.dart';
 import 'package:mobile_finance_assistant/features/auth/domain/auth_session.dart';
 import 'package:mobile_finance_assistant/features/auth/presentation/auth_page.dart';
+import 'package:mobile_finance_assistant/features/voice_entry/data/waiting_phrase_store.dart';
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 /// What signing in and out says about a scheduled erasure (ADR 0030).
@@ -82,6 +83,53 @@ void main() {
       expect(store.cleared, 1);
       // The server already ended every session; there is nothing to revoke.
       expect(api.logouts, 0);
+    });
+  });
+
+  // ADR 0032: what was said offline leaves with the person who said it.
+  group('phrases said without a connection', () {
+    test('go with a scheduled erasure', () async {
+      final waiting = _CountingWaitingStore();
+      final container = _container(
+        _FakeApi(_bundle()),
+        _FakeStore(),
+        waiting: waiting,
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(authControllerProvider.notifier)
+          .accountDeletionScheduled(DateTime.utc(2026, 10, 23, 12));
+
+      expect(waiting.cleared, 1);
+    });
+
+    test('go with signing out', () async {
+      final waiting = _CountingWaitingStore();
+      final container = _container(
+        _FakeApi(_bundle()),
+        _FakeStore(),
+        waiting: waiting,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(authControllerProvider.notifier).signOut();
+
+      expect(waiting.cleared, 1);
+    });
+
+    test('stay when a session merely expired', () async {
+      final waiting = _CountingWaitingStore();
+      final container = _container(
+        _FakeApi(_bundle()),
+        _FakeStore(),
+        waiting: waiting,
+      );
+      addTearDown(container.dispose);
+
+      await container.read(authControllerProvider.notifier).requireSignIn();
+
+      expect(waiting.cleared, 0);
     });
   });
 
@@ -177,14 +225,29 @@ AuthTokenBundle _bundle({bool deletionCancelled = false}) => AuthTokenBundle(
   deletionCancelled: deletionCancelled,
 );
 
-ProviderContainer _container(_FakeApi api, _FakeStore store) {
+ProviderContainer _container(
+  _FakeApi api,
+  _FakeStore store, {
+  WaitingPhraseStore waiting = const NoWaitingPhraseStore(),
+}) {
   return ProviderContainer(
     overrides: [
       authRepositoryProvider.overrideWithValue(
         AuthRepository(api: api, sessionStore: store),
       ),
+      waitingPhraseStoreProvider.overrideWithValue(waiting),
     ],
   );
+}
+
+final class _CountingWaitingStore implements WaitingPhraseStore {
+  int cleared = 0;
+
+  @override
+  Future<void> clear() async => cleared += 1;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
 final class _FakeApi implements AuthApiClient {
