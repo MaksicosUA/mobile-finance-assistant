@@ -84,6 +84,29 @@ class AppLocalizationsRu extends AppLocalizations {
   String get voiceEntryLabel => 'Добавить операцию голосом';
 
   @override
+  String get typeBySentence => 'Написать фразой';
+
+  @override
+  String get voicePrompt => 'Скажите, например: «потратил 12,50 на продукты»';
+
+  @override
+  String get voiceNothingHeard => 'Ничего не расслышал. Попробуйте ещё раз.';
+
+  @override
+  String get voiceNeedsNetwork =>
+      'Распознаванию речи нужен интернет или скачанный русский язык в настройках голосового ввода.';
+
+  @override
+  String get voiceUnavailable =>
+      'На этом телефоне нет распознавания речи. Можно написать фразой.';
+
+  @override
+  String get voiceFailed => 'Не удалось распознать речь. Попробуйте ещё раз.';
+
+  @override
+  String get voiceTypeInsteadAction => 'Написать';
+
+  @override
   String get setupAccountAction => 'Настроить счёт';
 
   @override

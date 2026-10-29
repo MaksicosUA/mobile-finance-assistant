@@ -59,6 +59,34 @@
   },
   "addByVoice": "Добавить голосом",
   "voiceEntryLabel": "Добавить операцию голосом",
+  "typeBySentence": "Написать фразой",
+  "@typeBySentence": {
+    "description": "Home: the secondary entry action beside the microphone; opens the sentence field."
+  },
+  "voicePrompt": "Скажите, например: «потратил 12,50 на продукты»",
+  "@voicePrompt": {
+    "description": "Voice entry through the phone's own recogniser (ADR 0031). Shown inside the recogniser while it listens."
+  },
+  "voiceNothingHeard": "Ничего не расслышал. Попробуйте ещё раз.",
+  "@voiceNothingHeard": {
+    "description": "Voice entry through the phone's own recogniser (ADR 0031)."
+  },
+  "voiceNeedsNetwork": "Распознаванию речи нужен интернет или скачанный русский язык в настройках голосового ввода.",
+  "@voiceNeedsNetwork": {
+    "description": "Voice entry through the phone's own recogniser (ADR 0031)."
+  },
+  "voiceUnavailable": "На этом телефоне нет распознавания речи. Можно написать фразой.",
+  "@voiceUnavailable": {
+    "description": "Voice entry through the phone's own recogniser (ADR 0031)."
+  },
+  "voiceFailed": "Не удалось распознать речь. Попробуйте ещё раз.",
+  "@voiceFailed": {
+    "description": "Voice entry through the phone's own recogniser (ADR 0031)."
+  },
+  "voiceTypeInsteadAction": "Написать",
+  "@voiceTypeInsteadAction": {
+    "description": "Voice entry through the phone's own recogniser (ADR 0031). Snackbar action that opens the sentence field instead."
+  },
   "setupAccountAction": "Настроить счёт",
   "monthSummaryTitle": "Итоги за {month}",
   "@monthSummaryTitle": {

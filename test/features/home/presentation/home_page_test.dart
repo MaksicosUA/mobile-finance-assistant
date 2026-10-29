@@ -14,6 +14,7 @@ import 'package:mobile_finance_assistant/features/home/data/home_repository.dart
 import 'package:mobile_finance_assistant/features/home/data/home_session_store.dart';
 import 'package:mobile_finance_assistant/features/home/domain/home_snapshot.dart';
 import 'package:mobile_finance_assistant/features/home/presentation/home_page.dart';
+import 'package:mobile_finance_assistant/features/voice_entry/application/voice_entry_controller.dart';
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 import '../../../support/home_contract_fixture.dart';
@@ -64,8 +65,15 @@ void main() {
     expect(find.byKey(const Key('primary-goal')), findsNothing);
     expect(find.byKey(const Key('recent-transactions')), findsNothing);
 
-    // The button says what it does: it opens entry, not a promise of voice.
-    expect(find.text('Записать фразой'), findsOneWidget);
+    // The fixture build has no entry screen for a spoken sentence to land
+    // on, so the microphone is drawn and cannot be pressed.
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('voice-entry-cta')))
+          .onPressed,
+      isNull,
+    );
+    expect(find.text('Написать фразой'), findsOneWidget);
     await tester.tap(find.byKey(const Key('quick-entry-cta')));
     await tester.pump();
 
@@ -202,6 +210,57 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // ADR 0031: the large action is the microphone; writing is the quieter one.
+  testWidgets('the microphone is the large action, writing the second', (
+    tester,
+  ) async {
+    var voiceRequests = 0;
+    var entryRequests = 0;
+    await _pumpHomePage(
+      tester,
+      repository: _ValueHomeRepository(
+        loadHomeFixtureSnapshotSync('populated.json'),
+      ),
+      recovery: const ScenarioHomeSessionRecovery(),
+      onSignOutRequested: _ignore,
+      onVoicePressed: () => voiceRequests += 1,
+      onEntryPressed: () => entryRequests += 1,
+    );
+    await tester.pump();
+
+    final voice = tester.getSize(find.byKey(const Key('voice-entry-cta')));
+    final written = tester.getSize(find.byKey(const Key('quick-entry-cta')));
+    expect(voice.height, greaterThanOrEqualTo(72));
+    expect(voice.height, greaterThan(written.height));
+    expect(find.bySemanticsLabel('Добавить операцию голосом'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('voice-entry-cta')));
+    await tester.tap(find.byKey(const Key('quick-entry-cta')));
+    expect(voiceRequests, 1);
+    expect(entryRequests, 1);
+  });
+
+  testWidgets('an open recogniser cannot be opened a second time', (
+    tester,
+  ) async {
+    var voiceRequests = 0;
+    await _pumpHomePage(
+      tester,
+      repository: _ValueHomeRepository(
+        loadHomeFixtureSnapshotSync('populated.json'),
+      ),
+      recovery: const ScenarioHomeSessionRecovery(),
+      onSignOutRequested: _ignore,
+      onVoicePressed: () => voiceRequests += 1,
+      listening: true,
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('voice-entry-cta')));
+    expect(voiceRequests, 0);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
 
   testWidgets('renders the first-use empty state with one voice CTA', (
     tester,
@@ -645,10 +704,15 @@ Future<void> _pumpHomePage(
   required HomeSessionRecovery recovery,
   required VoidCallback onSignOutRequested,
   VoidCallback? onManualEntryPressed,
+  VoidCallback? onVoicePressed,
+  VoidCallback onEntryPressed = _ignore,
+  bool listening = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (listening)
+          voiceEntryControllerProvider.overrideWith(_ListeningController.new),
         homeRepositoryProvider.overrideWithValue(repository),
         homeSessionRecoveryProvider.overrideWithValue(recovery),
         homeSessionStoreProvider.overrideWithValue(
@@ -670,7 +734,8 @@ Future<void> _pumpHomePage(
           body: HomePage(
             localClock: _fixedLocalClock,
             onNotificationsPressed: _ignore,
-            onEntryPressed: _ignore,
+            onEntryPressed: onEntryPressed,
+            onVoicePressed: onVoicePressed,
             onAnalyticsPressed: _ignore,
             onGoalPressed: _ignore,
             onSignOutRequested: onSignOutRequested,
@@ -686,6 +751,11 @@ Future<void> _pumpHomePage(
 DateTime _fixedLocalClock() => DateTime(2026, 7, 11, 8);
 
 void _ignore() {}
+
+class _ListeningController extends VoiceEntryController {
+  @override
+  bool build() => true;
+}
 
 class _NullHomeSessionStore implements HomeSessionStore {
   const _NullHomeSessionStore();

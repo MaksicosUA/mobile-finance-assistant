@@ -226,6 +226,48 @@ abstract class AppLocalizations {
   /// **'Добавить операцию голосом'**
   String get voiceEntryLabel;
 
+  /// Home: the secondary entry action beside the microphone; opens the sentence field.
+  ///
+  /// In ru, this message translates to:
+  /// **'Написать фразой'**
+  String get typeBySentence;
+
+  /// Voice entry through the phone's own recogniser (ADR 0031). Shown inside the recogniser while it listens.
+  ///
+  /// In ru, this message translates to:
+  /// **'Скажите, например: «потратил 12,50 на продукты»'**
+  String get voicePrompt;
+
+  /// Voice entry through the phone's own recogniser (ADR 0031).
+  ///
+  /// In ru, this message translates to:
+  /// **'Ничего не расслышал. Попробуйте ещё раз.'**
+  String get voiceNothingHeard;
+
+  /// Voice entry through the phone's own recogniser (ADR 0031).
+  ///
+  /// In ru, this message translates to:
+  /// **'Распознаванию речи нужен интернет или скачанный русский язык в настройках голосового ввода.'**
+  String get voiceNeedsNetwork;
+
+  /// Voice entry through the phone's own recogniser (ADR 0031).
+  ///
+  /// In ru, this message translates to:
+  /// **'На этом телефоне нет распознавания речи. Можно написать фразой.'**
+  String get voiceUnavailable;
+
+  /// Voice entry through the phone's own recogniser (ADR 0031).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось распознать речь. Попробуйте ещё раз.'**
+  String get voiceFailed;
+
+  /// Voice entry through the phone's own recogniser (ADR 0031). Snackbar action that opens the sentence field instead.
+  ///
+  /// In ru, this message translates to:
+  /// **'Написать'**
+  String get voiceTypeInsteadAction;
+
   /// No description provided for @setupAccountAction.
   ///
   /// In ru, this message translates to:

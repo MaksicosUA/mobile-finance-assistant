@@ -12,6 +12,7 @@ import 'package:mobile_finance_assistant/features/finance_entry/data/finance_ent
 import 'package:mobile_finance_assistant/features/finance_entry/domain/finance_entry_models.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/domain/finance_entry_result.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/presentation/finance_entry_page.dart';
+import 'package:mobile_finance_assistant/features/voice_entry/application/voice_entry_controller.dart';
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 const _groceriesId = '44444444-4444-4444-8444-444444444444';
@@ -45,6 +46,43 @@ void main() {
     // Nothing was evaluated or committed: reading a sentence is not a write.
     expect(repository.evaluated, 0);
     expect(repository.parsed, hasLength(1));
+  });
+
+  // ADR 0031: a sentence spoken on Home arrives already read, and records
+  // nothing until the card is confirmed — exactly like a typed one.
+  testWidgets('a spoken sentence arrives read, once, with no keyboard', (
+    tester,
+  ) async {
+    final repository = _FakeRepository();
+    await _pumpPage(
+      tester,
+      repository: repository,
+      spoken: 'Потратил 12,50 на продукты вчера',
+    );
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('operation-sentence')))
+          .controller
+          ?.text,
+      'Потратил 12,50 на продукты вчера',
+    );
+    expect(repository.parsed.single.text, 'Потратил 12,50 на продукты вчера');
+    expect(_amountText(tester), '12.50');
+    expect(repository.evaluated, 0);
+    // The words are on the card already; a keyboard would only cover it.
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('operation-sentence')))
+          .focusNode
+          ?.hasFocus,
+      isFalse,
+    );
+    // Taken: nothing is left to be read again by a later form.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceEntryPage)),
+    );
+    expect(container.read(spokenSentenceProvider), isNull);
   });
 
   testWidgets('the capture pair travels so the day is the user own', (
@@ -412,6 +450,7 @@ Future<void> _pumpPage(
   WidgetTester tester, {
   required _FakeRepository repository,
   bool focusSentence = false,
+  String? spoken,
 }) async {
   await tester.binding.setSurfaceSize(const Size(390, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -426,6 +465,8 @@ Future<void> _pumpPage(
         financeCaptureContextSourceProvider.overrideWithValue(
           const _FixedCapture(),
         ),
+        if (spoken != null)
+          spokenSentenceProvider.overrideWith(() => _Spoken(spoken)),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -466,6 +507,16 @@ String _amountText(WidgetTester tester) =>
     '';
 
 void _ignore() {}
+
+/// A sentence the recogniser handed over on Home before the form opened.
+class _Spoken extends SpokenSentence {
+  _Spoken(this._text);
+
+  final String _text;
+
+  @override
+  String? build() => _text;
+}
 
 OperationProposal _proposal({
   String? amount = '12.50',

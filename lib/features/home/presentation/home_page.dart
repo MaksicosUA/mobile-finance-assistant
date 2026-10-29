@@ -7,6 +7,7 @@ import '../../../app/settings/app_settings_controller.dart';
 import '../../../app/theme/app_tokens.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../notifications/application/notifications_controller.dart';
+import '../../voice_entry/application/voice_entry_controller.dart';
 import '../application/home_controller.dart';
 import '../data/home_repository.dart';
 import '../domain/home_snapshot.dart';
@@ -21,6 +22,7 @@ import 'widgets/home_loading_view.dart';
 import 'widgets/home_status_banner.dart';
 import 'widgets/upcoming_payments_list.dart';
 import 'widgets/quick_entry_cta.dart';
+import 'widgets/voice_entry_cta.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({
@@ -31,12 +33,17 @@ class HomePage extends ConsumerStatefulWidget {
     required this.onGoalPressed,
     required this.onSignOutRequested,
     this.onManualEntryPressed,
+    this.onVoicePressed,
     this.operationDeliveryStatus,
     this.localClock,
   });
 
   final VoidCallback onNotificationsPressed;
   final VoidCallback onEntryPressed;
+
+  /// Opens the phone's recogniser (ADR 0031). Null where there is no entry
+  /// screen for the sentence to land on, as in the fixture build.
+  final VoidCallback? onVoicePressed;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
   final VoidCallback onSignOutRequested;
@@ -159,6 +166,8 @@ class _HomePageState extends ConsumerState<HomePage>
                       .read(appSettingsControllerProvider.notifier)
                       .togglePrivacyMode,
                   onEntryPressed: widget.onEntryPressed,
+                  onVoicePressed: widget.onVoicePressed,
+                  voiceListening: ref.watch(voiceEntryControllerProvider),
                   onManualEntryPressed: widget.onManualEntryPressed,
                   onAnalyticsPressed: widget.onAnalyticsPressed,
                   onGoalPressed: widget.onGoalPressed,
@@ -180,6 +189,8 @@ class _HomeStateBody extends StatelessWidget {
     required this.privacyEnabled,
     required this.onTogglePrivacy,
     required this.onEntryPressed,
+    required this.onVoicePressed,
+    required this.voiceListening,
     required this.onManualEntryPressed,
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
@@ -191,6 +202,8 @@ class _HomeStateBody extends StatelessWidget {
   final bool privacyEnabled;
   final VoidCallback onTogglePrivacy;
   final VoidCallback onEntryPressed;
+  final VoidCallback? onVoicePressed;
+  final bool voiceListening;
   final VoidCallback? onManualEntryPressed;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
@@ -259,6 +272,8 @@ class _HomeStateBody extends StatelessWidget {
           privacyEnabled: privacyEnabled,
           onTogglePrivacy: onTogglePrivacy,
           onEntryPressed: onEntryPressed,
+          onVoicePressed: onVoicePressed,
+          voiceListening: voiceListening,
           onAnalyticsPressed: onAnalyticsPressed,
           onGoalPressed: onGoalPressed,
         ),
@@ -331,6 +346,8 @@ class _PopulatedHome extends StatelessWidget {
     required this.privacyEnabled,
     required this.onTogglePrivacy,
     required this.onEntryPressed,
+    required this.onVoicePressed,
+    required this.voiceListening,
     required this.onAnalyticsPressed,
     required this.onGoalPressed,
     this.failedBlocks = const <HomeBlock>{},
@@ -340,6 +357,8 @@ class _PopulatedHome extends StatelessWidget {
   final bool privacyEnabled;
   final VoidCallback onTogglePrivacy;
   final VoidCallback onEntryPressed;
+  final VoidCallback? onVoicePressed;
+  final bool voiceListening;
   final VoidCallback onAnalyticsPressed;
   final VoidCallback onGoalPressed;
   final Set<HomeBlock> failedBlocks;
@@ -458,9 +477,19 @@ class _PopulatedHome extends StatelessWidget {
           ),
         ],
         const SizedBox(height: AppSpacing.lg),
+        // Say it, or write it: two ways into the same sentence field, and
+        // the same confirmation either way (ADR 0031).
+        VoiceEntryCta(
+          label: l10n.addByVoice,
+          semanticsLabel: l10n.voiceEntryLabel,
+          listening: voiceListening,
+          onPressed: voiceAvailable ? onVoicePressed : null,
+        ),
+        const SizedBox(height: AppSpacing.sm),
         QuickEntryCta(
-          label: l10n.addBySentence,
+          label: l10n.typeBySentence,
           semanticsLabel: l10n.sentenceEntryLabel,
+          secondary: true,
           onPressed: voiceAvailable ? onEntryPressed : null,
         ),
         const SizedBox(height: AppSpacing.lg),

@@ -16,6 +16,7 @@ import '../application/text_entry_controller.dart';
 import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
 import '../../transfers/presentation/transfer_page.dart';
+import '../../voice_entry/application/voice_entry_controller.dart';
 import 'widgets/category_picker.dart';
 
 class FinanceEntryPage extends ConsumerStatefulWidget {
@@ -442,6 +443,16 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(categoryCatalogueProvider.notifier).load();
+      // Spoken on Home: the words are already here, so they are read at once
+      // and no keyboard comes up over the card they fill (ADR 0031). Taken,
+      // not peeked at, so a form rebuilt later does not read them again over
+      // whatever the person has changed since.
+      final spoken = ref.read(spokenSentenceProvider.notifier).take();
+      if (spoken != null && spoken.isNotEmpty) {
+        _sentenceController.text = spoken;
+        ref.read(textEntryControllerProvider.notifier).parse(spoken);
+        return;
+      }
       // Opened from Home's entry action: the keyboard belongs on the sentence,
       // not on the amount, because writing the sentence is the short way.
       if (widget.focusSentence) _sentenceFocus.requestFocus();

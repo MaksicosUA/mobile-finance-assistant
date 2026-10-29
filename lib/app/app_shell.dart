@@ -22,6 +22,7 @@ import '../features/notifications/presentation/notifications_page.dart';
 import '../features/profile/presentation/profile_page.dart';
 import '../features/timezone/presentation/timezone_page.dart';
 import '../features/transfers/presentation/transfer_page.dart';
+import '../features/voice_entry/application/voice_entry_controller.dart';
 import '../features/wallets/presentation/wallet_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
@@ -95,18 +96,59 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   void _selectSection(AppSection section) {
+    // A sentence heard but never taken must not surface on some later visit
+    // to the entry screen, filling a form the person did not ask to fill.
+    ref.read(spokenSentenceProvider.notifier).discard();
     setState(() {
       _section = section;
       _quickEntryRequested = false;
     });
   }
 
-  /// Home's entry action: the same screen, with the sentence field ready.
-  ///
-  /// It used to open a stub promising voice. The sentence path exists and
-  /// writes real operations, so it is what the button opens; voice will feed
-  /// the same field rather than a second screen.
+  /// Home's microphone: the phone's recogniser listens, and what it heard
+  /// lands in the sentence field already read (ADR 0031). Nothing is recorded
+  /// until the person confirms the card, exactly as when typing.
+  Future<void> _openVoiceEntry() async {
+    final l10n = AppLocalizations.of(context);
+    final outcome = await ref
+        .read(voiceEntryControllerProvider.notifier)
+        .listen(prompt: l10n.voicePrompt);
+    if (!mounted || outcome == null) return;
+    final message = switch (outcome) {
+      VoiceEntryOutcome.heard || VoiceEntryOutcome.cancelled => null,
+      VoiceEntryOutcome.nothingHeard => l10n.voiceNothingHeard,
+      VoiceEntryOutcome.needsNetwork => l10n.voiceNeedsNetwork,
+      VoiceEntryOutcome.unavailable => l10n.voiceUnavailable,
+      VoiceEntryOutcome.failed => l10n.voiceFailed,
+    };
+    if (outcome == VoiceEntryOutcome.heard) {
+      setState(() {
+        _section = AppSection.chat;
+        _quickEntryRequested = false;
+      });
+      return;
+    }
+    if (message == null) return;
+    // Writing the sentence always works, so it is offered whenever speaking
+    // did not.
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        key: const Key('voice-entry-message'),
+        content: Text(message),
+        action: SnackBarAction(
+          label: l10n.voiceTypeInsteadAction,
+          onPressed: _openQuickEntry,
+        ),
+      ),
+    );
+  }
+
+  /// Home's written entry: the same screen, with the sentence field ready.
+  /// Voice lands in the very same field (see [_openVoiceEntry]).
   void _openQuickEntry() {
+    ref.read(spokenSentenceProvider.notifier).discard();
     setState(() {
       _section = AppSection.chat;
       _quickEntryRequested = true;
@@ -114,6 +156,7 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   void _openManualEntry() {
+    ref.read(spokenSentenceProvider.notifier).discard();
     setState(() {
       _section = AppSection.chat;
       _quickEntryRequested = false;
@@ -236,6 +279,10 @@ class _AppShellState extends ConsumerState<AppShell>
           HomePage(
             onNotificationsPressed: _openNotifications,
             onEntryPressed: _openQuickEntry,
+            // The fixture build has no entry screen for a sentence to land on.
+            onVoicePressed: isNetworkBackendConfigured
+                ? () => unawaited(_openVoiceEntry())
+                : null,
             onManualEntryPressed: isNetworkBackendConfigured
                 ? _openManualEntry
                 : null,
