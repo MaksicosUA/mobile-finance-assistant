@@ -29,7 +29,11 @@ from .db_models import (
     PlannedCostRow,
     UserRow,
 )
-from .planned_cost_recurrence import horizon_end, monthly_occurrences
+from .planned_cost_recurrence import (
+    earliest_occurrence,
+    horizon_end,
+    monthly_occurrences,
+)
 from .planned_cost_recurrence_contracts import (
     CreatePlannedCostRecurrenceCommand,
     EndPlannedCostRecurrenceCommand,
@@ -533,9 +537,22 @@ async def _materialise(
         starts_on=starts_on,
         ends_on=ends_on,
         through=through,
+        earliest=earliest_occurrence(through=through),
+    )
+    # The unique index ignores cancelled rows, so it would let a date someone
+    # cancelled come straight back on the next run.
+    cancelled = set(
+        await database.scalars(
+            select(PlannedCostRow.planned_on).where(
+                PlannedCostRow.recurrence_id == recurrence_id,
+                PlannedCostRow.status == "cancelled",
+            )
+        )
     )
     written: list[date] = []
     for occurrence in occurrences:
+        if occurrence in cancelled:
+            continue
         planned_cost_id = uuid4()
         command_id = uuid4()
         inserted = await database.scalar(

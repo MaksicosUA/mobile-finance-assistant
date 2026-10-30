@@ -588,21 +588,24 @@ class _PlanRow extends StatelessWidget {
                 child: Text(l10n.plannedCostConfirmAction),
               ),
             ),
+            // One date of a series is skipped; only a one-off plan is cancelled.
+            // Ending the whole series is its own action on the rule.
             if (belongsToSeries)
               TextButton(
                 key: Key('planned-cost-skip-${plan.plannedCostId}'),
                 onPressed: onSkip,
                 child: Text(l10n.plannedCostSkipAction),
+              )
+            else
+              Semantics(
+                button: true,
+                label: l10n.plannedCostCancelSemantics,
+                child: TextButton(
+                  key: Key('planned-cost-cancel-${plan.plannedCostId}'),
+                  onPressed: onCancel,
+                  child: Text(l10n.plannedCostCancelAction),
+                ),
               ),
-            Semantics(
-              button: true,
-              label: l10n.plannedCostCancelSemantics,
-              child: TextButton(
-                key: Key('planned-cost-cancel-${plan.plannedCostId}'),
-                onPressed: onCancel,
-                child: Text(l10n.plannedCostCancelAction),
-              ),
-            ),
           ],
         ],
       ),

@@ -17,6 +17,7 @@ from mobile_finance_api.planned_cost_recurrence import (
     MAX_PLANNED_ON,
     add_months,
     clamp_day_into_month,
+    earliest_occurrence,
     horizon_end,
     monthly_occurrences,
 )
@@ -259,3 +260,60 @@ def test_the_horizon_never_leaves_the_supported_calendar() -> None:
 def test_adding_months_crosses_a_year_boundary() -> None:
     assert add_months(anchor=date(2026, 11, 30), months=3) == date(2027, 2, 28)
     assert add_months(anchor=date(2026, 1, 31), months=-1) == date(2025, 12, 31)
+
+
+# --- a rule keeps running ----------------------------------------------------
+
+
+def _materialised_on(today: date, *, starts_on: date) -> tuple[date, ...]:
+    through = horizon_end(today=today)
+    return monthly_occurrences(
+        day_of_month=5,
+        starts_on=starts_on,
+        ends_on=None,
+        through=through,
+        earliest=earliest_occurrence(through=through),
+    )
+
+
+def test_a_rule_does_not_stop_after_twelve_occurrences() -> None:
+    """Walking from the first date with a limit ran out a year later, silently."""
+
+    dates = _materialised_on(date(2027, 10, 10), starts_on=date(2026, 9, 5))
+
+    assert date(2027, 11, 5) in dates
+    assert dates[-1] == date(2028, 1, 5)
+
+
+def test_every_month_of_a_long_life_is_reached() -> None:
+    """Run monthly for six years; no month may be missing."""
+
+    start = date(2026, 9, 5)
+    seen: set[date] = set()
+    for offset in range(72):
+        seen.update(
+            _materialised_on(add_months(anchor=start, months=offset), starts_on=start)
+        )
+
+    assert sorted(seen)[0] == start
+    assert all(add_months(anchor=start, months=n) in seen for n in range(72))
+
+
+def test_a_rule_begun_long_ago_does_not_invent_years_of_overdue_bills() -> None:
+    """It also has to reach today, which walking from the start never did."""
+
+    dates = _materialised_on(date(2026, 10, 10), starts_on=date(2024, 1, 5))
+
+    assert dates[0] == date(2026, 9, 5)
+    assert dates[-1] == date(2027, 1, 5)
+
+
+def test_a_new_rule_is_not_held_back_by_the_catch_up_window() -> None:
+    through = horizon_end(today=date(2026, 10, 10))
+
+    assert earliest_occurrence(through=through) == date(2026, 9, 1)
+    assert _materialised_on(date(2026, 10, 10), starts_on=date(2026, 10, 20)) == (
+        date(2026, 11, 5),
+        date(2026, 12, 5),
+        date(2027, 1, 5),
+    )

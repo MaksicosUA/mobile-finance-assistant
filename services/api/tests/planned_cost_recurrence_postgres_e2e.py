@@ -414,6 +414,26 @@ async def _scenario(
         # back in only when the horizon moves, never retroactively.
         assert await recurrences.materialise_active_rules() == 0
 
+        # --- a cancelled date stays cancelled -----------------------------------
+        # The unique index ignores cancelled rows, so without a look at them the
+        # next run writes the same date straight back.
+        cancelled_instance = await _first_planned_instance(
+            session_factory,
+            recurrence_id=recurrence_id,
+        )
+        cancelled = await client.post(
+            f"/api/v1/planned-costs/{cancelled_instance}/transition",
+            json={
+                "schemaVersion": "1",
+                "commandId": str(uuid4()),
+                "transition": "cancel",
+                "requestedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            },
+            headers=identity.headers,
+        )
+        assert cancelled.status_code == 200, cancelled.text
+        assert await recurrences.materialise_active_rules() == 0
+
         # --- ending the series -------------------------------------------------
         ended = await client.post(
             f"/api/v1/planned-cost-recurrences/{recurrence_id}/end",
@@ -436,7 +456,8 @@ async def _scenario(
         # The skipped instance survives untouched: the user acted on it, and
         # ending a rule must not rewrite what already happened.
         assert statuses["skipped"] == 1, statuses
-        assert statuses.get("cancelled", 0) == end_payload["cancelledOccurrences"]
+        # One more than the end withdrew: the date cancelled by hand above.
+        assert statuses.get("cancelled", 0) == end_payload["cancelledOccurrences"] + 1
 
         # --- an ended rule generates nothing ever again -------------------------
         assert await recurrences.materialise_active_rules() == 0

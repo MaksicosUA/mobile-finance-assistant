@@ -125,6 +125,9 @@ class PostgresBudgetRepository:
                     )
                     .where(
                         FinanceOperationRow.user_id == user_id,
+                        # A ceiling is in one currency. Adding another wallet's
+                        # amounts to it would add hryvnias to euros (ADR 0029).
+                        FinanceOperationRow.account_id == account.id,
                         FinanceOperationRow.status == "confirmed",
                         FinanceOperationRow.operation_type == "expense",
                         FinanceOperationRow.occurred_on >= period.period_start,
@@ -143,6 +146,7 @@ class PostgresBudgetRepository:
                     select(PlannedCostRow.category_id, func.sum(PlannedCostRow.amount))
                     .where(
                         PlannedCostRow.user_id == user_id,
+                        PlannedCostRow.account_id == account.id,
                         # Outstanding only: a plan already confirmed has become
                         # an operation and is counted as spent, not twice.
                         PlannedCostRow.status == "planned",
