@@ -376,6 +376,8 @@ void main() {
       findsNothing,
     );
 
+    expect(find.byKey(const Key('planned-cost-cancel-$_planId')), findsNothing);
+
     await _tapAt(tester, const Key('planned-cost-skip-$_planId'));
 
     expect(repository.settled, [_planId]);

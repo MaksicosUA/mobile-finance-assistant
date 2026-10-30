@@ -476,7 +476,7 @@ def _build_current_home_revision(
     )
     transferred = sum(
         (
-            _transfer_delta(transfer, account_id=account.account_id)
+            transfer_delta(transfer, account_id=account.account_id)
             for transfer in effective_transfers
         ),
         start=Decimal(0),
@@ -551,7 +551,7 @@ def _build_current_home_revision(
             )
             + sum(
                 (
-                    _transfer_delta(transfer, account_id=account.account_id)
+                    transfer_delta(transfer, account_id=account.account_id)
                     for transfer in effective_transfers
                     if transfer.occurred_on < period_start
                 ),
@@ -911,7 +911,7 @@ def _validated_operation(
     )
 
 
-def _transfer_delta(transfer: ProjectionTransfer, *, account_id: UUID) -> Decimal:
+def transfer_delta(transfer: ProjectionTransfer, *, account_id: UUID) -> Decimal:
     """What one transfer did to this wallet: what arrived, or what left."""
 
     if transfer.to_account_id == account_id:

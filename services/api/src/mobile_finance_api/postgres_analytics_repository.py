@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from .analytics import (
     AnalyticsOperation,
@@ -37,10 +37,12 @@ from .db_models import (
     FinanceAccountRow,
     FinanceCategoryRow,
     FinanceOperationRow,
+    FinanceTransferRow,
     operation_counts,
 )
 from .home_projection import (
     ProjectionAccount,
+    ProjectionTransfer,
     ReportingPeriod,
     ReportingPeriodKind,
     preceding_period,
@@ -62,11 +64,12 @@ class PostgresAnalyticsRepository:
         self._clock = clock or _utc_now
 
     async def analyse_current_month(self, *, user_id: UUID) -> AnalyticsResponse:
-        account, operations = await self._read(user_id=user_id)
+        account, operations, transfers = await self._read(user_id=user_id)
         return _to_contract(
             build_analytics(
                 account=account,
                 operations=operations,
+                transfers=transfers,
                 generated_at=_aware_utc(self._clock()),
             )
         )
@@ -80,7 +83,7 @@ class PostgresAnalyticsRepository:
         to_date: date | None = None,
         account_id: UUID | None = None,
     ) -> AnalyticsV2Response:
-        account, operations = await self._read(
+        account, operations, transfers = await self._read(
             user_id=user_id,
             account_id=account_id,
         )
@@ -88,6 +91,7 @@ class PostgresAnalyticsRepository:
             build_analytics(
                 account=account,
                 operations=operations,
+                transfers=transfers,
                 generated_at=_aware_utc(self._clock()),
                 kind=kind,
                 from_date=from_date,
@@ -98,7 +102,11 @@ class PostgresAnalyticsRepository:
 
     async def _read(
         self, *, user_id: UUID, account_id: UUID | None = None
-    ) -> tuple[ProjectionAccount, tuple[AnalyticsOperation, ...]]:
+    ) -> tuple[
+        ProjectionAccount,
+        tuple[AnalyticsOperation, ...],
+        tuple[ProjectionTransfer, ...],
+    ]:
         async with self._session_factory() as database:
             # A report answers for one wallet. Naming none means the default
             # one, which is what the balance card shows (ADR 0029) — the
@@ -134,8 +142,19 @@ class PostgresAnalyticsRepository:
                     )
                 )
             ).all()
+            transfers = (
+                await database.scalars(
+                    select(FinanceTransferRow).where(
+                        FinanceTransferRow.user_id == user_id,
+                        or_(
+                            FinanceTransferRow.from_account_id == account.id,
+                            FinanceTransferRow.to_account_id == account.id,
+                        ),
+                    )
+                )
+            ).all()
 
-        return _projection_account(account), tuple(
+        operations = tuple(
             AnalyticsOperation(
                 operation_id=row.id,
                 account_id=row.account_id,
@@ -148,6 +167,24 @@ class PostgresAnalyticsRepository:
             )
             for row, name in rows
         )
+        return (
+            _projection_account(account),
+            operations,
+            tuple(_projection_transfer(row) for row in transfers),
+        )
+
+
+def _projection_transfer(row: FinanceTransferRow) -> ProjectionTransfer:
+    return ProjectionTransfer(
+        transfer_id=row.id,
+        user_id=row.user_id,
+        from_account_id=row.from_account_id,
+        from_amount=row.from_amount,
+        to_account_id=row.to_account_id,
+        to_amount=row.to_amount,
+        occurred_on=row.occurred_on,
+        created_at=row.created_at,
+    )
 
 
 def _projection_account(row: FinanceAccountRow) -> ProjectionAccount:

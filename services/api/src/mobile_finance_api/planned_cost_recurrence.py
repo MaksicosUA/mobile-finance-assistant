@@ -64,6 +64,22 @@ def horizon_end(*, today: date, months: int = HORIZON_MONTHS) -> date:
     return min(end, MAX_PLANNED_ON)
 
 
+def earliest_occurrence(*, through: date) -> date:
+    """The oldest date a run may write, given the horizon it is filling up to.
+
+    The start of the month before today. A rule therefore keeps running however
+    long it lives, because the walk begins near today and not at its first date,
+    and one begun years ago does not arrive as years of overdue bills. A month
+    back rather than none, so a run that was down over a month's end still
+    writes the date it missed.
+    """
+
+    return add_months(
+        anchor=through.replace(day=1),
+        months=-(HORIZON_MONTHS + 1),
+    )
+
+
 def monthly_occurrences(
     *,
     day_of_month: int,
@@ -71,11 +87,16 @@ def monthly_occurrences(
     ends_on: date | None,
     through: date,
     limit: int = MAX_OCCURRENCES_PER_RULE,
+    earliest: date | None = None,
 ) -> tuple[date, ...]:
     """Every date a monthly rule covers from ``starts_on`` up to ``through``.
 
     Occurrences are strictly increasing, so the walk can stop at the first date
     past the horizon rather than scanning to the end of the calendar.
+
+    ``earliest`` moves the start of the walk forward. Without it the walk begins
+    at ``starts_on`` and ``limit`` is spent there, so a rule older than the limit
+    never reaches today.
 
     A rule whose ``ends_on`` precedes its ``starts_on`` yields nothing rather
     than raising: validation refuses such a rule at the boundary, and the
@@ -87,8 +108,9 @@ def monthly_occurrences(
     if starts_on < MIN_PLANNED_ON:
         raise ValueError("starts_on precedes the supported calendar")
 
+    first = starts_on if earliest is None else max(starts_on, earliest)
     occurrences: list[date] = []
-    year, month = starts_on.year, starts_on.month
+    year, month = first.year, first.month
     while len(occurrences) < limit:
         if year > MAX_PLANNED_ON.year:
             break
@@ -103,7 +125,7 @@ def monthly_occurrences(
             break
         # The anchor day can fall before the start inside the first month only;
         # every later month is wholly after it.
-        if occurrence >= starts_on:
+        if occurrence >= first:
             occurrences.append(occurrence)
         year, month = (year + 1, 1) if month == 12 else (year, month + 1)
     return tuple(occurrences)

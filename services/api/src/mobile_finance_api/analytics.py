@@ -20,12 +20,14 @@ from .decimal_math import wide_decimal_context
 from .home_projection import (
     HomeProjectionInvariantError,
     ProjectionAccount,
+    ProjectionTransfer,
     ReportingPeriod,
     ReportingPeriodKind,
     effective_operations,
     period_operations,
     preceding_period,
     resolved_period,
+    transfer_delta,
 )
 
 _PERCENT_QUANTUM = Decimal("0.01")
@@ -132,6 +134,7 @@ def build_analytics(
     kind: ReportingPeriodKind = "month",
     from_date: date | None = None,
     to_date: date | None = None,
+    transfers: tuple[ProjectionTransfer, ...] = (),
 ) -> AnalyticsView:
     """Group one account's committed operations for one reported window.
 
@@ -164,6 +167,22 @@ def build_analytics(
         opening_balance_on=account.opening_balance_on,
         cutoff_local_date=period.cutoff_local_date,
     )
+    # A transfer reaches the balance line and nothing else: it is neither income
+    # nor expense (ADR 0029). The same window Home applies, for the same reason.
+    moved = tuple(
+        (transfer.occurred_on, transfer_delta(transfer, account_id=account.account_id))
+        for transfer in effective_operations(
+            tuple(
+                transfer
+                for transfer in transfers
+                if account.account_id
+                in (transfer.from_account_id, transfer.to_account_id)
+                and _aware_utc(transfer.created_at) <= generated_at
+            ),
+            opening_balance_on=account.opening_balance_on,
+            cutoff_local_date=period.cutoff_local_date,
+        )
+    )
     month = period_operations(
         effective,
         period_start=period.period_start,
@@ -193,6 +212,7 @@ def build_analytics(
     # the balance a user is looking at.
     balance_opening = _balance_as_at(
         effective,
+        moved=moved,
         opening_balance=account.opening_balance,
         as_at=period.period_start - timedelta(days=1),
     )
@@ -200,13 +220,17 @@ def build_analytics(
         TrendPoint(
             point_date=boundary,
             amount=_balance_as_at(
-                effective, opening_balance=account.opening_balance, as_at=boundary
+                effective,
+                moved=moved,
+                opening_balance=account.opening_balance,
+                as_at=boundary,
             ),
         )
         for boundary in _bucket_boundaries(period)
     )
     balance_closing = _balance_as_at(
         effective,
+        moved=moved,
         opening_balance=account.opening_balance,
         as_at=period.cutoff_local_date,
     )
@@ -303,17 +327,19 @@ def _next_bucket(start: date, bucket: SeriesBucket) -> date:
 def _balance_as_at(
     effective: tuple[AnalyticsOperation, ...],
     *,
+    moved: tuple[tuple[date, Decimal], ...],
     opening_balance: Decimal,
     as_at: date,
 ) -> Decimal:
     """The account's worth on `as_at`, by the same rule Home projects.
 
-    Income raises it and expense lowers it; nothing else moves it. A goal
-    contribution earmarks money already here (ADR 0019) and a planned cost is
-    a forecast (ADR 0018), so neither appears.
+    Income raises it, expense lowers it, and a transfer moves it by what left
+    or arrived; nothing else moves it. A goal contribution earmarks money
+    already here (ADR 0019) and a planned cost is a forecast (ADR 0018), so
+    neither appears.
     """
 
-    return opening_balance + sum(
+    operations = sum(
         (
             operation.amount
             if operation.operation_type == "income"
@@ -323,6 +349,11 @@ def _balance_as_at(
         ),
         start=Decimal(0),
     )
+    transfers = sum(
+        (delta for occurred_on, delta in moved if occurred_on <= as_at),
+        start=Decimal(0),
+    )
+    return opening_balance + operations + transfers
 
 
 def _changes(

@@ -7,7 +7,8 @@ client parses the analytics response with a closed set of keys.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, date, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -16,12 +17,14 @@ from httpx import ASGITransport, AsyncClient
 
 from mobile_finance_api.analytics import (
     AnalyticsOperation,
+    AnalyticsView,
     build_analytics,
 )
 from mobile_finance_api.auth import AuthenticatedUser
 from mobile_finance_api.home_projection import (
     HomeProjectionInvariantError,
     ProjectionAccount,
+    ProjectionTransfer,
 )
 from mobile_finance_api.main import create_app
 from mobile_finance_api.postgres_analytics_repository import _to_v2_contract
@@ -462,3 +465,120 @@ def test_a_report_can_name_the_wallet_it_is_about() -> None:
         assert repository.wallets == [wallet, None]
 
     asyncio.run(scenario())
+
+
+# --- a transfer moves the line and nothing else -------------------------------
+
+
+_OTHER_WALLET = UUID("00000000-0000-4000-8000-000000000999")
+
+
+def _transfer(
+    number: int,
+    *,
+    occurred_on: date,
+    leaves: bool,
+    amount: str = "100.00",
+    created_at: datetime = datetime(2025, 1, 1, 9, tzinfo=UTC),
+) -> ProjectionTransfer:
+    here, there = (_ACCOUNT_ID, _OTHER_WALLET)
+    return ProjectionTransfer(
+        transfer_id=UUID(f"00000000-0000-4000-8000-{number:012d}"),
+        user_id=_account().user_id,
+        from_account_id=here if leaves else there,
+        from_amount=Decimal(amount) if leaves else Decimal("5200.00"),
+        to_account_id=there if leaves else here,
+        to_amount=Decimal("5200.00") if leaves else Decimal(amount),
+        occurred_on=occurred_on,
+        created_at=created_at,
+    )
+
+
+def _view_with_transfers(
+    kind: str, transfers: tuple[ProjectionTransfer, ...]
+) -> AnalyticsView:
+    return build_analytics(
+        account=_account(),
+        operations=(),
+        transfers=transfers,
+        generated_at=_NOW,
+        kind=kind,  # type: ignore[arg-type]
+    )
+
+
+def test_a_transfer_out_lowers_the_line_as_it_lowers_the_balance() -> None:
+    view = _view_with_transfers(
+        "month", (_transfer(1, occurred_on=date(2026, 8, 4), leaves=True),)
+    )
+
+    assert view.balance_closing == _account().opening_balance - Decimal("100.00")
+    assert view.balance_change == Decimal("-100.00")
+
+
+def test_a_transfer_in_raises_the_line_by_what_arrived() -> None:
+    view = _view_with_transfers(
+        "month",
+        (_transfer(1, occurred_on=date(2026, 8, 4), leaves=False, amount="40.00"),),
+    )
+
+    assert view.balance_change == Decimal("40.00")
+
+
+def test_a_transfer_is_never_income_or_expense() -> None:
+    view = _view_with_transfers(
+        "month", (_transfer(1, occurred_on=date(2026, 8, 4), leaves=True),)
+    )
+
+    assert view.income == Decimal(0)
+    assert view.expense == Decimal(0)
+    assert view.net_flow == Decimal(0)
+
+
+def test_an_earlier_transfer_belongs_to_the_starting_point() -> None:
+    view = _view_with_transfers(
+        "month", (_transfer(1, occurred_on=date(2026, 7, 20), leaves=True),)
+    )
+
+    assert view.balance_opening == _account().opening_balance - Decimal("100.00")
+    assert view.balance_change == Decimal(0)
+
+
+def test_another_pair_of_wallets_moves_nothing_here() -> None:
+    elsewhere = replace(
+        _transfer(1, occurred_on=date(2026, 8, 4), leaves=True),
+        from_account_id=UUID("00000000-0000-4000-8000-000000000998"),
+    )
+
+    view = _view_with_transfers("month", (elsewhere,))
+
+    assert view.balance_change == Decimal(0)
+
+
+def test_a_transfer_before_the_baseline_or_in_the_future_does_not_count() -> None:
+    """The same window Home applies, or the two disagree on those dates."""
+
+    view = _view_with_transfers(
+        "year",
+        (
+            _transfer(1, occurred_on=date(2024, 12, 31), leaves=True),
+            _transfer(2, occurred_on=date(2026, 12, 31), leaves=True),
+        ),
+    )
+
+    assert view.balance_closing == _account().opening_balance
+
+
+def test_a_transfer_written_after_the_report_was_cut_does_not_count() -> None:
+    view = _view_with_transfers(
+        "month",
+        (
+            _transfer(
+                1,
+                occurred_on=date(2026, 8, 4),
+                leaves=True,
+                created_at=_NOW + timedelta(seconds=1),
+            ),
+        ),
+    )
+
+    assert view.balance_change == Decimal(0)
