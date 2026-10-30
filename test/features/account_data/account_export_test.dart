@@ -10,9 +10,11 @@ import 'package:mobile_finance_assistant/app/theme/app_theme.dart';
 import 'package:mobile_finance_assistant/core/platform/file_share.dart';
 import 'package:mobile_finance_assistant/features/account_data/application/account_export_controller.dart';
 import 'package:mobile_finance_assistant/features/account_data/presentation/account_data_section.dart';
+import 'package:mobile_finance_assistant/features/auth/application/auth_controller.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/application/finance_entry_controller.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/data/finance_entry_repository.dart';
 import 'package:mobile_finance_assistant/features/finance_entry/domain/finance_entry_result.dart';
+import 'package:mobile_finance_assistant/features/home/data/home_cache.dart';
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 /// Taking one's own record out of the app (ADR 0030).
@@ -124,6 +126,24 @@ void main() {
     );
   });
 
+  test('a failed Home cache does not leave the export behind', () async {
+    final share = _FakeShare();
+    final container = ProviderContainer(
+      overrides: [
+        homeCacheProvider.overrideWithValue(_BrokenHomeCache()),
+        fileShareProvider.overrideWithValue(share),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await expectLater(
+      container.read(authSessionStoreProvider).clearSession(),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    expect(share.cleared, 1);
+  });
+
   testWidgets('Profile offers the export and says when it failed', (
     tester,
   ) async {
@@ -165,6 +185,17 @@ void main() {
     );
     expect(share.shared, isEmpty);
   });
+}
+
+final class _BrokenHomeCache implements HomeCache {
+  @override
+  Future<void> clear() => throw const FileSystemException('synthetic');
+
+  @override
+  Future<HomeCacheEntry?> read({required String scopeId}) async => null;
+
+  @override
+  Future<void> write(HomeCacheEntry entry) async {}
 }
 
 ProviderContainer _container({

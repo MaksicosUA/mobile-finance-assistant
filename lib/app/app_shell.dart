@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/platform/file_share.dart';
 import '../features/home/application/home_controller.dart';
 import '../features/home/presentation/home_page.dart';
 import '../features/app_update/application/app_update_controller.dart';
@@ -64,6 +65,7 @@ class _AppShellState extends ConsumerState<AppShell>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(ref.read(appUpdateControllerProvider.notifier).checkIfDue());
+      unawaited(_clearEarlierExports());
     });
     if (isNetworkBackendConfigured) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -76,6 +78,17 @@ class _AppShellState extends ConsumerState<AppShell>
               );
         }
       });
+    }
+  }
+
+  /// An export has reached wherever it was sent long before the app starts
+  /// again, and an unencrypted copy of someone's record has no reason to wait
+  /// here for the next one (ADR 0030).
+  Future<void> _clearEarlierExports() async {
+    try {
+      await ref.read(fileShareProvider).clearExports();
+    } on Object {
+      // Best-effort: the next export empties the folder anyway.
     }
   }
 

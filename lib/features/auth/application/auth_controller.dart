@@ -100,14 +100,17 @@ final authSessionStoreProvider = Provider<AuthSessionStore>((ref) {
     beforeSessionChange: () async {
       ref.read(authSessionEpochProvider.notifier).advance();
       ref.read(authAccountEpochProvider.notifier).advance();
-      await cache.clear();
-      // A copy of the previous person's record must not wait in the cache for
-      // whoever signs in next (ADR 0030). Best-effort: a stuck file must not
-      // stop anyone signing out.
       try {
-        await ref.read(fileShareProvider).clearExports();
-      } on Object {
-        // The next export empties the folder anyway.
+        await cache.clear();
+      } finally {
+        // A copy of the previous person's record must not wait in the cache
+        // for whoever signs in next (ADR 0030), whatever happened above.
+        // Best-effort: a stuck file must not stop anyone signing out.
+        try {
+          await ref.read(fileShareProvider).clearExports();
+        } on Object {
+          // The next export empties the folder anyway.
+        }
       }
     },
     afterTokenRotation: () async {
