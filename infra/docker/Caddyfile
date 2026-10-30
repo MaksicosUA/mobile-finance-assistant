@@ -3,6 +3,13 @@
 {$MFA_DOMAIN} {
 	encode zstd gzip
 
+	# Nothing the API accepts comes near this size. FastAPI reads a body before
+	# it looks at the token, so without a limit anyone could fill the memory of
+	# a host the database shares.
+	request_body {
+		max_size 1MB
+	}
+
 	# The API is the only thing behind this name. There is no static site to
 	# serve and no directory to browse.
 	reverse_proxy api:8000

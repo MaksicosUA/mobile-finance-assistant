@@ -323,8 +323,8 @@ That is the whole run for ordinary work, and it takes about three minutes.
 
 **The APK is built on demand, not on every push.** Trigger it by running the
 workflow manually, or by pushing a `v*` tag for a delivery. The build costs
-roughly 7.5 of the 10.5 minutes a full run takes, this repository is private so
-those minutes are metered, and a CI APK is signed with an ephemeral key — it
+roughly 7.5 of the 10.5 minutes a full run takes, and a CI APK is signed with an
+ephemeral key — it
 cannot be installed over a locally built one without an uninstall that clears
 the session and the encrypted operation outbox. Building it on every push
 therefore paid for an artifact nobody could use.

@@ -28,6 +28,23 @@ repository.
 Migrations run as a one-shot before the API starts, so the schema is part of
 the deployment rather than something the first request discovers missing.
 
+### Updating the host
+
+The tree on the host is a copy, not a clone. Take a dump first, then send
+everything the image and the stack are built from. `.env` is excluded by name:
+it exists only on the host and an upload must never touch it.
+
+    ./backup.sh
+    rsync -a --relative --exclude '__pycache__' --exclude '.env*' \
+      .dockerignore services/api/pyproject.toml services/api/uv.lock \
+      services/api/alembic.ini services/api/src services/api/migrations \
+      infra/docker <user>@<host>:/tmp/mfa-sync/
+    ssh <user>@<host> 'sudo rsync -a /tmp/mfa-sync/ /opt/mfa/ && rm -rf /tmp/mfa-sync'
+    docker compose --env-file .env up -d --build
+
+The Dockerfile reads `uv.lock`, so an upload without it builds the previous set
+of dependencies, or fails.
+
 ### After changing the Caddyfile
 
 `up -d --build` is not enough. The Caddyfile is bind-mounted as a single file,

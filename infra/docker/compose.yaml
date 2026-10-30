@@ -5,10 +5,43 @@
 # listens on the internet is one firewall mistake away from being read.
 name: mfa
 
+# A container gets what it needs and nothing else, so a compromised process
+# stays inside it. The memory limits add up to less than the 4 GB host: one
+# runaway service is restarted rather than taking the database down with it.
+x-confined: &confined
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+# The API image reads its code and writes nothing but temporary files.
+x-api-process: &api-process
+  <<: *confined
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m,mode=1777
+
 services:
   postgres:
-    image: postgres:17-alpine
+    <<: *confined
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     restart: unless-stopped
+    mem_limit: 1536m
+    # What the entrypoint needs to hand the data directory to its own user.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?}
       POSTGRES_USER: ${POSTGRES_USER:?}
@@ -27,6 +60,8 @@ services:
   # A one-shot that must finish before the API serves anything: the schema is
   # part of the deployment, not something the first request discovers missing.
   migrate:
+    <<: *api-process
+    mem_limit: 512m
     build:
       context: ../..
       dockerfile: infra/docker/api.Dockerfile
@@ -43,8 +78,10 @@ services:
     command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
 
   api:
+    <<: *api-process
     image: mfa-api:local
     restart: unless-stopped
+    mem_limit: 1g
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,8 +103,10 @@ services:
   # Its own process by design (ADR 0012): a projector that shares the API's
   # lifetime cannot be restarted, scaled, or paused without taking reads down.
   projector:
+    <<: *api-process
     image: mfa-api:local
     restart: unless-stopped
+    mem_limit: 512m
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,8 +117,17 @@ services:
     command: ["python", "-m", "mobile_finance_api.projector_runtime"]
 
   caddy:
-    image: caddy:2-alpine
+    <<: *confined
+    image: caddy:2-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
     restart: unless-stopped
+    mem_limit: 256m
+    # DAC_OVERRIDE: the certificate directories already exist on the host and
+    # this must not depend on who created them.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - DAC_OVERRIDE
     depends_on:
       - api
     ports:

@@ -1,0 +1,17 @@
+# Security updates for the Python packages arrive without this file. What needs
+# it is everything pinned by digest: those pins only move when something
+# proposes a new one, and a pin nobody moves stops receiving fixes.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /infra/docker
+    schedule:
+      interval: monthly
+  - package-ecosystem: docker-compose
+    directory: /infra/docker
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
