@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 
 from .account_data import erase_due_accounts
+from .auth_service import prune_ended_sessions
 from .config import require_database_url
 from .database import AsyncSessionFactory, create_database
 from .postgres_home_projector import PostgresHomeProjector
@@ -420,6 +421,11 @@ async def _run_leader_loop(
                 next_erasure = now + erasure_seconds
                 if erased:
                     _LOGGER.info("Scheduled account erasure erased=%d", erased)
+                pruned_sessions = await prune_ended_sessions(
+                    session_factory, now=datetime.now(UTC)
+                )
+                if pruned_sessions:
+                    _LOGGER.info("Ended sessions pruned=%d", pruned_sessions)
             except asyncio.CancelledError:
                 raise
             except Exception as error:
