@@ -56,6 +56,9 @@ services:
       MFA_AUTH_REGISTRATION_ALLOWLIST: ${MFA_AUTH_REGISTRATION_ALLOWLIST-}
       MFA_RELEASE_DIR: /srv/releases
       MFA_APP_DOWNLOAD_LINK_SECRET: ${MFA_APP_DOWNLOAD_LINK_SECRET-}
+      # Whom uvicorn believes about a client's address. Only Caddy can reach
+      # this port, and Caddy overwrites whatever the client claimed.
+      FORWARDED_ALLOW_IPS: "*"
     volumes:
       # Read-only: the API distributes a build, it never publishes one. The
       # file arrives from where the signing key is (ADR 0026).

@@ -18,6 +18,7 @@ from sqlalchemy import select
 
 from .database import AsyncSessionFactory
 from .db_models import AuthSessionRow, UserRow
+from .request_limits import refuse_if_exhausted, request_limits
 from .tokens import AccessTokenCodec, InvalidToken
 
 _BEARER_TOKEN = re.compile(r"^[A-Za-z0-9._~+/=-]{1,8192}$")
@@ -108,6 +109,19 @@ class PostgresCurrentUserAuthenticator:
         )
 
 
+def _spend_budget(request: Request, subject: str) -> None:
+    """One person's share of a server shared by everyone."""
+
+    limits = request_limits(request)
+    window = (
+        limits.reads_by_user
+        if request.method in {"GET", "HEAD", "OPTIONS"}
+        else limits.writes_by_user
+    )
+    refuse_if_exhausted((window, subject))
+    window.record(subject)
+
+
 async def current_user(
     request: Request,
     credentials: Annotated[
@@ -135,6 +149,7 @@ async def current_user(
             detail={"code": "AUTHENTICATION_UNAVAILABLE", "issues": []},
         )
     else:
+        _spend_budget(request, authenticated_user.subject)
         return authenticated_user
     # Do not retain the bearer in the traceback of the public error. Raising
     # outside the active handler also avoids preserving the source exception.
