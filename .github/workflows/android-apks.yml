@@ -1,8 +1,8 @@
 name: Checks and on-demand Android APKs
 
 # Every push runs the full quality gate. The Android APK is built only on
-# demand, because that build is roughly 7.5 of the 10.5 minutes each run costs
-# and this repository is private, so those minutes are metered. Debug APKs
+# demand, because that build is roughly 7.5 of the 10.5 minutes each run costs,
+# and nothing waits on it for ordinary work. Debug APKs
 # produced here are also signed with an ephemeral key and cannot be installed
 # over a locally built one without clearing the session and encrypted outbox,
 # so building one on every push paid for an artifact nobody could use.
@@ -114,10 +114,20 @@ jobs:
           set -euo pipefail
           python3 --version
           python3 -m venv .ci-venv
-          .ci-venv/bin/pip install --quiet --upgrade pip
+          .ci-venv/bin/pip install --quiet --upgrade pip "uv==0.11.32"
+          # The lock the image installs from, so the tests run on what ships.
+          .ci-venv/bin/uv lock --check
+          requirements="$RUNNER_TEMP/requirements.txt"
+          .ci-venv/bin/uv export --frozen --no-emit-project \
+            --format requirements-txt --output-file "$requirements"
+          .ci-venv/bin/pip install --quiet --no-deps --require-hashes \
+            -r "$requirements"
           # Editable: a plain install writes services/api/build/, which the
           # version resolver rejects as an unclean worktree.
-          .ci-venv/bin/pip install --quiet -e . httpx==0.28.1 pytest==9.1.1
+          .ci-venv/bin/pip install --quiet --no-deps -e .
+          .ci-venv/bin/ruff check .
+          .ci-venv/bin/ruff format --check .
+          .ci-venv/bin/mypy src
           PYTHONPATH=src .ci-venv/bin/pytest
 
       # ANDROID_PREVIOUS_REVISION is intentionally empty. The ADR 0013 guard

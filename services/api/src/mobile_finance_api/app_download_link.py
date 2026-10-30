@@ -58,7 +58,7 @@ def verify_download_link(*, secret: bytes, link: str, now: datetime) -> bool:
 
     if len(secret) < MINIMUM_SECRET_BYTES:
         return False
-    if not link or len(link) > _MAXIMUM_LINK_LENGTH:
+    if not link or len(link) > _MAXIMUM_LINK_LENGTH or not link.isascii():
         return False
     expires, separator, signature = link.partition(".")
     if not separator or not expires.isdigit() or len(expires) > 12:

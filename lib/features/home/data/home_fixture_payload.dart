@@ -1,3 +1,9 @@
+/// The synthetic Home a build without a backend draws.
+///
+/// Dart rather than an asset: an asset ships in every APK whether or not
+/// anything reads it, while this is compiled out of a build that has a
+/// backend, because nothing reachable refers to it there.
+const homeFixturePayload = r'''
 {
   "generatedAt": "2026-07-11T01:20:00Z",
   "dataAsOf": "2026-07-11T01:19:58Z",
@@ -225,3 +231,4 @@
   ],
   "warnings": []
 }
+''';

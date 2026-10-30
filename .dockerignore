@@ -1,0 +1,9 @@
+# An allow-list: the build context reaches the Docker daemon whole, and the
+# deployment directory holds .env. Only what the Dockerfile copies gets through.
+*
+!services/api/pyproject.toml
+!services/api/uv.lock
+!services/api/alembic.ini
+!services/api/src
+!services/api/migrations
+**/__pycache__

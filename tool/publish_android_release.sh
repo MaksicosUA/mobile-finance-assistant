@@ -6,7 +6,9 @@
 # name and a rename, so a manifest never names a file that is not fully there.
 #
 #   MFA_RELEASE_HOST=user@host MFA_RELEASE_PATH=/mnt/mfa-data/releases \
-#     tool/publish_android_release.sh [--notes "what changed"]
+#     tool/publish_android_release.sh [--check] [--notes "what changed"]
+#
+# --check stops after the file has been proved to be the deliverable.
 #
 # The server distributes what it is given; it cannot build or sign anything.
 
@@ -16,7 +18,12 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 notes=""
+check_only=false
 apk="build/app/outputs/flutter-apk/mobile-finance-assistant-network-release.apk"
+# The certificate every installed copy already trusts. It is public: anyone can
+# read it from the APK. It is written down so that a build signed with anything
+# else stops here rather than on someone's phone (issue 0005).
+expected_signer="5d8f1fcc84ac318442a4b09b1898d18ac1cd4625b12d1a691ecc291deaa74668"
 
 while (($# > 0)); do
   case "$1" in
@@ -30,8 +37,12 @@ while (($# > 0)); do
       apk="$2"
       shift 2
       ;;
+    --check)
+      check_only=true
+      shift
+      ;;
     *)
-      echo "Usage: $0 [--apk PATH] [--notes TEXT]" >&2
+      echo "Usage: $0 [--check] [--apk PATH] [--notes TEXT]" >&2
       exit 64
       ;;
   esac
@@ -58,6 +69,42 @@ fi
 if [[ -z $apkanalyzer_bin || ! -x $apkanalyzer_bin ]]; then
   echo "APKANALYZER_BIN or Android SDK cmdline-tools/latest is required." >&2
   exit 64
+fi
+
+apksigner_bin="${APKSIGNER_BIN:-}"
+if [[ -z $apksigner_bin ]]; then
+  sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+  apksigner_bin="$(ls -d "$sdk_root"/build-tools/*/apksigner 2>/dev/null | tail -1)"
+fi
+if [[ -z $apksigner_bin || ! -x $apksigner_bin ]]; then
+  echo "APKSIGNER_BIN or Android SDK build-tools is required." >&2
+  exit 64
+fi
+
+# Nothing leaves this machine until the file is shown to be the deliverable.
+# These were manual steps, and a release without API_BASE_URL builds happily
+# against a loopback address.
+if [[ "$("$apkanalyzer_bin" manifest debuggable "$apk")" != "false" ]]; then
+  echo "Refusing to publish a debuggable APK: run-as would open its storage." >&2
+  exit 1
+fi
+signer="$("$apksigner_bin" verify --print-certs "$apk" |
+  sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+if [[ $signer != "$expected_signer" ]]; then
+  echo "Refusing to publish: the APK is not signed with the release key." >&2
+  exit 1
+fi
+# The address with its scheme: the bare host sits in the HTTPS-only validator
+# on purpose, so it proves nothing.
+loopback="$(unzip -p "$apk" 'lib/*/libapp.so' |
+  LC_ALL=C grep -a -c -E 'http://(127\.0\.0\.1|localhost|\[::1\])' || true)"
+if [[ $loopback != "0" ]]; then
+  echo "Refusing to publish: the APK points at a loopback address." >&2
+  exit 1
+fi
+echo "Verified: release build, release key, no loopback address."
+if $check_only; then
+  exit 0
 fi
 
 # Read from the APK itself rather than from whatever the build printed: the

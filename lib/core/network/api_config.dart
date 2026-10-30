@@ -14,4 +14,11 @@ String get configuredApiBaseUrl {
   return primary.isNotEmpty ? primary : _legacyHomeApiBaseUrl.trim();
 }
 
+/// Whether this build was compiled with a backend at all.
+///
+/// A constant rather than a getter, so the compiler can drop what only a build
+/// without one needs: the synthetic Home never reaches a delivered APK.
+const isBackendCompiledIn =
+    _primaryApiBaseUrl != '' || _legacyHomeApiBaseUrl != '';
+
 bool get isNetworkBackendConfigured => configuredApiBaseUrl.isNotEmpty;

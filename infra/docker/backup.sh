@@ -27,9 +27,12 @@ set -a
 . "$ENV_FILE"
 set +a
 
-: "${POSTGRES_USER:?}" "${POSTGRES_DB:?}" "${POSTGRES_PASSWORD:?}"
+: "${POSTGRES_USER:?}" "${POSTGRES_DB:?}"
 DESTINATION="${MFA_DATA_ROOT:?}/backups"
+# A dump is everyone's finances, including while it is being written.
+umask 077
 mkdir -p "$DESTINATION"
+chmod 700 "$DESTINATION"
 
 STAMP="$(date -u +%Y-%m-%dT%H%M%SZ)"
 TARGET="$DESTINATION/mfa-$STAMP.dump"
@@ -39,8 +42,9 @@ TARGET="$DESTINATION/mfa-$STAMP.dump"
 PARTIAL="$TARGET.partial"
 trap 'rm -f "$PARTIAL"' EXIT
 
-docker compose -f "$HERE/compose.yaml" --env-file "$ENV_FILE" exec -T \
-  -e PGPASSWORD="$POSTGRES_PASSWORD" postgres \
+# No password: the image trusts its own local socket, and an argument would be
+# readable in the process list for as long as the dump runs.
+docker compose -f "$HERE/compose.yaml" --env-file "$ENV_FILE" exec -T postgres \
   pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom \
   > "$PARTIAL"
 

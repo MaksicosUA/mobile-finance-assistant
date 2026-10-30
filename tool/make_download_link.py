@@ -14,7 +14,7 @@ screen or the shell history:
     MFA_APP_DOWNLOAD_LINK_SECRET="$(ssh "$MFA_RELEASE_HOST" \\
         'sudo grep ^MFA_APP_DOWNLOAD_LINK_SECRET= /opt/mfa/infra/docker/.env \\
          | cut -d= -f2-')" \\
-    MFA_BASE_URL=https://finance.voxentra.pro \\
+    MFA_BASE_URL=https://finance.example.com \\
         python3 tool/make_download_link.py --days 7
 
 Rotating MFA_APP_DOWNLOAD_LINK_SECRET on the host withdraws every link ever
