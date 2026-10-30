@@ -9,12 +9,13 @@ again after a crash writes nothing the second time.
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Callable, Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select, text
+from sqlalchemy import Select, and_, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,9 +52,15 @@ from .planned_cost_recurrence_core import (
     StoredRecurrence,
     StoredRecurrenceInstance,
 )
+from .quotas import MAX_ACTIVE_RULES, require_room
 
 #: The index materialisation leans on. Naming it here keeps the ON CONFLICT
 #: clause and the migration that created it readable side by side.
+_LOGGER = logging.getLogger(__name__)
+
+#: Past this, a rule's last date is behind every month a run may still write.
+_FINISHED_RULE_DAYS = 62
+
 _OCCURRENCE_CONFLICT_WHERE = text("recurrence_id IS NOT NULL AND status <> 'cancelled'")
 
 
@@ -205,6 +212,16 @@ class PostgresPlannedCostRecurrenceRepository:
                 )
                 if active_user is None:
                     raise RecurrenceAccountUnavailable
+                await require_room(
+                    database,
+                    select(func.count())
+                    .select_from(PlannedCostRecurrenceRow)
+                    .where(
+                        PlannedCostRecurrenceRow.user_id == user_id,
+                        PlannedCostRecurrenceRow.status == "active",
+                    ),
+                    limit=MAX_ACTIVE_RULES,
+                )
                 account = await database.scalar(
                     select(FinanceAccountRow)
                     .where(
@@ -459,57 +476,105 @@ class PostgresPlannedCostRecurrenceRepository:
 
         Safe to call at any interval and from a restart: the partial unique
         index refuses anything already there, so a second run does nothing.
+
+        `limit` is the size of one page, not of the job: every rule is reached,
+        each in its own transaction, so one that fails costs only itself.
         """
 
         written = 0
-        async with self._session_factory() as database:
-            async with database.begin():
+        now = _aware_utc(self._clock())
+        after: tuple[datetime, UUID] | None = None
+        while True:
+            async with self._session_factory() as database:
                 pairs = (
                     await database.execute(
-                        select(PlannedCostRecurrenceRow, FinanceAccountRow)
-                        .join(
-                            FinanceAccountRow,
-                            (
-                                FinanceAccountRow.id
-                                == PlannedCostRecurrenceRow.account_id
-                            )
-                            & (
-                                FinanceAccountRow.user_id
-                                == PlannedCostRecurrenceRow.user_id
-                            ),
-                        )
-                        .where(
-                            PlannedCostRecurrenceRow.status == "active",
-                            FinanceAccountRow.status == "active",
-                        )
-                        .order_by(PlannedCostRecurrenceRow.created_at.asc())
-                        .limit(limit)
+                        _due_rules(now=now, after=after).limit(limit)
                     )
                 ).all()
-                now = _aware_utc(self._clock())
-                for rule, account in pairs:
-                    # Each account carries its own canonical timezone, so "three
-                    # months from today" is asked separately for each rule.
-                    today = now.astimezone(ZoneInfo(account.opening_timezone)).date()
-                    occurrences = await _materialise(
-                        database,
-                        recurrence_id=rule.id,
-                        user_id=rule.user_id,
-                        account_id=rule.account_id,
-                        amount=rule.amount,
-                        currency=rule.currency,
-                        title=rule.title,
-                        category=rule.category,
-                        category_id=rule.category_id,
-                        day_of_month=rule.day_of_month,
-                        starts_on=max(rule.starts_on, account.opening_balance_on),
-                        ends_on=rule.ends_on,
-                        through=horizon_end(today=today),
-                        now=now,
-                        only_new=True,
+            if not pairs:
+                return written
+            last_rule = pairs[-1][0]
+            after = (last_rule.created_at, last_rule.id)
+            for rule, account in pairs:
+                # Each account carries its own canonical timezone, so "three
+                # months from today" is asked separately for each rule.
+                today = now.astimezone(ZoneInfo(account.opening_timezone)).date()
+                try:
+                    async with self._session_factory() as database:
+                        async with database.begin():
+                            occurrences = await _materialise(
+                                database,
+                                recurrence_id=rule.id,
+                                user_id=rule.user_id,
+                                account_id=rule.account_id,
+                                amount=rule.amount,
+                                currency=rule.currency,
+                                title=rule.title,
+                                category=rule.category,
+                                category_id=rule.category_id,
+                                day_of_month=rule.day_of_month,
+                                starts_on=max(
+                                    rule.starts_on,
+                                    account.opening_balance_on,
+                                ),
+                                ends_on=rule.ends_on,
+                                through=horizon_end(today=today),
+                                now=now,
+                                only_new=True,
+                            )
+                except Exception as error:
+                    _LOGGER.error(
+                        "Planned cost rule skipped error_type=%s",
+                        type(error).__name__,
                     )
-                    written += len(occurrences)
-        return written
+                    continue
+                written += len(occurrences)
+
+
+def _due_rules(
+    *,
+    now: datetime,
+    after: tuple[datetime, UUID] | None,
+) -> Select[tuple[PlannedCostRecurrenceRow, FinanceAccountRow]]:
+    """Active rules with anything left to write, oldest first.
+
+    A rule whose last date has passed by more than the catch-up window stays
+    active and writes nothing, so it is left out rather than visited forever.
+    """
+
+    query = (
+        select(PlannedCostRecurrenceRow, FinanceAccountRow)
+        .join(
+            FinanceAccountRow,
+            (FinanceAccountRow.id == PlannedCostRecurrenceRow.account_id)
+            & (FinanceAccountRow.user_id == PlannedCostRecurrenceRow.user_id),
+        )
+        .where(
+            PlannedCostRecurrenceRow.status == "active",
+            FinanceAccountRow.status == "active",
+            or_(
+                PlannedCostRecurrenceRow.ends_on.is_(None),
+                PlannedCostRecurrenceRow.ends_on
+                >= (now - timedelta(days=_FINISHED_RULE_DAYS)).date(),
+            ),
+        )
+        .order_by(
+            PlannedCostRecurrenceRow.created_at.asc(),
+            PlannedCostRecurrenceRow.id.asc(),
+        )
+    )
+    if after is not None:
+        created_at, rule_id = after
+        query = query.where(
+            or_(
+                PlannedCostRecurrenceRow.created_at > created_at,
+                and_(
+                    PlannedCostRecurrenceRow.created_at == created_at,
+                    PlannedCostRecurrenceRow.id > rule_id,
+                ),
+            )
+        )
+    return query
 
 
 async def _materialise(

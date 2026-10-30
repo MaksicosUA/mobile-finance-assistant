@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from mobile_finance_api.account_core import (
     FinanceAccountSnapshot,
@@ -26,7 +27,9 @@ from mobile_finance_api.finance_core import (
 )
 from mobile_finance_api.main import create_app
 from mobile_finance_api.operation_contracts import (
+    MAX_ENTRY_AMOUNT,
     CommittedOperation,
+    MoneyInput,
     OperationDraft,
     operation_contract_schema,
 )
@@ -100,11 +103,29 @@ def test_money_requires_a_positive_plain_decimal_string(amount: object) -> None:
 
 
 def test_money_precision_matches_numeric_38_18() -> None:
-    assert _draft(amount="99999999999999999999.123456789012345678").amount
-    with pytest.raises(ValidationError):
-        _draft(amount="100000000000000000000")
+    assert _draft(amount="1.123456789012345678").amount
     with pytest.raises(ValidationError):
         _draft(amount="1.1234567890123456789")
+
+
+def test_an_entry_stops_well_short_of_what_a_balance_can_hold() -> None:
+    """A balance is a sum: entries at the column's limit overflow on the second."""
+
+    assert _draft(amount="999999999999999.99").amount
+    with pytest.raises(ValidationError):
+        _draft(amount="1000000000000000")
+    with pytest.raises(ValidationError):
+        _draft(amount="99999999999999999999.123456789012345678")
+
+
+def test_a_stored_amount_is_still_read_whatever_the_column_holds() -> None:
+    """The limit is on what is entered. An existing row must never stop loading."""
+
+    stored = TypeAdapter(MoneyInput).validate_python(
+        Decimal("99999999999999999999.123456789012345678")
+    )
+
+    assert stored > MAX_ENTRY_AMOUNT
 
 
 def test_contract_rejects_mass_assignment_and_naive_time() -> None:

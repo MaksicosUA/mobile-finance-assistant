@@ -41,6 +41,7 @@ from .goal_core import (
     StoredGoal,
     StoredGoalContribution,
 )
+from .quotas import MAX_ACTIVE_GOALS, require_room
 
 _ZERO = Decimal(0)
 
@@ -151,6 +152,16 @@ class PostgresGoalRepository:
                 )
                 if active_user is None:
                     raise GoalAccountUnavailable
+                await require_room(
+                    database,
+                    select(func.count())
+                    .select_from(FinanceGoalRow)
+                    .where(
+                        FinanceGoalRow.user_id == user_id,
+                        FinanceGoalRow.status == "active",
+                    ),
+                    limit=MAX_ACTIVE_GOALS,
+                )
                 account = await database.scalar(
                     select(FinanceAccountRow)
                     .where(

@@ -54,6 +54,7 @@ from .postgres_analytics_repository import UnavailableAnalyticsRepository
 from .postgres_category_repository import UnavailableCategoryRepository
 from .postgres_profile_repository import UnavailableProfileRepository
 from .profile_routes import router as profile_router
+from .quotas import QuotaExceeded
 from .repository import (
     HomeCanonicalTimezoneMismatch,
     HomeQuery,
@@ -409,6 +410,13 @@ def create_app(
         if analytics_repository is not None
         else UnavailableAnalyticsRepository()
     )
+
+    @application.exception_handler(QuotaExceeded)
+    async def quota_reached(_: Request, __: QuotaExceeded) -> Response:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": {"code": "LIMIT_REACHED", "issues": []}},
+        )
 
     @application.exception_handler(RequestValidationError)
     async def redacted_request_validation_error(

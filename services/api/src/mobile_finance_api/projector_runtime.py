@@ -352,10 +352,13 @@ async def _run_leader_loop(
         consumed = 0
         reconciled = 0
         cycle_failed = False
+        # One account's failure, which is reported but does not slow anybody
+        # else down: its stream already waits on its own (see `_pause`).
+        stream_failed = False
         try:
             projection = await projector.drain_available(max_candidates=max_cycles)
             consumed = projection.published
-            cycle_failed = projection.failures_present
+            stream_failed = projection.failures_present
         except asyncio.CancelledError:
             raise
         except Exception as error:
@@ -370,7 +373,7 @@ async def _run_leader_loop(
             try:
                 reconciliation = await projector.reconcile_all()
                 reconciled = reconciliation.published
-                cycle_failed = cycle_failed or reconciliation.failures_present
+                stream_failed = stream_failed or reconciliation.failures_present
                 next_reconciliation = now + reconcile_seconds
                 _LOGGER.info(
                     "Home projector reconciliation complete published=%d",
@@ -432,7 +435,10 @@ async def _run_leader_loop(
                     session_factory=session_factory,
                     policy=retention_policy,
                 )
-                next_retention = now + retention_seconds
+                # A full batch means more is waiting. A daily batch smaller than
+                # a day's new revisions would never catch up.
+                if pruned < retention_policy.maximum_per_cycle:
+                    next_retention = now + retention_seconds
                 _LOGGER.info("Home projector retention complete pruned=%d", pruned)
             except asyncio.CancelledError:
                 raise
@@ -462,8 +468,9 @@ async def _run_leader_loop(
                     type(error).__name__,
                 )
 
-        status = "degraded" if cycle_failed else "idle"
-        if not cycle_failed and (consumed or reconciled):
+        degraded = cycle_failed or stream_failed
+        status = "degraded" if degraded else "idle"
+        if not degraded and (consumed or reconciled):
             status = "published"
         set_status(status)
 

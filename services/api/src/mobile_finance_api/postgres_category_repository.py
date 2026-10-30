@@ -32,6 +32,7 @@ from .db_models import (
     UserRow,
 )
 from .finance_core import FinanceCategorySnapshot
+from .quotas import MAX_CATEGORIES, MAX_KEYWORDS, require_room
 
 
 class CategoryPersistenceUnavailable(Exception):
@@ -195,6 +196,13 @@ class PostgresCategoryRepository:
                     )
                     if conflict is not None:
                         raise CategoryNameTaken
+                    await require_room(
+                        database,
+                        select(func.count())
+                        .select_from(FinanceCategoryRow)
+                        .where(FinanceCategoryRow.user_id == user_id),
+                        limit=MAX_CATEGORIES,
+                    )
 
                     created_at = _aware_utc(self._clock())
                     row = FinanceCategoryRow(
@@ -490,6 +498,14 @@ class PostgresCategoryRepository:
                     direction=category.direction,
                     category_id=category_id,
                     keywords=added,
+                )
+                await require_room(
+                    database,
+                    select(func.count())
+                    .select_from(FinanceCategoryKeywordRow)
+                    .where(FinanceCategoryKeywordRow.user_id == user_id),
+                    limit=MAX_KEYWORDS,
+                    adding=len(added) - len(removed),
                 )
 
                 created_at = _aware_utc(self._clock())

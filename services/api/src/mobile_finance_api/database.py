@@ -26,6 +26,9 @@ def create_database(database_url: str) -> tuple[AsyncEngine, AsyncSessionFactory
         pool_size=5,
         max_overflow=5,
         pool_recycle=1800,
+        # One slow statement must not hold a connection from everyone else. The
+        # pool above is small, and every request shares it.
+        connect_args={"server_settings": {"statement_timeout": "30000"}},
     )
     return engine, async_sessionmaker(engine, expire_on_commit=False)
 

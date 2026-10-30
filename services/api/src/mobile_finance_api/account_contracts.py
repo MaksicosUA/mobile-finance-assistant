@@ -24,6 +24,7 @@ from pydantic import (
     model_validator,
 )
 
+from .operation_contracts import within_entry_limit
 from .timezones import validated_iana_timezone_key
 
 _SIGNED_DECIMAL_PATTERN = (
@@ -181,7 +182,9 @@ class AccountDraft(AccountApiModel):
     command_id: UUID = Field(alias="commandId")
     name: AccountName
     currency: CurrencyCode
-    opening_balance: SignedMoneyInput = Field(alias="openingBalance")
+    opening_balance: Annotated[SignedMoneyInput, AfterValidator(within_entry_limit)] = (
+        Field(alias="openingBalance")
+    )
     opening_balance_on: AccountDate = Field(alias="openingBalanceOn")
     canonical_timezone: TimezoneName = Field(alias="canonicalTimezone")
 

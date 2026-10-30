@@ -56,6 +56,18 @@ def _parse_money(value: object) -> Decimal:
     return amount
 
 
+#: The largest amount one entry may carry. Far beyond anyone's money and far
+#: below what a column holds: a balance is a sum, so entries at the column's own
+#: limit overflow it on the second one, and that account's Home stops updating.
+MAX_ENTRY_AMOUNT = Decimal("999999999999999.99")
+
+
+def within_entry_limit(value: Decimal) -> Decimal:
+    if abs(value) > MAX_ENTRY_AMOUNT:
+        raise ValueError("amount is larger than any entry accepted here")
+    return value
+
+
 def _decimal_string(value: Decimal) -> str:
     rendered = format(value, "f")
     if "." in rendered:
@@ -189,11 +201,16 @@ class OperationApiModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
 
+#: What a person enters. `MoneyInput` also reads stored rows, which must keep
+#: reading whatever the column holds.
+EntryMoney = Annotated[MoneyInput, AfterValidator(within_entry_limit)]
+
+
 class OperationDraft(OperationApiModel):
     schema_version: Literal["1"] = Field(alias="schemaVersion")
     command_id: UUID = Field(alias="commandId")
     operation_type: Literal["expense", "income"] = Field(alias="type")
-    amount: MoneyInput
+    amount: EntryMoney
     currency: CurrencyCode
     account_id: UUID | None = Field(default=None, alias="accountId")
     # Kept exactly as the user wrote it, alongside the catalogue link that

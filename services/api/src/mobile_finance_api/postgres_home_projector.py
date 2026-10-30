@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
@@ -78,6 +78,19 @@ class _OutboxCandidate:
     created_at: datetime
 
 
+#: A stream that cannot be projected stays the oldest pending one, so without a
+#: pause it would be tried first on every cycle and use up that cycle's budget.
+#: The pause doubles from the first length to the last, and a success clears it.
+_FIRST_PAUSE = timedelta(minutes=1)
+_LONGEST_PAUSE = timedelta(hours=1)
+
+
+@dataclass(frozen=True, slots=True)
+class _Pause:
+    until: datetime
+    length: timedelta
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectionCycleResult:
     published: int
@@ -118,6 +131,25 @@ class PostgresHomeProjector:
         self._session_factory = session_factory
         self._clock = clock or _utc_now
         self._retry_policy = retry_policy or EventRetryPolicy()
+        # In memory on purpose: nothing here is a fact about the ledger, and a
+        # restart only costs one more attempt per stream.
+        self._cooldowns: dict[UUID, _Pause] = {}
+
+    def _paused_users(self) -> set[UUID]:
+        now = _aware_utc(self._clock())
+        return {
+            user_id for user_id, pause in self._cooldowns.items() if pause.until > now
+        }
+
+    def _pause(self, user_id: UUID) -> None:
+        earlier = self._cooldowns.get(user_id)
+        length = (
+            _FIRST_PAUSE if earlier is None else min(earlier.length * 2, _LONGEST_PAUSE)
+        )
+        self._cooldowns[user_id] = _Pause(
+            until=_aware_utc(self._clock()) + length,
+            length=length,
+        )
 
     async def consume_next(self) -> bool:
         """Consume one user's pending source events; return false when idle."""
@@ -165,7 +197,7 @@ class PostgresHomeProjector:
 
         if max_candidates <= 0:
             raise ValueError("max_candidates must be positive")
-        excluded_user_ids: set[UUID] = set()
+        excluded_user_ids = self._paused_users()
         published = 0
         inspected = 0
         failures_present = False
@@ -195,8 +227,8 @@ class PostgresHomeProjector:
                 continue
             except Exception as error:
                 # Do not attribute a ledger/runtime failure to an arbitrary
-                # event. Exclude only this stream for the bounded cycle so
-                # other users continue, then let the runtime back off.
+                # event. Only this stream waits, so other users continue.
+                self._pause(candidate.user_id)
                 excluded_user_ids.add(candidate.user_id)
                 failures_present = True
                 _LOGGER.error(
@@ -204,6 +236,7 @@ class PostgresHomeProjector:
                     type(error).__name__,
                 )
                 continue
+            self._cooldowns.pop(candidate.user_id, None)
             if projected:
                 published += 1
         return ProjectionCycleResult(

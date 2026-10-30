@@ -38,6 +38,7 @@ from .postgres_category_repository import (
     CategoryNotFound,
     CategoryPersistenceUnavailable,
 )
+from .quotas import QuotaExceeded
 
 router = APIRouter(prefix="/api/v1/categories", tags=["categories"])
 
@@ -149,6 +150,8 @@ async def list_categories(
     user_id = _user_id(user)
     try:
         return await repository.list_categories(user_id=user_id)
+    except QuotaExceeded:
+        raise
     except CategoryPersistenceUnavailable:
         public_error = _unavailable()
     except Exception:
@@ -331,6 +334,8 @@ async def replace_category_keywords(
             category_id=category_id,
             command=command,
         )
+    except QuotaExceeded:
+        raise
     except CategoryNotFound:
         raise _not_found() from None
     except CategoryArchived:

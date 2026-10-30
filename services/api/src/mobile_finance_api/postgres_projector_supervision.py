@@ -162,6 +162,25 @@ async def acquire_projector_leadership(
         await connection.close()
 
 
+_OUTBOX_TABLES = (
+    "finance_account_outbox_events",
+    "finance_outbox_events",
+    "finance_transfer_outbox_events",
+    "planned_cost_outbox_events",
+    "finance_category_outbox_events",
+    "finance_goal_outbox_events",
+)
+
+
+def _across_outboxes(query: str) -> str:
+    """One query over every outbox the projector consumes.
+
+    Only table names from the constant above are ever substituted.
+    """
+
+    return " UNION ALL ".join(query.format(table=table) for table in _OUTBOX_TABLES)
+
+
 async def read_projector_health(
     *,
     session_factory: AsyncSessionFactory,
@@ -205,25 +224,23 @@ async def read_projector_health(
         )
         oldest_pending_at = await database.scalar(
             text(
-                "SELECT min(created_at) FROM ("
-                "SELECT created_at FROM finance_account_outbox_events "
-                "WHERE published_at IS NULL AND dead_lettered_at IS NULL "
-                "UNION ALL "
-                "SELECT created_at FROM finance_outbox_events "
-                "WHERE published_at IS NULL AND dead_lettered_at IS NULL"
-                ") AS pending_events"
+                "SELECT min(created_at) FROM ("  # noqa: S608 - fixed table names
+                + _across_outboxes(
+                    "SELECT created_at FROM {table} "
+                    "WHERE published_at IS NULL AND dead_lettered_at IS NULL"
+                )
+                + ") AS pending_events"
             )
         )
         dead_letters_present = bool(
             await database.scalar(
                 text(
-                    "SELECT EXISTS ("
-                    "SELECT 1 FROM finance_account_outbox_events "
-                    "WHERE published_at IS NULL AND dead_lettered_at IS NOT NULL "
-                    "UNION ALL "
-                    "SELECT 1 FROM finance_outbox_events "
-                    "WHERE published_at IS NULL AND dead_lettered_at IS NOT NULL"
-                    ")"
+                    "SELECT EXISTS ("  # noqa: S608 - fixed table names
+                    + _across_outboxes(
+                        "SELECT 1 FROM {table} "
+                        "WHERE published_at IS NULL AND dead_lettered_at IS NOT NULL"
+                    )
+                    + ")"
                 )
             )
         )
