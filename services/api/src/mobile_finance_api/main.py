@@ -61,6 +61,7 @@ from .repository import (
     HomeRepository,
     UnavailableHomeRepository,
 )
+from .request_limits import RequestLimits
 from .text_entry_routes import router as text_entry_router
 from .text_entry_routes import transfer_router as transfer_text_entry_router
 from .timezones import validated_iana_timezone
@@ -315,6 +316,7 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
+    application.state.request_limits = RequestLimits()
     application.state.home_repository = (
         home_repository if home_repository is not None else UnavailableHomeRepository()
     )

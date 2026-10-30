@@ -21,6 +21,12 @@ from .auth_service import (
     AuthGrant,
     RegistrationRejected,
 )
+from .request_limits import (
+    address_key,
+    client_key,
+    refuse_if_exhausted,
+    request_limits,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 
@@ -46,6 +52,10 @@ async def register(
     body: RegisterRequest,
     service: AuthServiceDependency,
 ) -> AuthTokenResponse:
+    limits = request_limits(request)
+    origin = client_key(request)
+    refuse_if_exhausted((limits.registration_by_ip, origin))
+    limits.registration_by_ip.record(origin)
     allowlist = getattr(request.app.state, "registration_allowlist", None)
     if allowlist is not None and body.email.strip().casefold() not in allowlist:
         # Deliberately the same refusal a taken address gets. Telling the two
@@ -82,21 +92,34 @@ async def register(
     response_model_by_alias=True,
 )
 async def login(
+    request: Request,
     body: LoginRequest,
     service: AuthServiceDependency,
 ) -> AuthTokenResponse:
+    limits = request_limits(request)
+    address = address_key(body.email)
+    origin = client_key(request)
+    # Checked before the password, and the same for an address nobody owns: a
+    # limit that only applied to real accounts would say which ones are real.
+    refuse_if_exhausted(
+        (limits.login_by_address, address),
+        (limits.login_by_ip, origin),
+    )
+    limits.login_by_ip.record(origin)
     try:
         grant = await service.login(
             email=body.email,
             password=body.password.get_secret_value(),
         )
     except AuthenticationRejected:
+        limits.login_by_address.record(address)
         sanitized_error = _unauthorized()
     except AuthenticationUnavailable:
         sanitized_error = _unavailable()
     except Exception:
         sanitized_error = _unavailable()
     else:
+        limits.login_by_address.clear(address)
         return _response(grant)
     raise sanitized_error
 

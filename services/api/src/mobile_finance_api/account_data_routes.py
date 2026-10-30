@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from .account_data import PasswordRejected
 from .auth import AuthenticatedUser, current_user
+from .request_limits import refuse_if_exhausted, request_limits
 
 router = APIRouter(prefix="/api/v1/account", tags=["account"])
 
@@ -159,6 +160,7 @@ async def export_operations_csv(
     },
 )
 async def request_deletion(
+    request: Request,
     command: RequestDeletionCommand,
     repository: AccountDataRepositoryDependency,
     user: CurrentUserDependency,
@@ -170,6 +172,9 @@ async def request_deletion(
     """
 
     user_id = _user_id(user)
+    # A stolen session must not be a way to guess the password.
+    guesses = request_limits(request).password_by_user
+    refuse_if_exhausted((guesses, user.subject))
     try:
         due = await repository.request_deletion(
             user_id=user_id,
@@ -177,6 +182,7 @@ async def request_deletion(
             now=datetime.now(UTC),
         )
     except PasswordRejected:
+        guesses.record(user.subject)
         public_error = _error(status.HTTP_403_FORBIDDEN, "PASSWORD_REJECTED")
     except Exception:
         public_error = _unavailable()
