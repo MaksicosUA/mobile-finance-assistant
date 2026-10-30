@@ -68,7 +68,7 @@ final homeRepositoryProvider = Provider<HomeRepository>((ref) {
   // correcting the zone (ADR 0028) must rebuild this client, or Home keeps
   // asking for months drawn where the user used to live.
   final timezone = ref.watch(canonicalTimezoneProvider);
-  if (isNetworkBackendConfigured) {
+  if (isBackendCompiledIn) {
     final dio = Dio();
     ref.onDispose(() => dio.close(force: true));
     return NetworkHomeRepository(

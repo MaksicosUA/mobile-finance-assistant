@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_finance_assistant/features/home/data/home_dto.dart';
 import 'package:mobile_finance_assistant/features/home/data/home_mapper.dart';
@@ -201,12 +198,7 @@ void main() {
     test(
       'mock repository loads the versioned fixture through DTO mapping',
       () async {
-        final source = await homeFixtureFile('populated.json').readAsString();
-        final repository = MockHomeRepository(
-          delay: Duration.zero,
-          fixtureAsset: 'fixture.json',
-          assetBundle: _FixtureBundle({'fixture.json': source}),
-        );
+        final repository = MockHomeRepository(delay: Duration.zero);
 
         final result = await repository.fetchHome() as HomeDataResult;
         final snapshot = result.snapshot;
@@ -247,16 +239,4 @@ void main() {
       expect(() => HomeDto.fromJson(json), throwsFormatException);
     });
   });
-}
-
-class _FixtureBundle extends CachingAssetBundle {
-  _FixtureBundle(this.assets);
-
-  final Map<String, String> assets;
-
-  @override
-  Future<ByteData> load(String key) async {
-    final bytes = Uint8List.fromList(utf8.encode(assets[key]!));
-    return ByteData.sublistView(bytes);
-  }
 }

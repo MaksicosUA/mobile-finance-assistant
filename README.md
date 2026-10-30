@@ -67,7 +67,6 @@ AI extraction, and full chat are not part of this slice.
   plus encrypted delivery of confirmed operations
 - `lib/features/home/` — Home domain, API/cache, application, and presentation
 - `lib/l10n/` — localization source and generated delegates
-- `assets/fixtures/` — synthetic runtime Home fixture
 - `contracts/home/v1/` — frozen original Home compatibility schema
 - `contracts/home/v2/` — current Home schema with authoritative date-only and
   nullable operation facts
