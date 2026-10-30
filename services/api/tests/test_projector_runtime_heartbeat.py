@@ -70,6 +70,7 @@ async def _no_due_erasures(session_factory: object, **kwargs: object) -> int:
 @pytest.fixture(autouse=True)
 def _quiet_erasure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(projector_runtime, "erase_due_accounts", _no_due_erasures)
+    monkeypatch.setattr(projector_runtime, "prune_ended_sessions", _no_due_erasures)
 
 
 class _HealthyBlockingLease:

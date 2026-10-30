@@ -51,7 +51,9 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      MFA_DATABASE_URL: ${MFA_DATABASE_URL:?}
+      # The unprivileged login once app-role.sh has created it; the migrating
+      # one until then, so a deploy never depends on that step having run.
+      MFA_DATABASE_URL: ${MFA_APP_DATABASE_URL:-${MFA_DATABASE_URL:?}}
       MFA_AUTH_JWT_SECRET: ${MFA_AUTH_JWT_SECRET:?}
       MFA_AUTH_REGISTRATION_ALLOWLIST: ${MFA_AUTH_REGISTRATION_ALLOWLIST-}
       MFA_RELEASE_DIR: /srv/releases
@@ -74,8 +76,15 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      MFA_DATABASE_URL: ${MFA_DATABASE_URL:?}
+      MFA_DATABASE_URL: ${MFA_APP_DATABASE_URL:-${MFA_DATABASE_URL:?}}
     command: ["python", "-m", "mobile_finance_api.projector_runtime"]
+    # Reports; it restarts nothing. `docker compose ps` shows the answer.
+    healthcheck:
+      test: ["CMD", "python", "-m", "mobile_finance_api.projector_runtime", "--check-health"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
 
   caddy:
     image: caddy:2-alpine

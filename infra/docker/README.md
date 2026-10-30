@@ -48,6 +48,19 @@ Certificates live in `$MFA_DATA_ROOT/caddy/data`, so recreating the container
 costs a few seconds and no reissue. This is how the download-link route was
 logged for twenty minutes on its first deploy (ADR 0026).
 
+## Running as an unprivileged login
+
+The account `POSTGRES_USER` names is a superuser, because the image makes it one.
+Migrations need that; serving requests does not. Once, on the host:
+
+    sudo ./app-role.sh
+    docker compose --env-file .env up -d api projector
+
+It creates `mfa_app`, which reads and writes rows and nothing else, and writes
+its URL into `.env`. Until it has run, both services keep using
+`MFA_DATABASE_URL`, so no deploy depends on it. Migrations stay on the privileged
+login, and tables they create later are granted automatically.
+
 ## Backups
 
 Provider snapshots capture a disk, which is not the same as a database: a
@@ -65,6 +78,15 @@ copy. Install the schedule once:
 
 Failures surface in `systemctl status mfa-backup` and the journal rather than
 in a mailbox nobody reads.
+
+### Keeping a copy somewhere else
+
+The dumps sit on the same volume as the database, so a failed volume takes both.
+From a machine outside the host:
+
+    MFA_RELEASE_HOST=<user>@<host> tool/pull_backups.sh
+
+A dump is everyone's finances in the clear. Keep the copy on an encrypted disk.
 
 ### Proving a backup restores
 

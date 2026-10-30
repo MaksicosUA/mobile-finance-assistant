@@ -10,7 +10,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 from email_validator import EmailNotValidError, validate_email
-from sqlalchemy import select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +51,43 @@ class AuthGrant:
     #: This sign-in cancelled an erasure the person had scheduled (ADR 0030),
     #: so the app can say so in words rather than leave them wondering.
     deletion_cancelled: bool = False
+
+
+#: How long an ended session is kept. Long enough to see a stolen refresh token
+#: being replayed against it, and no longer: it is data about a person's devices.
+_ENDED_SESSION_DAYS = 30
+_SESSIONS_PER_SWEEP = 1000
+
+
+async def prune_ended_sessions(
+    session_factory: AsyncSessionFactory,
+    *,
+    now: datetime,
+) -> int:
+    """Delete sessions that ended a while ago, and their refresh tokens by cascade.
+
+    Nothing else ever removes them. Signing in writes a row each time, so without
+    this the table grows for as long as the account exists.
+    """
+
+    cutoff = _aware_utc(now) - timedelta(days=_ENDED_SESSION_DAYS)
+    ended = (
+        select(AuthSessionRow.id)
+        .where(
+            or_(
+                AuthSessionRow.absolute_expires_at < cutoff,
+                AuthSessionRow.revoked_at < cutoff,
+            )
+        )
+        .limit(_SESSIONS_PER_SWEEP)
+    )
+    async with session_factory() as database, database.begin():
+        deleted = await database.scalars(
+            delete(AuthSessionRow)
+            .where(AuthSessionRow.id.in_(ended))
+            .returning(AuthSessionRow.id)
+        )
+        return len(deleted.all())
 
 
 class AuthenticationService(Protocol):
