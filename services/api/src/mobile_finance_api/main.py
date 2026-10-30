@@ -12,7 +12,6 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.datastructures import MutableHeaders
@@ -109,14 +108,9 @@ class RequestIdMiddleware:
                             f"{vary}, Authorization" if vary else "Authorization"
                         )
                 path = str(scope.get("path", ""))
-                if path.startswith(
-                    (
-                        "/api/v1/auth/",
-                        "/api/v1/accounts",
-                        "/api/v1/operations/",
-                        "/api/v1/planned-costs",
-                    )
-                ):
+                # Everything under the API is someone's finances. A list of
+                # prefixes left every route added later outside it.
+                if path.startswith("/api/") and path not in _HOME_PATHS:
                     headers["Cache-Control"] = "no-store"
                     headers["Pragma"] = "no-cache"
             await send(message)
@@ -314,6 +308,11 @@ def create_app(
         title="Mobile Finance Assistant API",
         version="1.0.0",
         lifespan=lifespan,
+        # `application.openapi()` still builds the schema in process; only the
+        # public routes that hand it to anyone who asks are gone.
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
     application.state.home_repository = (
         home_repository if home_repository is not None else UnavailableHomeRepository()
@@ -439,8 +438,8 @@ def create_app(
                 status_code=422,
                 content={"detail": {"code": "MALFORMED_ACCOUNT_REQUEST"}},
             )
-        if not request.url.path.startswith("/api/v1/auth/"):
-            return await request_validation_exception_handler(request, error)
+        # The default handler answers with the refused input, and a refused
+        # body is whatever the person wrote.
         safe_errors = [
             {
                 key: value
