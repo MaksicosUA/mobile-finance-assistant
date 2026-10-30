@@ -7,10 +7,23 @@ updates:
     directory: /infra/docker
     schedule:
       interval: monthly
+    ignore:
+      # The image's Python is the one CI tests on. Moving it is a decision.
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
   - package-ecosystem: docker-compose
     directory: /infra/docker
     schedule:
       interval: monthly
+    ignore:
+      # A new major PostgreSQL cannot open the existing data directory, and CI
+      # never runs compose, so such a pull request would look green and stop the
+      # database on deploy. That upgrade is a dump and a restore.
+      - dependency-name: postgres
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: github-actions
     directory: /
     schedule:
