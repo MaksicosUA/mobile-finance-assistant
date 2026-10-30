@@ -325,14 +325,29 @@ class MainActivity : FlutterActivity() {
                 )
                 return
             }
+            // Android refuses a package signed with another key only when it
+            // carries this app's name. Under any other name it would install
+            // beside this app as something new, and the digest proves nothing
+            // about that: it arrives from the same server as the file.
+            if (packageManager.getPackageArchiveInfo(file.path, 0)?.packageName !=
+                packageName
+            ) {
+                file.delete()
+                result.error(
+                    "UPDATE_INSTALL_FAILED",
+                    "That package is not this app.",
+                    null,
+                )
+                return
+            }
             val uri = FileProvider.getUriForFile(
                 this,
                 "$packageName.updates",
                 file,
             )
-            // The installer shows its own confirmation, and refuses anything
-            // not signed with the key that signed the installed app. That
-            // check, not ours, is what makes this safe.
+            // The installer shows its own confirmation, and for this name it
+            // refuses anything not signed with the key that signed the
+            // installed app.
             startActivity(
                 Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
