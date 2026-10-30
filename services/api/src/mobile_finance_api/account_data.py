@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 from collections.abc import Iterable, Mapping
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -68,6 +69,8 @@ EXPORTED_TABLES: tuple[str, ...] = (
     "finance_budgets",
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 #: Columns that never leave, whatever table they sit in.
 WITHHELD_COLUMNS: Mapping[str, frozenset[str]] = {
     # A credential, not data: with it someone could test guesses offline.
@@ -77,7 +80,7 @@ WITHHELD_COLUMNS: Mapping[str, frozenset[str]] = {
 _CREDENTIAL = "a credential: it lets someone act as the person, and is not their data"
 _DERIVED = "derived from the exported facts, and rebuilt from them at any time"
 _OUTBOX = "an identifier-only notice to the Home projector; it carries no fact"
-_AUDIT = "how the exported facts were written; the facts themselves are exported"
+_AUDIT = "the history of how facts changed; the current facts are exported"
 
 #: Every other table in the schema, with the reason it is left out.
 EXCLUDED_TABLES: Mapping[str, str] = {
@@ -323,15 +326,24 @@ async def erase_due_accounts(
         )
     erased = 0
     for user_id in due:
-        async with session_factory() as database, database.begin():
-            still_due = await database.scalar(
-                select(UserRow.id)
-                .where(UserRow.id == user_id, UserRow.deletion_due_at <= now)
-                .with_for_update()
+        try:
+            async with session_factory() as database, database.begin():
+                still_due = await database.scalar(
+                    select(UserRow.id)
+                    .where(UserRow.id == user_id, UserRow.deletion_due_at <= now)
+                    .with_for_update()
+                )
+                if still_due is None:
+                    continue
+                await erase_user(database, user_id)
+        except Exception as error:
+            # Counted, never named. The account stays due and the next sweep
+            # tries it again.
+            _LOGGER.error(
+                "Scheduled erasure skipped one account error_type=%s",
+                type(error).__name__,
             )
-            if still_due is None:
-                continue
-            await erase_user(database, user_id)
+            continue
         erased += 1
     return erased
 

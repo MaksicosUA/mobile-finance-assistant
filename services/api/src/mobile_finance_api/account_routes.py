@@ -42,6 +42,7 @@ from .account_core import (
     TimezoneRejected,
 )
 from .auth import AuthenticatedUser, current_user
+from .quotas import QuotaExceeded
 
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 
@@ -161,6 +162,8 @@ async def commit_account(
             expected_draft_hash=body.draft_hash,
             confirmed_at=body.confirmed_at,
         )
+    except QuotaExceeded:
+        raise
     except AccountConfirmationMismatch:
         public_error = _account_error(
             status_code=status.HTTP_409_CONFLICT,

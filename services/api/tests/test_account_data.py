@@ -12,10 +12,12 @@ import csv
 import io
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
+from mobile_finance_api import account_data
 from mobile_finance_api.account_data import (
     DELETION_GRACE,
     EXCLUDED_TABLES,
@@ -391,3 +393,57 @@ def test_a_grant_cancels_nothing_unless_it_says_so() -> None:
     )
 
     assert grant.deletion_cancelled is False
+
+
+# --- the sweep ---------------------------------------------------------------
+
+
+class _Sweep:
+    """Two sessions' worth of behaviour: list who is due, then lock each one."""
+
+    def __init__(self, due: list[UUID]) -> None:
+        self.due = due
+
+    def __call__(self) -> _Sweep:
+        return self
+
+    async def __aenter__(self) -> _Sweep:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    def begin(self) -> _Sweep:
+        return self
+
+    async def scalars(self, _: object) -> list[UUID]:
+        return self.due
+
+    async def scalar(self, _: object) -> object:
+        return "still due"
+
+
+def test_one_failed_erasure_does_not_stop_the_others(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    first, second, third = uuid4(), uuid4(), uuid4()
+    attempted: list[UUID] = []
+
+    async def erase(_: object, user_id: UUID) -> None:
+        attempted.append(user_id)
+        if user_id == second:
+            raise RuntimeError(f"cannot erase {user_id}")
+
+    monkeypatch.setattr(account_data, "erase_user", erase)
+
+    erased = asyncio.run(
+        account_data.erase_due_accounts(
+            _Sweep([first, second, third]),  # type: ignore[arg-type]
+            now=datetime(2026, 10, 30, tzinfo=UTC),
+        )
+    )
+
+    assert attempted == [first, second, third]
+    assert erased == 2
+    assert str(second) not in caplog.text

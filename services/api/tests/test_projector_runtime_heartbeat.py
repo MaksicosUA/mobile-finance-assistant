@@ -526,3 +526,95 @@ def test_failed_continuous_cycle_advances_backoff_exactly_once(
     assert after_failure_calls == 1
     assert reset_calls == 0
     assert statuses == ["degraded"]
+
+
+def test_one_accounts_failure_does_not_slow_everyone_else(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failing stream waits on its own; the loop keeps its pace."""
+
+    after_failure_calls = 0
+    statuses: list[str] = []
+    delays: list[float] = []
+
+    class _Backoff:
+        def __init__(self, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            del kwargs
+
+        def after_failure(self) -> float:
+            nonlocal after_failure_calls
+            after_failure_calls += 1
+            return 30.0
+
+        def reset(self) -> None:
+            return None
+
+    class _Projector:
+        async def drain_available(
+            self,
+            *,
+            max_candidates: int,
+        ) -> ProjectionCycleResult:
+            del max_candidates
+            return ProjectionCycleResult(
+                published=0,
+                inspected=1,
+                failures_present=True,
+            )
+
+        async def reconcile_all(self) -> ProjectionCycleResult:
+            return ProjectionCycleResult(
+                published=0,
+                inspected=1,
+                failures_present=True,
+            )
+
+    async def nothing_to_prune(**kwargs) -> int:  # type: ignore[no-untyped-def]
+        del kwargs
+        return 0
+
+    async def healthy(**kwargs) -> ProjectorHealth:  # type: ignore[no-untyped-def]
+        del kwargs
+        return ProjectorHealth(
+            status="healthy",
+            leader="present",
+            heartbeat_age="fresh",
+            pending_lag="none",
+            dead_letters="none",
+            last_cycle="ok",
+        )
+
+    async def stop_after_delay(delay: float) -> None:
+        delays.append(delay)
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(projector_runtime, "BoundedRuntimeBackoff", _Backoff)
+    monkeypatch.setattr(projector_runtime, "prune_home_revisions", nothing_to_prune)
+    monkeypatch.setattr(projector_runtime, "read_projector_health", healthy)
+    monkeypatch.setattr(projector_runtime.asyncio, "sleep", stop_after_delay)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            projector_runtime._run_leader_loop(
+                set_status=statuses.append,
+                projector=_Projector(),  # type: ignore[arg-type]
+                poll_seconds=2,
+                reconcile_seconds=1,
+                max_cycles=5,
+                runtime_backoff_initial_seconds=0.001,
+                runtime_backoff_maximum_seconds=1,
+                health_seconds=1,
+                heartbeat_stale_seconds=1,
+                maximum_lag_seconds=1,
+                retention_seconds=1,
+                materialise_seconds=1,
+                erasure_seconds=1,
+                session_factory=object(),  # type: ignore[arg-type]
+                recurrences=_StubRecurrences(),  # type: ignore[arg-type]
+                retention_policy=RevisionRetentionPolicy(),
+            )
+        )
+
+    assert after_failure_calls == 0
+    assert delays == [2]
+    assert statuses == ["degraded"]

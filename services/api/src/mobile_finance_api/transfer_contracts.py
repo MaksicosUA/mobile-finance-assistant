@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .operation_contracts import (
     CurrencyCode,
     DraftHash,
+    EntryMoney,
     MoneyInput,
     OperationDate,
     TimezoneName,
@@ -44,10 +45,10 @@ class TransferDraft(TransferApiModel):
     schema_version: Literal["1"] = Field(alias="schemaVersion")
     command_id: UUID = Field(alias="commandId")
     from_account_id: UUID = Field(alias="fromAccountId")
-    from_amount: MoneyInput = Field(alias="fromAmount")
+    from_amount: EntryMoney = Field(alias="fromAmount")
     from_currency: CurrencyCode = Field(alias="fromCurrency")
     to_account_id: UUID = Field(alias="toAccountId")
-    to_amount: MoneyInput = Field(alias="toAmount")
+    to_amount: EntryMoney = Field(alias="toAmount")
     to_currency: CurrencyCode = Field(alias="toCurrency")
     captured_at: UtcTimestamp = Field(alias="capturedAt")
     captured_timezone: TimezoneName = Field(alias="capturedTimezone")

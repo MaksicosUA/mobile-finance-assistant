@@ -29,6 +29,7 @@ from .goal_core import (
     GoalPersistenceUnavailable,
     GoalRejected,
 )
+from .quotas import QuotaExceeded
 
 router = APIRouter(prefix="/api/v1/goals", tags=["goals"])
 
@@ -86,6 +87,8 @@ async def create_goal(
     user_id = _user_id(user)
     try:
         result = await core.create(user_id=user_id, command=body)
+    except QuotaExceeded:
+        raise
     except GoalCommandConflict:
         public_error = _goal_error(
             status_code=status.HTTP_409_CONFLICT,

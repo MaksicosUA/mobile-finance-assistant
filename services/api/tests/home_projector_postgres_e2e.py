@@ -1608,7 +1608,12 @@ async def _assert_generic_failure_is_cycle_local(
         assert profile is not None
         profile.canonical_timezone = TIMEZONE_NAME
 
-    recovered = await projector.drain_available(max_candidates=10)
+    # The blocked stream waits out its pause while everyone else carries on. A
+    # new process forgets the pause, which is the same as the minute passing.
+    recovered = await PostgresHomeProjector(
+        session_factory=session_factory,
+        clock=clock,
+    ).drain_available(max_candidates=10)
     assert recovered.published == 1
     assert recovered.failures_present is False
     assert (await _home(client, blocked)).status_code == 200

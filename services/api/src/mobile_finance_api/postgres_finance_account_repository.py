@@ -35,12 +35,14 @@ from .db_models import (
     FinanceAccountOutboxEventRow,
     FinanceAccountRow,
     FinanceOperationRow,
+    FinanceTransferRow,
     UserRow,
 )
 from .postgres_category_repository import (
     seeded_category_keyword_rows,
     seeded_category_rows,
 )
+from .quotas import MAX_WALLETS, require_room
 
 
 class PostgresFinanceAccountRepository:
@@ -188,6 +190,14 @@ class PostgresFinanceAccountRepository:
                             corrections=baseline_corrections,
                         ),
                     )
+
+                await require_room(
+                    database,
+                    select(func.count())
+                    .select_from(FinanceAccountRow)
+                    .where(FinanceAccountRow.user_id == user_id),
+                    limit=MAX_WALLETS,
+                )
 
                 # The first account bootstraps the profile; every later one is
                 # a wallet added to a profile that already exists (ADR 0029).
@@ -447,10 +457,11 @@ class PostgresFinanceAccountRepository:
                         )
                     )
 
-                # Moving somewhere still on yesterday would date a recorded
-                # operation in the future, and a future-dated operation is
-                # excluded from the balance until the day catches up. Refused
-                # rather than letting a confirmed amount vanish for hours.
+                # Moving somewhere still on yesterday would date something
+                # recorded in the future. A future-dated operation or transfer
+                # is excluded from the balance until the day catches up, and a
+                # baseline later than today has no month to report at all.
+                # Refused rather than letting confirmed money vanish for hours.
                 #
                 # Across every wallet, because the correction moves every
                 # wallet's months: asking only about the one named in the
@@ -458,9 +469,10 @@ class PostgresFinanceAccountRepository:
                 local_today = created_at.astimezone(
                     ZoneInfo(command.canonical_timezone)
                 ).date()
-                latest = await _latest_operation_on(
+                latest = await _latest_recorded_on(
                     database=database,
                     user_id=user_id,
+                    wallets=wallets,
                 )
                 if latest is not None and latest > local_today:
                     raise TimezoneRejected(
@@ -643,6 +655,34 @@ async def _latest_operation_on(
         )
     )
     return latest
+
+
+async def _latest_recorded_on(
+    *,
+    database: AsyncSession,
+    user_id: UUID,
+    wallets: Sequence[FinanceAccountRow],
+) -> date | None:
+    """The last local date anything is dated, across every wallet."""
+
+    latest_transfer: date | None = await database.scalar(
+        select(func.max(FinanceTransferRow.occurred_on)).where(
+            FinanceTransferRow.user_id == user_id,
+        )
+    )
+    latest_operation = await _latest_operation_on(database=database, user_id=user_id)
+    return max(
+        (
+            date_on
+            for date_on in (
+                latest_operation,
+                latest_transfer,
+                *(wallet.opening_balance_on for wallet in wallets),
+            )
+            if date_on is not None
+        ),
+        default=None,
+    )
 
 
 async def _earliest_operation_on(

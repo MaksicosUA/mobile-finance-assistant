@@ -26,6 +26,7 @@ from .planned_cost_recurrence_core import (
     RecurrencePersistenceUnavailable,
     RecurrenceRejected,
 )
+from .quotas import QuotaExceeded
 
 router = APIRouter(
     prefix="/api/v1/planned-cost-recurrences",
@@ -81,6 +82,8 @@ async def create_recurrence(
     user_id = _user_id(user)
     try:
         result = await core.create(user_id=user_id, command=body)
+    except QuotaExceeded:
+        raise
     except RecurrenceCommandConflict:
         public_error = _recurrence_error(
             status_code=status.HTTP_409_CONFLICT,

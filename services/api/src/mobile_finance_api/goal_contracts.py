@@ -37,6 +37,7 @@ from pydantic import (
 from .decimal_math import wide_decimal_context
 from .operation_contracts import (
     CurrencyCode,
+    EntryMoney,
     MoneyInput,
     OperationDate,
     UtcTimestamp,
@@ -182,7 +183,7 @@ class RecordGoalContributionCommand(GoalApiModel):
     schema_version: Literal["1"] = Field(alias="schemaVersion")
     command_id: UUID = Field(alias="commandId")
     direction: GoalContributionDirection
-    amount: MoneyInput
+    amount: EntryMoney
     # Omitted means "today" in the account's canonical timezone, resolved by the
     # server. A client never has to guess which day the server considers today.
     occurred_on: OperationDate | None = Field(default=None, alias="occurredOn")

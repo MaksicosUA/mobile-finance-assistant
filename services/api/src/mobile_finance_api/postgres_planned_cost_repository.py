@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from .database import AsyncSessionFactory
@@ -35,6 +35,7 @@ from .planned_cost_core import (
     PlannedCostWriteResult,
     StoredPlannedCost,
 )
+from .quotas import MAX_OPEN_PLANS, require_room
 
 _AUDIT_EVENT_TYPE: dict[str, str] = {
     "confirmed": "planned_cost_confirmed",
@@ -119,6 +120,16 @@ class PostgresPlannedCostRepository:
                 )
                 if active_user is None:
                     raise PlannedCostAccountUnavailable
+                await require_room(
+                    database,
+                    select(func.count())
+                    .select_from(PlannedCostRow)
+                    .where(
+                        PlannedCostRow.user_id == user_id,
+                        PlannedCostRow.status == "planned",
+                    ),
+                    limit=MAX_OPEN_PLANS,
+                )
                 account = await database.scalar(
                     select(FinanceAccountRow)
                     .where(
