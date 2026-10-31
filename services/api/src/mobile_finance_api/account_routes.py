@@ -6,7 +6,7 @@ from collections.abc import Callable, Coroutine
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from starlette.responses import JSONResponse
@@ -42,6 +42,7 @@ from .account_core import (
     TimezoneRejected,
 )
 from .auth import AuthenticatedUser, current_user
+from .category_contracts import catalogue_language
 from .quotas import QuotaExceeded
 
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
@@ -153,6 +154,7 @@ async def commit_account(
     response: Response,
     core: AccountCoreDependency,
     user: CurrentUserDependency,
+    accept_language: Annotated[str | None, Header()] = None,
 ) -> CommitAccountResponse:
     user_id = _authenticated_user_id(user)
     try:
@@ -161,6 +163,9 @@ async def commit_account(
             draft=body.draft,
             expected_draft_hash=body.draft_hash,
             confirmed_at=body.confirmed_at,
+            # A header rather than a field of the draft: the language is not
+            # part of what was confirmed, and a confirmed draft is hashed.
+            catalogue_language=catalogue_language(accept_language),
         )
     except QuotaExceeded:
         raise

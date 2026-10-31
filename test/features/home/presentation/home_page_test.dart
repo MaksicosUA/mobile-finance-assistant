@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile_finance_assistant/app/language/app_language.dart';
 import 'package:mobile_finance_assistant/app/app.dart';
 import 'package:mobile_finance_assistant/app/settings/app_settings.dart';
 import 'package:mobile_finance_assistant/app/settings/app_settings_controller.dart';
@@ -391,6 +392,37 @@ void main() {
     semantics.dispose();
   });
 
+  for (final language in AppLanguage.values) {
+    testWidgets('Home fits 360 dp at 200 percent in ${language.nativeName}', (
+      tester,
+    ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.binding.setSurfaceSize(const Size(360, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await _pumpApp(
+        tester,
+        repository: _ValueHomeRepository(
+          loadHomeFixtureSnapshotSync('populated.json'),
+        ),
+        language: language,
+      );
+      await tester.pump();
+
+      final context = tester.element(find.byKey(const Key('home-page')));
+      expect(Localizations.localeOf(context), language.locale);
+      expect(tester.takeException(), isNull);
+
+      await tester.drag(
+        find.byKey(const Key('home-page')),
+        const Offset(0, -1200),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('supports a 360 dp dark layout at 200 percent text scale', (
     tester,
   ) async {
@@ -733,10 +765,12 @@ Future<void> _pumpApp(
   required HomeRepository repository,
   AppSettings settings = const AppSettings(),
   HomeSessionRecovery? recovery,
+  AppLanguage? language,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (language != null) appLanguageProvider.overrideWithValue(language),
         homeRepositoryProvider.overrideWithValue(repository),
         homeSessionStoreProvider.overrideWithValue(
           const _NullHomeSessionStore(),

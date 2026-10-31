@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile_finance_assistant/app/language/app_language.dart';
+import 'package:mobile_finance_assistant/app/settings/app_settings_controller.dart';
 import 'package:mobile_finance_assistant/core/platform/speech_input.dart';
 import 'package:mobile_finance_assistant/features/voice_entry/application/voice_entry_controller.dart';
 
@@ -23,20 +25,30 @@ void main() {
     expect(spoken.take(), isNull);
   });
 
-  test('it listens for Russian, the language the parser reads', () async {
-    final speech = _FakeSpeech(const SpeechCancelled());
-    final container = ProviderContainer(
-      overrides: [speechInputProvider.overrideWithValue(speech)],
-    );
-    addTearDown(container.dispose);
+  for (final (language, tag) in const [
+    (AppLanguage.russian, 'ru-RU'),
+    (AppLanguage.ukrainian, 'uk-UA'),
+    (AppLanguage.english, 'en-US'),
+    (AppLanguage.german, 'de-DE'),
+  ]) {
+    test('it listens in the language of the app: $tag', () async {
+      final speech = _FakeSpeech(const SpeechCancelled());
+      final container = ProviderContainer(
+        overrides: [
+          speechInputProvider.overrideWithValue(speech),
+          appLanguageProvider.overrideWithValue(language),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    await container
-        .read(voiceEntryControllerProvider.notifier)
-        .listen(prompt: 'Скажите');
+      await container
+          .read(voiceEntryControllerProvider.notifier)
+          .listen(prompt: 'Скажите');
 
-    expect(speech.languageTags, ['ru-RU']);
-    expect(speech.prompts, ['Скажите']);
-  });
+      expect(speech.languageTags, [tag]);
+      expect(speech.prompts, ['Скажите']);
+    });
+  }
 
   for (final (result, outcome) in [
     (const SpeechCancelled(), VoiceEntryOutcome.cancelled),

@@ -11,8 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .category_contracts import (
-    SEEDED_CATEGORIES,
-    SEEDED_CATEGORY_KEYWORDS,
+    CatalogueLanguage,
     Category,
     CategoryKeywordsResponse,
     CreateCategoryCommand,
@@ -21,6 +20,8 @@ from .category_contracts import (
     ManagedCategoryListResponse,
     RenameCategoryCommand,
     ReplaceCategoryKeywordsCommand,
+    seeded_categories,
+    seeded_category_keywords,
 )
 from .database import AsyncSessionFactory
 from .db_models import (
@@ -65,6 +66,7 @@ def seeded_category_rows(
     *,
     user_id: UUID,
     created_at: datetime,
+    language: CatalogueLanguage = "ru",
 ) -> list[FinanceCategoryRow]:
     """Build the starting set for one user.
 
@@ -82,7 +84,7 @@ def seeded_category_rows(
             created_at=created_at,
             archived_at=None,
         )
-        for seeded in SEEDED_CATEGORIES
+        for seeded in seeded_categories(language)
     ]
 
 
@@ -90,6 +92,7 @@ def seeded_category_keyword_rows(
     *,
     categories: list[FinanceCategoryRow],
     created_at: datetime,
+    language: CatalogueLanguage = "ru",
 ) -> list[FinanceCategoryKeywordRow]:
     """Build the starting vocabulary for freshly seeded categories.
 
@@ -98,11 +101,12 @@ def seeded_category_keyword_rows(
     until the user teaches it every word.
     """
 
+    vocabulary = seeded_category_keywords(language)
     rows: list[FinanceCategoryKeywordRow] = []
     for category in categories:
         if category.system_key is None:
             continue
-        for keyword in SEEDED_CATEGORY_KEYWORDS.get(category.system_key, ()):
+        for keyword in vocabulary.get(category.system_key, ()):
             rows.append(
                 FinanceCategoryKeywordRow(
                     id=uuid4(),

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/money/entered_amount.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../home/application/home_controller.dart';
 import '../data/finance_entry_repository.dart';
@@ -495,7 +496,7 @@ bool _requiresAuthentication(FinanceEntryFailure failure) =>
     failure.kind == FinanceEntryFailureKind.sessionChanged;
 
 /// Accepts the comma decimal separator Russian keyboards produce.
-String _normalizedAmount(String value) => value.trim().replaceAll(',', '.');
+String _normalizedAmount(String value) => enteredAmountText(value);
 
 DateTime _dateOnly(DateTime value) =>
     DateTime.utc(value.year, value.month, value.day);

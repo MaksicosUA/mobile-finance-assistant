@@ -47,21 +47,30 @@ class UpcomingPaymentsList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium,
+          LayoutBuilder(
+            builder: (context, constraints) => Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
-              ),
-              if (onOpenAll != null)
-                TextButton(
-                  key: const Key('open-all-payments'),
-                  onPressed: onOpenAll,
-                  child: Text(allPaymentsLabel),
-                ),
-            ],
+                if (onOpenAll != null)
+                  // Bounded so a long label wraps inside the button: a German
+                  // one at 200% is wider than the whole row (ADR 0034).
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: constraints.maxWidth * 0.6,
+                    ),
+                    child: TextButton(
+                      key: const Key('open-all-payments'),
+                      onPressed: onOpenAll,
+                      child: Text(allPaymentsLabel),
+                    ),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.xs),
           Card(

@@ -208,6 +208,31 @@ class SeededCategory(CategoryApiModel):
     direction: CategoryDirection
 
 
+#: The languages a fresh catalogue can be written in (ADR 0034).
+CatalogueLanguage = Literal["ru", "uk", "en", "de"]
+
+
+def catalogue_language(accept_language: str | None) -> CatalogueLanguage:
+    """The language a client asked for, in the terms a catalogue is written.
+
+    No header means Russian, because every client that predates this sends none
+    and they are all Russian. Asking for something else means English, which is
+    the language most people can read when theirs is missing.
+    """
+
+    if accept_language is None:
+        return "ru"
+    tag = accept_language.split(",")[0].split(";")[0].strip().lower()
+    language = tag.split("-")[0]
+    if language == "ru":
+        return "ru"
+    if language == "uk":
+        return "uk"
+    if language == "de":
+        return "de"
+    return "en"
+
+
 # Russian first, as the product requires. The key is what stays stable across
 # languages; the name is the fallback label and the value a rename replaces.
 SEEDED_CATEGORIES: tuple[SeededCategory, ...] = (
@@ -299,6 +324,198 @@ SEEDED_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     "gifts_in": ("подар",),
     "interest": ("процент", "вклад", "депозит"),
 }
+
+#: The same starting set in the other languages, keyed the same way. A name here
+#: is written once, when the catalogue is created, and from then on is the
+#: person's own like any name they typed: changing the app's language does not
+#: rewrite it (ADR 0034).
+_TRANSLATED_CATEGORY_NAMES: dict[CatalogueLanguage, dict[str, str]] = {
+    "uk": {
+        "groceries": "Продукти",
+        "eating_out": "Кафе й ресторани",
+        "transport": "Транспорт",
+        "housing": "Житло",
+        "utilities": "Зв’язок та інтернет",
+        "health": "Здоров’я",
+        "clothing": "Одяг",
+        "entertainment": "Розваги",
+        "education": "Освіта",
+        "gifts_out": "Подарунки",
+        "other_expense": "Інше",
+        "salary": "Зарплата",
+        "freelance": "Підробіток",
+        "gifts_in": "Подарунки",
+        "interest": "Відсотки",
+        "other_income": "Інше",
+    },
+    "en": {
+        "groceries": "Groceries",
+        "eating_out": "Cafes and restaurants",
+        "transport": "Transport",
+        "housing": "Housing",
+        "utilities": "Phone and internet",
+        "health": "Health",
+        "clothing": "Clothing",
+        "entertainment": "Entertainment",
+        "education": "Education",
+        "gifts_out": "Gifts",
+        "other_expense": "Other",
+        "salary": "Salary",
+        "freelance": "Side income",
+        "gifts_in": "Gifts",
+        "interest": "Interest",
+        "other_income": "Other",
+    },
+    "de": {
+        "groceries": "Lebensmittel",
+        "eating_out": "Cafés und Restaurants",
+        "transport": "Verkehr",
+        "housing": "Wohnen",
+        "utilities": "Telefon und Internet",
+        "health": "Gesundheit",
+        "clothing": "Kleidung",
+        "entertainment": "Freizeit",
+        "education": "Bildung",
+        "gifts_out": "Geschenke",
+        "other_expense": "Sonstiges",
+        "salary": "Gehalt",
+        "freelance": "Nebenverdienst",
+        "gifts_in": "Geschenke",
+        "interest": "Zinsen",
+        "other_income": "Sonstiges",
+    },
+}
+
+_TRANSLATED_CATEGORY_KEYWORDS: dict[CatalogueLanguage, dict[str, tuple[str, ...]]] = {
+    "uk": {
+        "groceries": ("продукт", "їжа", "їжу", "магазин", "супермаркет"),
+        "eating_out": ("кафе", "ресторан", "кава", "каву", "обід", "вечер", "бар"),
+        "transport": (
+            "транспорт",
+            "таксі",
+            "метро",
+            "автобус",
+            "трамвай",
+            "потяг",
+            "поїзд",
+            "квит",
+        ),
+        "housing": ("житл", "оренд", "квартир", "іпотек", "комунал"),
+        "utilities": ("інтернет", "звязок", "мобільн", "телефон", "провайдер"),
+        "health": ("здоров", "лікар", "аптек", "ліки", "стоматолог", "клінік"),
+        "clothing": ("одяг", "взутт", "куртк", "джинс", "футболк"),
+        "entertainment": ("розваг", "кіно", "театр", "концерт", "ігр", "підписк"),
+        "education": ("освіт", "курс", "навчан", "книг", "школ", "універ"),
+        "gifts_out": ("подарун", "сувенір"),
+        "salary": ("зарплат", "оклад", "аванс"),
+        "freelance": ("підробіт", "фріланс", "замовлен", "проєкт", "проект"),
+        "gifts_in": ("подарун",),
+        "interest": ("відсот", "вклад", "депозит"),
+    },
+    "en": {
+        "groceries": ("grocer", "food", "supermarket"),
+        "eating_out": (
+            "cafe",
+            "restaurant",
+            "coffee",
+            "lunch",
+            "dinner",
+            "breakfast",
+        ),
+        "transport": (
+            "transport",
+            "taxi",
+            "uber",
+            "metro",
+            "subway",
+            "train",
+            "tram",
+            "ticket",
+        ),
+        "housing": ("rent", "mortgage", "apartment", "housing"),
+        "utilities": ("internet", "phone", "mobile", "broadband"),
+        "health": ("health", "doctor", "pharmacy", "medicine", "dentist", "clinic"),
+        "clothing": ("clothes", "clothing", "shoes", "jacket", "jeans", "shirt"),
+        "entertainment": (
+            "entertainment",
+            "cinema",
+            "movie",
+            "theatre",
+            "theater",
+            "concert",
+            "game",
+            "subscription",
+        ),
+        "education": ("education", "course", "tuition", "book", "school", "universit"),
+        "gifts_out": ("gift", "souvenir"),
+        "salary": ("salary", "wage", "paycheck"),
+        "freelance": ("freelance", "side", "project"),
+        "gifts_in": ("gift",),
+        "interest": ("interest", "deposit", "savings"),
+    },
+    "de": {
+        "groceries": ("lebensmittel", "supermarkt", "einkauf", "rewe", "edeka", "aldi"),
+        "eating_out": (
+            "cafe",
+            "café",
+            "restaurant",
+            "kaffee",
+            "mittagessen",
+            "abendessen",
+            "kneipe",
+        ),
+        "transport": (
+            "verkehr",
+            "taxi",
+            "bahn",
+            "ubahn",
+            "sbahn",
+            "straßenbahn",
+            "fahrkarte",
+            "ticket",
+        ),
+        "housing": ("miete", "wohnung", "hypothek", "nebenkosten"),
+        "utilities": ("internet", "telefon", "handy", "mobilfunk"),
+        "health": (
+            "gesundheit",
+            "arzt",
+            "zahnarzt",
+            "apotheke",
+            "medikament",
+            "klinik",
+        ),
+        "clothing": ("kleidung", "schuhe", "jacke", "jeans", "hemd"),
+        "entertainment": ("freizeit", "kino", "theater", "konzert", "spiel", "abo"),
+        "education": ("bildung", "kurs", "schule", "buch", "bücher", "studium"),
+        "gifts_out": ("geschenk", "souvenir"),
+        "salary": ("gehalt", "lohn"),
+        "freelance": ("nebenjob", "nebenverdienst", "freelance", "auftrag", "honorar"),
+        "gifts_in": ("geschenk",),
+        "interest": ("zinsen", "festgeld", "tagesgeld"),
+    },
+}
+
+
+def seeded_categories(language: CatalogueLanguage) -> tuple[SeededCategory, ...]:
+    """The starting set, named in `language`."""
+
+    if language == "ru":
+        return SEEDED_CATEGORIES
+    names = _TRANSLATED_CATEGORY_NAMES[language]
+    return tuple(
+        seeded.model_copy(update={"name": names[seeded.system_key]})
+        for seeded in SEEDED_CATEGORIES
+    )
+
+
+def seeded_category_keywords(
+    language: CatalogueLanguage,
+) -> dict[str, tuple[str, ...]]:
+    """The starting vocabulary in `language`."""
+
+    if language == "ru":
+        return SEEDED_CATEGORY_KEYWORDS
+    return _TRANSLATED_CATEGORY_KEYWORDS[language]
 
 
 def category_contract_schema() -> dict[str, object]:

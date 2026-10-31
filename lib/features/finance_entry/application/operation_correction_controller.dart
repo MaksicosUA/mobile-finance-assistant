@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/canonical_timezone.dart';
+import '../../../core/money/entered_amount.dart';
 import '../data/finance_entry_repository.dart';
 import '../domain/finance_entry_models.dart';
 import '../domain/finance_entry_result.dart';
@@ -261,7 +262,7 @@ class OperationCorrectionController extends Notifier<OperationCorrectionState> {
       // one command.
       commandId: ref.read(financeCommandIdFactoryProvider)(),
       type: current.type,
-      amount: current.amount.trim().replaceAll(',', '.'),
+      amount: enteredAmountText(current.amount),
       currency: current.account.currency,
       accountId: current.account.accountId,
       category: category?.name,

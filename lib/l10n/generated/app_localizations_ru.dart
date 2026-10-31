@@ -409,13 +409,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get languageSetting => 'Язык';
 
   @override
-  String get russianLanguage => 'Русский';
-
-  @override
   String get baseCurrencySetting => 'Основная валюта';
-
-  @override
-  String get settingsNote => 'Переключение языка пока недоступно.';
 
   @override
   String get baselineSettingsAction => 'Дата начала учёта';
@@ -2167,5 +2161,139 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String waitingPhrasesNoticeLabel(int count) {
     return 'Фразы, сказанные без интернета, ждут разбора: $count. Открыть';
+  }
+
+  @override
+  String get languageFollowPhone => 'Как на телефоне';
+
+  @override
+  String get languageSettingDescription => 'Экраны и голосовой ввод';
+
+  @override
+  String currencyName(String code) {
+    String _temp0 = intl.Intl.selectLogic(code, {
+      'EUR': 'Евро',
+      'USD': 'Доллар США',
+      'UAH': 'Гривна',
+      'GBP': 'Фунт стерлингов',
+      'PLN': 'Злотый',
+      'CHF': 'Швейцарский франк',
+      'CZK': 'Чешская крона',
+      'SEK': 'Шведская крона',
+      'NOK': 'Норвежская крона',
+      'DKK': 'Датская крона',
+      'HUF': 'Форинт',
+      'RON': 'Румынский лей',
+      'BGN': 'Болгарский лев',
+      'RSD': 'Сербский динар',
+      'ALL': 'Албанский лек',
+      'MKD': 'Македонский денар',
+      'BAM': 'Конвертируемая марка',
+      'TRY': 'Турецкая лира',
+      'MDL': 'Молдавский лей',
+      'RUB': 'Российский рубль',
+      'BYN': 'Белорусский рубль',
+      'GEL': 'Лари',
+      'AMD': 'Армянский драм',
+      'AZN': 'Азербайджанский манат',
+      'KZT': 'Тенге',
+      'UZS': 'Узбекский сум',
+      'KGS': 'Киргизский сом',
+      'ILS': 'Шекель',
+      'AED': 'Дирхам ОАЭ',
+      'EGP': 'Египетский фунт',
+      'INR': 'Индийская рупия',
+      'CNY': 'Юань',
+      'JPY': 'Иена',
+      'KRW': 'Вона',
+      'THB': 'Бат',
+      'VND': 'Донг',
+      'IDR': 'Индонезийская рупия',
+      'SGD': 'Сингапурский доллар',
+      'HKD': 'Гонконгский доллар',
+      'AUD': 'Австралийский доллар',
+      'NZD': 'Новозеландский доллар',
+      'CAD': 'Канадский доллар',
+      'MXN': 'Мексиканское песо',
+      'BRL': 'Бразильский реал',
+      'ARS': 'Аргентинское песо',
+      'CLP': 'Чилийское песо',
+      'ZAR': 'Южноафриканский рэнд',
+      'MAD': 'Марокканский дирхам',
+      'TND': 'Тунисский динар',
+      'ISK': 'Исландская крона',
+      'other': '$code',
+    });
+    return '$_temp0';
+  }
+
+  @override
+  String timezoneCity(String zone) {
+    String _temp0 = intl.Intl.selectLogic(zone, {
+      'Europe_Lisbon': 'Лиссабон',
+      'Europe_Dublin': 'Дублин',
+      'Europe_London': 'Лондон',
+      'Atlantic_Canary': 'Канарские острова',
+      'Europe_Madrid': 'Мадрид',
+      'Europe_Paris': 'Париж',
+      'Europe_Brussels': 'Брюссель',
+      'Europe_Amsterdam': 'Амстердам',
+      'Europe_Berlin': 'Берлин',
+      'Europe_Zurich': 'Цюрих',
+      'Europe_Vienna': 'Вена',
+      'Europe_Prague': 'Прага',
+      'Europe_Rome': 'Рим',
+      'Europe_Warsaw': 'Варшава',
+      'Europe_Budapest': 'Будапешт',
+      'Europe_Stockholm': 'Стокгольм',
+      'Europe_Oslo': 'Осло',
+      'Europe_Copenhagen': 'Копенгаген',
+      'Europe_Belgrade': 'Белград',
+      'Europe_Zagreb': 'Загреб',
+      'Europe_Ljubljana': 'Любляна',
+      'Europe_Bratislava': 'Братислава',
+      'Europe_Athens': 'Афины',
+      'Europe_Bucharest': 'Бухарест',
+      'Europe_Sofia': 'София',
+      'Europe_Helsinki': 'Хельсинки',
+      'Europe_Tallinn': 'Таллин',
+      'Europe_Riga': 'Рига',
+      'Europe_Vilnius': 'Вильнюс',
+      'Europe_Kyiv': 'Киев',
+      'Europe_Chisinau': 'Кишинёв',
+      'Europe_Minsk': 'Минск',
+      'Europe_Istanbul': 'Стамбул',
+      'Europe_Moscow': 'Москва',
+      'Asia_Tbilisi': 'Тбилиси',
+      'Asia_Yerevan': 'Ереван',
+      'Asia_Baku': 'Баку',
+      'Asia_Nicosia': 'Никосия',
+      'Asia_Jerusalem': 'Иерусалим',
+      'Asia_Dubai': 'Дубай',
+      'Asia_Tashkent': 'Ташкент',
+      'Asia_Almaty': 'Алматы',
+      'Asia_Bishkek': 'Бишкек',
+      'Asia_Bangkok': 'Бангкок',
+      'Asia_Singapore': 'Сингапур',
+      'Asia_Hong_Kong': 'Гонконг',
+      'Asia_Shanghai': 'Шанхай',
+      'Asia_Seoul': 'Сеул',
+      'Asia_Tokyo': 'Токио',
+      'Australia_Perth': 'Перт',
+      'Australia_Sydney': 'Сидней',
+      'Pacific_Auckland': 'Окленд',
+      'Africa_Cairo': 'Каир',
+      'Africa_Johannesburg': 'Йоханнесбург',
+      'America_Sao_Paulo': 'Сан-Паулу',
+      'America_Argentina_Buenos_Aires': 'Буэнос-Айрес',
+      'America_New_York': 'Нью-Йорк',
+      'America_Toronto': 'Торонто',
+      'America_Chicago': 'Чикаго',
+      'America_Denver': 'Денвер',
+      'America_Los_Angeles': 'Лос-Анджелес',
+      'America_Mexico_City': 'Мехико',
+      'other': 'UTC',
+    });
+    return '$_temp0';
   }
 }

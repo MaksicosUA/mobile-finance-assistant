@@ -10,6 +10,48 @@ void main() {
       expect(MoneyFormatter.format(money, locale: 'ru'), '1 930,00 €');
     });
 
+    test('each language writes a number its own way', () {
+      final money = Money(amount: '1930.50', currency: 'EUR');
+
+      expect(MoneyFormatter.format(money, locale: 'uk'), '1 930,50 €');
+      expect(MoneyFormatter.format(money, locale: 'de'), '1.930,50 €');
+      expect(MoneyFormatter.format(money, locale: 'en'), '€1,930.50');
+      expect(MoneyFormatter.format(money, locale: 'en-GB'), '€1,930.50');
+    });
+
+    test('English puts the sign before the currency', () {
+      final money = Money(amount: '-1930.50', currency: 'EUR');
+
+      expect(MoneyFormatter.format(money, locale: 'en'), '−€1,930.50');
+    });
+
+    test('a currency with no symbol keeps its space in every language', () {
+      final money = Money(amount: '1930.50', currency: 'CHF');
+
+      expect(MoneyFormatter.format(money, locale: 'en'), 'CHF 1,930.50');
+      expect(MoneyFormatter.format(money, locale: 'de'), '1.930,50 CHF');
+    });
+
+    test('privacy masks the amount in every language', () {
+      final money = Money(amount: '1930.50', currency: 'EUR');
+
+      expect(
+        MoneyFormatter.format(money, locale: 'en', privacy: true),
+        '€••••••',
+      );
+      expect(
+        MoneyFormatter.format(money, locale: 'de', privacy: true),
+        '•••••• €',
+      );
+    });
+
+    test('a decimal follows the language too', () {
+      expect(MoneyFormatter.formatDecimal('12.50', locale: 'de'), '12,50');
+      expect(MoneyFormatter.formatDecimal('12.50', locale: 'uk'), '12,50');
+      expect(MoneyFormatter.formatDecimal('12.50', locale: 'en'), '12.50');
+      expect(MoneyFormatter.formatPercent('5.96', locale: 'de'), '5,96%');
+    });
+
     test('preserves sign semantics and masks the full amount', () {
       final money = Money(amount: '1082.80', currency: 'EUR');
 

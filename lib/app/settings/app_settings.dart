@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../language/app_language.dart';
+
 enum AppAccent {
   teal(Color(0xFF1D8075)),
   blue(Color(0xFF2667A8)),
@@ -17,11 +19,15 @@ class AppSettings {
     this.themeMode = ThemeMode.light,
     this.accent = AppAccent.teal,
     this.privacyMode = false,
+    this.language,
   });
 
   final ThemeMode themeMode;
   final AppAccent accent;
   final bool privacyMode;
+
+  /// Null means the app follows the phone.
+  final AppLanguage? language;
 
   AppSettings copyWith({
     ThemeMode? themeMode,
@@ -32,6 +38,17 @@ class AppSettings {
       themeMode: themeMode ?? this.themeMode,
       accent: accent ?? this.accent,
       privacyMode: privacyMode ?? this.privacyMode,
+      language: language,
+    );
+  }
+
+  /// Separate from [copyWith] because null is a choice here, not an omission.
+  AppSettings withLanguage(AppLanguage? language) {
+    return AppSettings(
+      themeMode: themeMode,
+      accent: accent,
+      privacyMode: privacyMode,
+      language: language,
     );
   }
 
@@ -40,9 +57,10 @@ class AppSettings {
     return other is AppSettings &&
         other.themeMode == themeMode &&
         other.accent == accent &&
-        other.privacyMode == privacyMode;
+        other.privacyMode == privacyMode &&
+        other.language == language;
   }
 
   @override
-  int get hashCode => Object.hash(themeMode, accent, privacyMode);
+  int get hashCode => Object.hash(themeMode, accent, privacyMode, language);
 }

@@ -396,6 +396,47 @@ def test_account_api_evaluate_commit_replay_and_list_are_stable() -> None:
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize(
+    ("headers", "language"),
+    [({}, "ru"), ({"Accept-Language": "de-DE"}, "de")],
+)
+def test_the_first_account_is_seeded_in_the_language_asked_for(
+    headers: dict[str, str], language: str
+) -> None:
+    async def scenario() -> None:
+        repository = _MemoryAccountRepository()
+        core = AccountCore(repository=repository, clock=lambda: _NOW)
+        app = create_app(
+            current_user_authenticator=_StaticAuthenticator(),
+            account_core=core,
+        )
+        sent = {"Authorization": "Bearer synthetic-token", **headers}
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            evaluation = await client.post(
+                "/api/v1/accounts/evaluate",
+                json={"draft": _draft().model_dump(mode="json", by_alias=True)},
+                headers=sent,
+            )
+            commit = await client.post(
+                "/api/v1/accounts/commit",
+                json={
+                    "schemaVersion": "1",
+                    "draft": _draft().model_dump(mode="json", by_alias=True),
+                    "draftHash": evaluation.json()["draftHash"],
+                    "confirmedAt": "2026-07-27T12:01:00Z",
+                },
+                headers=sent,
+            )
+
+        assert commit.status_code == 201
+        assert repository.catalogue_languages == [language]
+
+    asyncio.run(scenario())
+
+
 def test_account_api_errors_are_no_store_and_redacted() -> None:
     async def scenario() -> None:
         marker = "sensitive-account-marker"
@@ -512,6 +553,7 @@ class _MemoryAccountRepository:
     def __init__(self) -> None:
         self._accounts: dict[UUID, CommittedFinanceAccount] = {}
         self._command_hashes: dict[tuple[UUID, UUID], bytes] = {}
+        self.catalogue_languages: list[str] = []
 
     async def get_owned_active_account(
         self,
@@ -586,7 +628,9 @@ class _MemoryAccountRepository:
         draft: AccountDraft,
         payload_hash: bytes,
         confirmed_at: datetime,
+        catalogue_language: str = "ru",
     ) -> AccountWriteResult:
+        self.catalogue_languages.append(catalogue_language)
         command_key = (user_id, draft.command_id)
         previous_hash = self._command_hashes.get(command_key)
         if previous_hash is not None:

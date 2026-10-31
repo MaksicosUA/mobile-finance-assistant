@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/money/entered_amount.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../finance_entry/application/finance_entry_controller.dart';
 import '../../finance_entry/data/finance_entry_repository.dart';
@@ -233,7 +234,7 @@ class BudgetsController extends Notifier<BudgetsState> {
   bool _isCurrent(int generation) => ref.mounted && generation == _generation;
 
   static String _normalizedLimit(String value) {
-    final trimmed = value.trim().replaceAll(',', '.');
+    final trimmed = enteredAmountText(value);
     if (trimmed.isEmpty) throw const FormatException('Empty limit.');
     return trimmed;
   }

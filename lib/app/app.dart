@@ -16,7 +16,7 @@ class FinanceApp extends ConsumerWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-      locale: const Locale('ru'),
+      locale: ref.watch(appLanguageProvider).locale,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
         AppLocalizations.delegate,
