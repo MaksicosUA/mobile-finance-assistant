@@ -10,7 +10,8 @@ category.
 from __future__ import annotations
 
 import asyncio
-from uuid import UUID
+from datetime import UTC, date, datetime
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -22,15 +23,22 @@ from mobile_finance_api.category_contracts import (
     MINIMUM_CATEGORY_KEYWORD_LENGTH,
     SEEDED_CATEGORIES,
     SEEDED_CATEGORY_KEYWORDS,
+    CatalogueLanguage,
     CategoryKeywordsResponse,
     ReplaceCategoryKeywordsCommand,
+    catalogue_language,
+    seeded_categories,
+    seeded_category_keywords,
 )
 from mobile_finance_api.main import create_app
 from mobile_finance_api.postgres_category_repository import (
     CategoryArchived,
     CategoryKeywordTaken,
     CategoryNotFound,
+    seeded_category_keyword_rows,
+    seeded_category_rows,
 )
+from mobile_finance_api.text_entry import CategoryOption, parse_operation_text
 
 _USER_ID = UUID("11111111-1111-4111-8111-111111111111")
 _CAR = UUID("22222222-2222-4222-8222-222222222222")
@@ -269,3 +277,115 @@ class _FakeKeywords:
             ),
             self.changed,
         )
+
+
+# --- the catalogue in other languages (ADR 0034) ------------------------------
+
+
+@pytest.mark.parametrize("language", ["ru", "uk", "en", "de"])
+def test_every_language_seeds_the_same_set(language: CatalogueLanguage) -> None:
+    seeded = seeded_categories(language)
+
+    assert [row.system_key for row in seeded] == [
+        row.system_key for row in SEEDED_CATEGORIES
+    ]
+    assert [row.direction for row in seeded] == [
+        row.direction for row in SEEDED_CATEGORIES
+    ]
+    pairs = [(row.direction, row.name) for row in seeded]
+    assert len(pairs) == len(set(pairs))
+
+
+@pytest.mark.parametrize("language", ["uk", "en", "de"])
+def test_another_language_really_is_another_language(
+    language: CatalogueLanguage,
+) -> None:
+    russian = {row.name for row in SEEDED_CATEGORIES}
+
+    # «Транспорт» and «Зарплата» are spelled the same in Ukrainian.
+    assert len({row.name for row in seeded_categories(language)} & russian) <= 2
+
+
+@pytest.mark.parametrize("language", ["ru", "uk", "en", "de"])
+def test_a_language_keeps_the_rules_of_the_vocabulary(
+    language: CatalogueLanguage,
+) -> None:
+    vocabulary = seeded_category_keywords(language)
+    direction_of = {row.system_key: row.direction for row in SEEDED_CATEGORIES}
+    assert set(vocabulary) == set(SEEDED_CATEGORY_KEYWORDS)
+
+    seen: dict[tuple[str, str], str] = {}
+    for key, keywords in vocabulary.items():
+        accepted = ReplaceCategoryKeywordsCommand(keywords=keywords).keywords
+        assert accepted == keywords
+        for keyword in keywords:
+            assert len(keyword) >= MINIMUM_CATEGORY_KEYWORD_LENGTH
+            slot = (direction_of[key], keyword)
+            assert slot not in seen, (slot, seen.get(slot), key)
+            seen[slot] = key
+
+
+@pytest.mark.parametrize(
+    ("language", "sentence", "key"),
+    [
+        ("uk", "купив продукти на 200", "groceries"),
+        ("uk", "заплатив за оренду квартири 300", "housing"),
+        ("en", "bought groceries for 20", "groceries"),
+        ("en", "paid the rent 800", "housing"),
+        ("de", "Lebensmittel für 20 Euro gekauft", "groceries"),
+        ("de", "Straßenbahn 3 Euro", "transport"),
+        ("de", "Miete 800 Euro bezahlt", "housing"),
+    ],
+)
+def test_a_seeded_word_reads_a_sentence_in_its_language(
+    language: CatalogueLanguage, sentence: str, key: str
+) -> None:
+    vocabulary = seeded_category_keywords(language)
+    ids = {row.system_key: uuid4() for row in SEEDED_CATEGORIES}
+    options = tuple(
+        CategoryOption(
+            category_id=ids[row.system_key],
+            name=row.name,
+            direction=row.direction,
+            keywords=vocabulary.get(row.system_key, ()),
+        )
+        for row in seeded_categories(language)
+    )
+
+    parsed = parse_operation_text(
+        text=sentence, today=date(2026, 10, 31), categories=options
+    )
+
+    assert parsed.category_id == ids[key]
+
+
+@pytest.mark.parametrize(
+    ("header", "language"),
+    [
+        (None, "ru"),
+        ("ru", "ru"),
+        ("ru-RU", "ru"),
+        ("uk", "uk"),
+        ("uk-UA,uk;q=0.9", "uk"),
+        ("de-DE", "de"),
+        ("en-GB", "en"),
+        ("fr-FR", "en"),
+        ("*", "en"),
+        ("", "en"),
+    ],
+)
+def test_the_language_a_client_asks_for(
+    header: str | None, language: CatalogueLanguage
+) -> None:
+    assert catalogue_language(header) == language
+
+
+def test_a_catalogue_seeded_in_german_is_written_in_german() -> None:
+    now = datetime(2026, 10, 31, tzinfo=UTC)
+    categories = seeded_category_rows(user_id=uuid4(), created_at=now, language="de")
+    keywords = seeded_category_keyword_rows(
+        categories=categories, created_at=now, language="de"
+    )
+
+    assert "Lebensmittel" in {row.name for row in categories}
+    assert "lebensmittel" in {row.keyword for row in keywords}

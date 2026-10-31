@@ -29,6 +29,7 @@ from .account_core import (
     TimezoneRejected,
     TimezoneWriteResult,
 )
+from .category_contracts import CatalogueLanguage
 from .database import AsyncSessionFactory
 from .db_models import (
     FinanceAccountAuditRow,
@@ -147,6 +148,7 @@ class PostgresFinanceAccountRepository:
         draft: AccountDraft,
         payload_hash: bytes,
         confirmed_at: datetime,
+        catalogue_language: CatalogueLanguage = "ru",
     ) -> AccountWriteResult:
         if len(payload_hash) != 32:
             raise AccountPersistenceUnavailable
@@ -296,7 +298,9 @@ class PostgresFinanceAccountRepository:
                     # never faces an empty picker and a failure leaves neither
                     # (ADR 0020).
                     categories = seeded_category_rows(
-                        user_id=user_id, created_at=created_at
+                        user_id=user_id,
+                        created_at=created_at,
+                        language=catalogue_language,
                     )
                     database.add_all(categories)
                     # Flushed before the keywords below: nothing relates the two
@@ -310,7 +314,9 @@ class PostgresFinanceAccountRepository:
                     # hand.
                     database.add_all(
                         seeded_category_keyword_rows(
-                            categories=categories, created_at=created_at
+                            categories=categories,
+                            created_at=created_at,
+                            language=catalogue_language,
                         )
                     )
             return _write_result(

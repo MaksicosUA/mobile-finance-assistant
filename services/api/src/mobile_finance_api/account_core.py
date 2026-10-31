@@ -27,6 +27,7 @@ from .account_contracts import (
     confirmed_baseline_command_hash,
     correct_timezone_command_hash,
 )
+from .category_contracts import CatalogueLanguage
 
 
 class AccountConfirmationMismatch(Exception):
@@ -173,6 +174,7 @@ class FinanceAccountRepository(FinanceAccountDirectory, Protocol):
         draft: AccountDraft,
         payload_hash: bytes,
         confirmed_at: datetime,
+        catalogue_language: CatalogueLanguage = "ru",
     ) -> AccountWriteResult:
         """Atomically commit or exactly replay account/audit/outbox state."""
 
@@ -253,8 +255,9 @@ class UnavailableFinanceAccountRepository:
         draft: AccountDraft,
         payload_hash: bytes,
         confirmed_at: datetime,
+        catalogue_language: CatalogueLanguage = "ru",
     ) -> AccountWriteResult:
-        del user_id, draft, payload_hash, confirmed_at
+        del user_id, draft, payload_hash, confirmed_at, catalogue_language
         raise AccountPersistenceUnavailable
 
     async def get_baseline_snapshot(
@@ -346,6 +349,7 @@ class AccountCore:
         draft: AccountDraft,
         expected_draft_hash: str,
         confirmed_at: datetime,
+        catalogue_language: CatalogueLanguage = "ru",
     ) -> AccountWriteResult:
         actual_hash = account_draft_hash(draft)
         if actual_hash != expected_draft_hash:
@@ -387,6 +391,7 @@ class AccountCore:
             draft=draft,
             payload_hash=payload_hash,
             confirmed_at=confirmed_at,
+            catalogue_language=catalogue_language,
         )
         _validate_write_result(
             result=result,
