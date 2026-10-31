@@ -10,7 +10,9 @@ category.
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, date, datetime
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -40,6 +42,7 @@ from mobile_finance_api.postgres_category_repository import (
 )
 from mobile_finance_api.text_entry import CategoryOption, parse_operation_text
 
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _USER_ID = UUID("11111111-1111-4111-8111-111111111111")
 _CAR = UUID("22222222-2222-4222-8222-222222222222")
 _MISSING = UUID("99999999-9999-4999-8999-999999999999")
@@ -378,6 +381,26 @@ def test_the_language_a_client_asks_for(
     header: str | None, language: CatalogueLanguage
 ) -> None:
     assert catalogue_language(header) == language
+
+
+@pytest.mark.parametrize("language", ["ru", "uk", "en", "de"])
+def test_the_app_and_the_server_name_a_seeded_category_alike(
+    language: CatalogueLanguage,
+) -> None:
+    """The picker draws a seeded category by its key, and reports by its name.
+
+    Two spellings would show one category under two names, a screen apart.
+    """
+
+    strings = json.loads(
+        (_REPOSITORY_ROOT / "lib" / "l10n" / f"app_{language}.arb").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    for seeded in seeded_categories(language):
+        label = "".join(part.title() for part in seeded.system_key.split("_"))
+        assert strings[f"categorySeed{label}"] == seeded.name
 
 
 def test_a_catalogue_seeded_in_german_is_written_in_german() -> None:
