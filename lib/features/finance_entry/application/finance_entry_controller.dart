@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/canonical_timezone.dart';
+import '../../../core/money/entered_amount.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/platform/finance_capture_context.dart';
 import '../../auth/application/auth_controller.dart';
@@ -703,7 +704,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
 }
 
 String normalizeMoneyInput(String value, {bool allowNegative = false}) {
-  final normalized = value.trim().replaceAll(',', '.');
+  final normalized = enteredAmountText(value);
   final pattern = allowNegative
       ? RegExp(
           r'^-?(?:[1-9][0-9]{0,19}(?:\.[0-9]{1,18})?|0(?:\.[0-9]{1,18})?)$',
