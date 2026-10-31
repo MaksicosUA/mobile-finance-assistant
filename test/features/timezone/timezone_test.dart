@@ -21,19 +21,19 @@ void main() {
   // --- the catalogue ---------------------------------------------------------
 
   test('a zone is found by its city or its identifier, in either case', () {
-    const kyiv = TimezoneOption('Europe/Kyiv', 'Киев');
+    const kyiv = TimezoneOption('Europe/Kyiv');
 
-    expect(kyiv.matches('киев'), isTrue);
-    expect(kyiv.matches('KYIV'), isTrue);
-    expect(kyiv.matches('europe/k'), isTrue);
-    expect(kyiv.matches('  '), isTrue);
-    expect(kyiv.matches('Лиссабон'), isFalse);
+    expect(kyiv.matches('киев', label: 'Киев'), isTrue);
+    expect(kyiv.matches('kiew', label: 'Kiew'), isTrue);
+    expect(kyiv.matches('KYIV', label: 'Киев'), isTrue);
+    expect(kyiv.matches('europe/k', label: 'Киев'), isTrue);
+    expect(kyiv.matches('  ', label: 'Киев'), isTrue);
+    expect(kyiv.matches('Лиссабон', label: 'Киев'), isFalse);
   });
 
   test('every offered zone is one the server would accept', () {
     for (final option in timezoneOptions) {
       expect(isUsableTimezoneName(option.id), isTrue, reason: option.id);
-      expect(option.label, isNotEmpty);
     }
     final ids = timezoneOptions.map((option) => option.id).toSet();
     expect(ids.length, timezoneOptions.length);

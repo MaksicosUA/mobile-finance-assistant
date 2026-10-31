@@ -309,9 +309,7 @@
   "generalSection": "ОБЩИЕ",
   "privacySetting": "Скрывать суммы",
   "languageSetting": "Язык",
-  "russianLanguage": "Русский",
   "baseCurrencySetting": "Основная валюта",
-  "settingsNote": "Переключение языка пока недоступно.",
   "baselineSettingsAction": "Дата начала учёта",
   "baselineSettingsDescription": "Разрешить операции за более ранний период",
   "baselineCorrectionTitle": "Дата начала учёта",
@@ -1994,5 +1992,13 @@
   "waitingPhrasesNoticeDescription": "Сказано без интернета — нажмите, чтобы разобрать",
   "@waitingPhrasesNoticeDescription": {"description": "A phrase said without a connection waits on the phone (ADR 0032)."},
   "waitingPhrasesNoticeLabel": "Фразы, сказанные без интернета, ждут разбора: {count}. Открыть",
-  "@waitingPhrasesNoticeLabel": {"description": "A phrase said without a connection waits on the phone (ADR 0032).", "placeholders": {"count": {"type": "int"}}}
+  "@waitingPhrasesNoticeLabel": {"description": "A phrase said without a connection waits on the phone (ADR 0032).", "placeholders": {"count": {"type": "int"}}},
+  "languageFollowPhone": "Как на телефоне",
+  "@languageFollowPhone": {"description": "Offered in Profile (ADR 0034)."},
+  "languageSettingDescription": "Экраны и голосовой ввод",
+  "@languageSettingDescription": {"description": "Offered in Profile (ADR 0034)."},
+  "currencyName": "{code, select, EUR{Евро} USD{Доллар США} UAH{Гривна} GBP{Фунт стерлингов} PLN{Злотый} CHF{Швейцарский франк} CZK{Чешская крона} SEK{Шведская крона} NOK{Норвежская крона} DKK{Датская крона} HUF{Форинт} RON{Румынский лей} BGN{Болгарский лев} RSD{Сербский динар} ALL{Албанский лек} MKD{Македонский денар} BAM{Конвертируемая марка} TRY{Турецкая лира} MDL{Молдавский лей} RUB{Российский рубль} BYN{Белорусский рубль} GEL{Лари} AMD{Армянский драм} AZN{Азербайджанский манат} KZT{Тенге} UZS{Узбекский сум} KGS{Киргизский сом} ILS{Шекель} AED{Дирхам ОАЭ} EGP{Египетский фунт} INR{Индийская рупия} CNY{Юань} JPY{Иена} KRW{Вона} THB{Бат} VND{Донг} IDR{Индонезийская рупия} SGD{Сингапурский доллар} HKD{Гонконгский доллар} AUD{Австралийский доллар} NZD{Новозеландский доллар} CAD{Канадский доллар} MXN{Мексиканское песо} BRL{Бразильский реал} ARS{Аргентинское песо} CLP{Чилийское песо} ZAR{Южноафриканский рэнд} MAD{Марокканский дирхам} TND{Тунисский динар} ISK{Исландская крона} other{{code}}}",
+  "@currencyName": {"description": "Offered in Profile (ADR 0034).", "placeholders": {"code": {"type": "String"}}},
+  "timezoneCity": "{zone, select, Europe_Lisbon{Лиссабон} Europe_Dublin{Дублин} Europe_London{Лондон} Atlantic_Canary{Канарские острова} Europe_Madrid{Мадрид} Europe_Paris{Париж} Europe_Brussels{Брюссель} Europe_Amsterdam{Амстердам} Europe_Berlin{Берлин} Europe_Zurich{Цюрих} Europe_Vienna{Вена} Europe_Prague{Прага} Europe_Rome{Рим} Europe_Warsaw{Варшава} Europe_Budapest{Будапешт} Europe_Stockholm{Стокгольм} Europe_Oslo{Осло} Europe_Copenhagen{Копенгаген} Europe_Belgrade{Белград} Europe_Zagreb{Загреб} Europe_Ljubljana{Любляна} Europe_Bratislava{Братислава} Europe_Athens{Афины} Europe_Bucharest{Бухарест} Europe_Sofia{София} Europe_Helsinki{Хельсинки} Europe_Tallinn{Таллин} Europe_Riga{Рига} Europe_Vilnius{Вильнюс} Europe_Kyiv{Киев} Europe_Chisinau{Кишинёв} Europe_Minsk{Минск} Europe_Istanbul{Стамбул} Europe_Moscow{Москва} Asia_Tbilisi{Тбилиси} Asia_Yerevan{Ереван} Asia_Baku{Баку} Asia_Nicosia{Никосия} Asia_Jerusalem{Иерусалим} Asia_Dubai{Дубай} Asia_Tashkent{Ташкент} Asia_Almaty{Алматы} Asia_Bishkek{Бишкек} Asia_Bangkok{Бангкок} Asia_Singapore{Сингапур} Asia_Hong_Kong{Гонконг} Asia_Shanghai{Шанхай} Asia_Seoul{Сеул} Asia_Tokyo{Токио} Australia_Perth{Перт} Australia_Sydney{Сидней} Pacific_Auckland{Окленд} Africa_Cairo{Каир} Africa_Johannesburg{Йоханнесбург} America_Sao_Paulo{Сан-Паулу} America_Argentina_Buenos_Aires{Буэнос-Айрес} America_New_York{Нью-Йорк} America_Toronto{Торонто} America_Chicago{Чикаго} America_Denver{Денвер} America_Los_Angeles{Лос-Анджелес} America_Mexico_City{Мехико} other{UTC}}",
+  "@timezoneCity": {"description": "Offered in Profile (ADR 0034).", "placeholders": {"zone": {"type": "String"}}}
 }

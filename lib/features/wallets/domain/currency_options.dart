@@ -9,18 +9,17 @@ import 'package:flutter/foundation.dart';
 /// does not know it.
 @immutable
 final class CurrencyOption {
-  const CurrencyOption(this.code, this.name, {this.symbol});
+  const CurrencyOption(this.code, {this.symbol});
 
   /// The ISO 4217 code, which is what the wallet stores.
   final String code;
 
-  /// What it is called, because "ALL" is not a word and "лек" is.
-  final String name;
-
   /// Shown beside the code when there is a well-known one.
   final String? symbol;
 
-  bool matches(String query) {
+  /// Whether [query] matches the code or [name], what it is called in the
+  /// language the screen is in.
+  bool matches(String query, {required String name}) {
     final needle = query.trim().toLowerCase();
     if (needle.isEmpty) return true;
     return code.toLowerCase().contains(needle) ||
@@ -29,54 +28,54 @@ final class CurrencyOption {
 }
 
 const currencyOptions = <CurrencyOption>[
-  CurrencyOption('EUR', 'Евро', symbol: '€'),
-  CurrencyOption('USD', 'Доллар США', symbol: r'$'),
-  CurrencyOption('UAH', 'Гривна', symbol: '₴'),
-  CurrencyOption('GBP', 'Фунт стерлингов', symbol: '£'),
-  CurrencyOption('PLN', 'Злотый'),
-  CurrencyOption('CHF', 'Швейцарский франк'),
-  CurrencyOption('CZK', 'Чешская крона'),
-  CurrencyOption('SEK', 'Шведская крона'),
-  CurrencyOption('NOK', 'Норвежская крона'),
-  CurrencyOption('DKK', 'Датская крона'),
-  CurrencyOption('HUF', 'Форинт'),
-  CurrencyOption('RON', 'Румынский лей'),
-  CurrencyOption('BGN', 'Болгарский лев'),
-  CurrencyOption('RSD', 'Сербский динар'),
-  CurrencyOption('ALL', 'Албанский лек'),
-  CurrencyOption('MKD', 'Македонский денар'),
-  CurrencyOption('BAM', 'Конвертируемая марка'),
-  CurrencyOption('TRY', 'Турецкая лира', symbol: '₺'),
-  CurrencyOption('MDL', 'Молдавский лей'),
-  CurrencyOption('RUB', 'Российский рубль', symbol: '₽'),
-  CurrencyOption('BYN', 'Белорусский рубль'),
-  CurrencyOption('GEL', 'Лари', symbol: '₾'),
-  CurrencyOption('AMD', 'Армянский драм', symbol: '֏'),
-  CurrencyOption('AZN', 'Азербайджанский манат', symbol: '₼'),
-  CurrencyOption('KZT', 'Тенге', symbol: '₸'),
-  CurrencyOption('UZS', 'Узбекский сум'),
-  CurrencyOption('KGS', 'Киргизский сом'),
-  CurrencyOption('ILS', 'Шекель', symbol: '₪'),
-  CurrencyOption('AED', 'Дирхам ОАЭ'),
-  CurrencyOption('EGP', 'Египетский фунт'),
-  CurrencyOption('INR', 'Индийская рупия', symbol: '₹'),
-  CurrencyOption('CNY', 'Юань', symbol: '¥'),
-  CurrencyOption('JPY', 'Иена', symbol: '¥'),
-  CurrencyOption('KRW', 'Вона', symbol: '₩'),
-  CurrencyOption('THB', 'Бат', symbol: '฿'),
-  CurrencyOption('VND', 'Донг', symbol: '₫'),
-  CurrencyOption('IDR', 'Индонезийская рупия'),
-  CurrencyOption('SGD', 'Сингапурский доллар'),
-  CurrencyOption('HKD', 'Гонконгский доллар'),
-  CurrencyOption('AUD', 'Австралийский доллар'),
-  CurrencyOption('NZD', 'Новозеландский доллар'),
-  CurrencyOption('CAD', 'Канадский доллар'),
-  CurrencyOption('MXN', 'Мексиканское песо'),
-  CurrencyOption('BRL', 'Бразильский реал', symbol: r'R$'),
-  CurrencyOption('ARS', 'Аргентинское песо'),
-  CurrencyOption('CLP', 'Чилийское песо'),
-  CurrencyOption('ZAR', 'Южноафриканский рэнд'),
-  CurrencyOption('MAD', 'Марокканский дирхам'),
-  CurrencyOption('TND', 'Тунисский динар'),
-  CurrencyOption('ISK', 'Исландская крона'),
+  CurrencyOption('EUR', symbol: '€'),
+  CurrencyOption('USD', symbol: r'$'),
+  CurrencyOption('UAH', symbol: '₴'),
+  CurrencyOption('GBP', symbol: '£'),
+  CurrencyOption('PLN'),
+  CurrencyOption('CHF'),
+  CurrencyOption('CZK'),
+  CurrencyOption('SEK'),
+  CurrencyOption('NOK'),
+  CurrencyOption('DKK'),
+  CurrencyOption('HUF'),
+  CurrencyOption('RON'),
+  CurrencyOption('BGN'),
+  CurrencyOption('RSD'),
+  CurrencyOption('ALL'),
+  CurrencyOption('MKD'),
+  CurrencyOption('BAM'),
+  CurrencyOption('TRY', symbol: '₺'),
+  CurrencyOption('MDL'),
+  CurrencyOption('RUB', symbol: '₽'),
+  CurrencyOption('BYN'),
+  CurrencyOption('GEL', symbol: '₾'),
+  CurrencyOption('AMD', symbol: '֏'),
+  CurrencyOption('AZN', symbol: '₼'),
+  CurrencyOption('KZT', symbol: '₸'),
+  CurrencyOption('UZS'),
+  CurrencyOption('KGS'),
+  CurrencyOption('ILS', symbol: '₪'),
+  CurrencyOption('AED'),
+  CurrencyOption('EGP'),
+  CurrencyOption('INR', symbol: '₹'),
+  CurrencyOption('CNY', symbol: '¥'),
+  CurrencyOption('JPY', symbol: '¥'),
+  CurrencyOption('KRW', symbol: '₩'),
+  CurrencyOption('THB', symbol: '฿'),
+  CurrencyOption('VND', symbol: '₫'),
+  CurrencyOption('IDR'),
+  CurrencyOption('SGD'),
+  CurrencyOption('HKD'),
+  CurrencyOption('AUD'),
+  CurrencyOption('NZD'),
+  CurrencyOption('CAD'),
+  CurrencyOption('MXN'),
+  CurrencyOption('BRL', symbol: r'R$'),
+  CurrencyOption('ARS'),
+  CurrencyOption('CLP'),
+  CurrencyOption('ZAR'),
+  CurrencyOption('MAD'),
+  CurrencyOption('TND'),
+  CurrencyOption('ISK'),
 ];

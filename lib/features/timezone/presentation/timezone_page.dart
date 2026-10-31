@@ -164,7 +164,7 @@ class _TimezonePageState extends ConsumerState<TimezonePage> {
     final entries = <_Entry>[];
     if (device != null) {
       final option = _optionFor(device);
-      if (option.matches(_query)) {
+      if (_matches(option)) {
         entries.add(
           _SectionEntry(AppLocalizations.of(context).timezoneDeviceSection),
         );
@@ -177,7 +177,7 @@ class _TimezonePageState extends ConsumerState<TimezonePage> {
       if (!known.contains(state.canonicalTimezone))
         _optionFor(state.canonicalTimezone),
       ...timezoneOptions,
-    ].where((option) => option.id != device && option.matches(_query)).toList();
+    ].where((option) => option.id != device && _matches(option)).toList();
     if (rest.isNotEmpty) {
       entries.add(
         _SectionEntry(AppLocalizations.of(context).timezoneAllSection),
@@ -191,14 +191,19 @@ class _TimezonePageState extends ConsumerState<TimezonePage> {
     for (final option in timezoneOptions) {
       if (option.id == id) return option;
     }
-    return TimezoneOption(id, id);
+    return TimezoneOption(id);
+  }
+
+  bool _matches(TimezoneOption option) {
+    final label = _cityName(AppLocalizations.of(context), option);
+    return option.matches(_query, label: label);
   }
 
   Future<void> _confirm(TimezoneOption option, AppLocalizations l10n) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.timezoneConfirmTitle(option.label)),
+        title: Text(l10n.timezoneConfirmTitle(_cityName(l10n, option))),
         content: Text(l10n.timezoneConfirmBody),
         actions: [
           TextButton(
@@ -222,7 +227,7 @@ class _TimezonePageState extends ConsumerState<TimezonePage> {
     if (!settled || !mounted) return;
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
-      SnackBar(content: Text(l10n.timezoneCorrected(option.label))),
+      SnackBar(content: Text(l10n.timezoneCorrected(_cityName(l10n, option)))),
     );
   }
 
@@ -272,7 +277,7 @@ class _ZoneRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       key: Key('timezone-option-${option.id}'),
-      title: Text(option.label),
+      title: Text(_cityName(AppLocalizations.of(context), option)),
       subtitle: Text(option.id),
       // Selection is carried by the check mark and the semantics, never by
       // colour alone.
@@ -282,6 +287,15 @@ class _ZoneRow extends StatelessWidget {
       onTap: selected || !enabled ? null : onPressed,
     );
   }
+}
+
+/// A zone by its city, or by its identifier when the list does not know it.
+///
+/// A branch of the message cannot hold a slash, so the identifier travels with
+/// underscores instead.
+String _cityName(AppLocalizations l10n, TimezoneOption option) {
+  final known = timezoneOptions.any((entry) => entry.id == option.id);
+  return known ? l10n.timezoneCity(option.id.replaceAll('/', '_')) : option.id;
 }
 
 class _Message extends StatelessWidget {

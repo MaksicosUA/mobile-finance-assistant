@@ -5,7 +5,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
+import 'app_localizations_de.dart';
+import 'app_localizations_en.dart';
 import 'app_localizations_ru.dart';
+import 'app_localizations_uk.dart';
 
 // ignore_for_file: type=lint
 
@@ -92,7 +95,12 @@ abstract class AppLocalizations {
       ];
 
   /// A list of this localizations delegate's supported locales.
-  static const List<Locale> supportedLocales = <Locale>[Locale('ru')];
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('de'),
+    Locale('en'),
+    Locale('ru'),
+    Locale('uk'),
+  ];
 
   /// No description provided for @appTitle.
   ///
@@ -789,23 +797,11 @@ abstract class AppLocalizations {
   /// **'Язык'**
   String get languageSetting;
 
-  /// No description provided for @russianLanguage.
-  ///
-  /// In ru, this message translates to:
-  /// **'Русский'**
-  String get russianLanguage;
-
   /// No description provided for @baseCurrencySetting.
   ///
   /// In ru, this message translates to:
   /// **'Основная валюта'**
   String get baseCurrencySetting;
-
-  /// No description provided for @settingsNote.
-  ///
-  /// In ru, this message translates to:
-  /// **'Переключение языка пока недоступно.'**
-  String get settingsNote;
 
   /// No description provided for @baselineSettingsAction.
   ///
@@ -3800,6 +3796,30 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Фразы, сказанные без интернета, ждут разбора: {count}. Открыть'**
   String waitingPhrasesNoticeLabel(int count);
+
+  /// Offered in Profile (ADR 0034).
+  ///
+  /// In ru, this message translates to:
+  /// **'Как на телефоне'**
+  String get languageFollowPhone;
+
+  /// Offered in Profile (ADR 0034).
+  ///
+  /// In ru, this message translates to:
+  /// **'Экраны и голосовой ввод'**
+  String get languageSettingDescription;
+
+  /// Offered in Profile (ADR 0034).
+  ///
+  /// In ru, this message translates to:
+  /// **'{code, select, EUR{Евро} USD{Доллар США} UAH{Гривна} GBP{Фунт стерлингов} PLN{Злотый} CHF{Швейцарский франк} CZK{Чешская крона} SEK{Шведская крона} NOK{Норвежская крона} DKK{Датская крона} HUF{Форинт} RON{Румынский лей} BGN{Болгарский лев} RSD{Сербский динар} ALL{Албанский лек} MKD{Македонский денар} BAM{Конвертируемая марка} TRY{Турецкая лира} MDL{Молдавский лей} RUB{Российский рубль} BYN{Белорусский рубль} GEL{Лари} AMD{Армянский драм} AZN{Азербайджанский манат} KZT{Тенге} UZS{Узбекский сум} KGS{Киргизский сом} ILS{Шекель} AED{Дирхам ОАЭ} EGP{Египетский фунт} INR{Индийская рупия} CNY{Юань} JPY{Иена} KRW{Вона} THB{Бат} VND{Донг} IDR{Индонезийская рупия} SGD{Сингапурский доллар} HKD{Гонконгский доллар} AUD{Австралийский доллар} NZD{Новозеландский доллар} CAD{Канадский доллар} MXN{Мексиканское песо} BRL{Бразильский реал} ARS{Аргентинское песо} CLP{Чилийское песо} ZAR{Южноафриканский рэнд} MAD{Марокканский дирхам} TND{Тунисский динар} ISK{Исландская крона} other{{code}}}'**
+  String currencyName(String code);
+
+  /// Offered in Profile (ADR 0034).
+  ///
+  /// In ru, this message translates to:
+  /// **'{zone, select, Europe_Lisbon{Лиссабон} Europe_Dublin{Дублин} Europe_London{Лондон} Atlantic_Canary{Канарские острова} Europe_Madrid{Мадрид} Europe_Paris{Париж} Europe_Brussels{Брюссель} Europe_Amsterdam{Амстердам} Europe_Berlin{Берлин} Europe_Zurich{Цюрих} Europe_Vienna{Вена} Europe_Prague{Прага} Europe_Rome{Рим} Europe_Warsaw{Варшава} Europe_Budapest{Будапешт} Europe_Stockholm{Стокгольм} Europe_Oslo{Осло} Europe_Copenhagen{Копенгаген} Europe_Belgrade{Белград} Europe_Zagreb{Загреб} Europe_Ljubljana{Любляна} Europe_Bratislava{Братислава} Europe_Athens{Афины} Europe_Bucharest{Бухарест} Europe_Sofia{София} Europe_Helsinki{Хельсинки} Europe_Tallinn{Таллин} Europe_Riga{Рига} Europe_Vilnius{Вильнюс} Europe_Kyiv{Киев} Europe_Chisinau{Кишинёв} Europe_Minsk{Минск} Europe_Istanbul{Стамбул} Europe_Moscow{Москва} Asia_Tbilisi{Тбилиси} Asia_Yerevan{Ереван} Asia_Baku{Баку} Asia_Nicosia{Никосия} Asia_Jerusalem{Иерусалим} Asia_Dubai{Дубай} Asia_Tashkent{Ташкент} Asia_Almaty{Алматы} Asia_Bishkek{Бишкек} Asia_Bangkok{Бангкок} Asia_Singapore{Сингапур} Asia_Hong_Kong{Гонконг} Asia_Shanghai{Шанхай} Asia_Seoul{Сеул} Asia_Tokyo{Токио} Australia_Perth{Перт} Australia_Sydney{Сидней} Pacific_Auckland{Окленд} Africa_Cairo{Каир} Africa_Johannesburg{Йоханнесбург} America_Sao_Paulo{Сан-Паулу} America_Argentina_Buenos_Aires{Буэнос-Айрес} America_New_York{Нью-Йорк} America_Toronto{Торонто} America_Chicago{Чикаго} America_Denver{Денвер} America_Los_Angeles{Лос-Анджелес} America_Mexico_City{Мехико} other{UTC}}'**
+  String timezoneCity(String zone);
 }
 
 class _AppLocalizationsDelegate
@@ -3813,7 +3833,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) =>
-      <String>['ru'].contains(locale.languageCode);
+      <String>['de', 'en', 'ru', 'uk'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -3822,8 +3842,14 @@ class _AppLocalizationsDelegate
 AppLocalizations lookupAppLocalizations(Locale locale) {
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
+    case 'de':
+      return AppLocalizationsDe();
+    case 'en':
+      return AppLocalizationsEn();
     case 'ru':
       return AppLocalizationsRu();
+    case 'uk':
+      return AppLocalizationsUk();
   }
 
   throw FlutterError(

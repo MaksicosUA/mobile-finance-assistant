@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile_finance_assistant/app/language/app_language.dart';
 import 'package:mobile_finance_assistant/app/settings/app_settings.dart';
 import 'package:mobile_finance_assistant/app/settings/app_settings_controller.dart';
 import 'package:mobile_finance_assistant/app/settings/settings_widgets.dart';
@@ -31,6 +32,71 @@ void main() {
 
     final context = tester.element(find.byKey(const Key('appearance-host')));
     expect(Theme.of(context).brightness, Brightness.dark);
+  });
+
+  testWidgets('the app says which language it is following', (tester) async {
+    await _pumpSection(tester);
+
+    expect(find.text('Как на телефоне'), findsOneWidget);
+    // Always written in itself, in case the screen is in a language the person
+    // cannot read.
+    await tester.ensureVisible(find.byKey(const Key('settings-language')));
+    await tester.tap(find.byKey(const Key('settings-language')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Українська'), findsOneWidget);
+    expect(find.text('English'), findsOneWidget);
+    expect(find.text('Deutsch'), findsOneWidget);
+  });
+
+  testWidgets('choosing a language keeps it', (tester) async {
+    await _pumpSection(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('settings-language')));
+    await tester.tap(find.byKey(const Key('settings-language')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('language-de')));
+    await tester.pumpAndSettle();
+
+    final context = tester.element(find.byKey(const Key('appearance-host')));
+    final container = ProviderScope.containerOf(context);
+    expect(
+      container.read(appSettingsControllerProvider).language,
+      AppLanguage.german,
+    );
+    expect(find.text('Deutsch'), findsOneWidget);
+  });
+
+  testWidgets('closing the sheet is not a choice', (tester) async {
+    await _pumpSection(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('settings-language')));
+    await tester.tap(find.byKey(const Key('settings-language')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    final context = tester.element(find.byKey(const Key('appearance-host')));
+    final container = ProviderScope.containerOf(context);
+    expect(container.read(appSettingsControllerProvider).language, isNull);
+  });
+
+  testWidgets('following the phone can be chosen again', (tester) async {
+    await _pumpSection(tester);
+    final context = tester.element(find.byKey(const Key('appearance-host')));
+    final container = ProviderScope.containerOf(context);
+    container
+        .read(appSettingsControllerProvider.notifier)
+        .setLanguage(AppLanguage.german);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('settings-language')));
+    await tester.tap(find.byKey(const Key('settings-language')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('language-phone')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(appSettingsControllerProvider).language, isNull);
   });
 
   testWidgets('privacy is a switch, not a hidden preference', (tester) async {

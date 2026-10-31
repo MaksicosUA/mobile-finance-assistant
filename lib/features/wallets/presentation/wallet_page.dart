@@ -228,8 +228,12 @@ class _CurrencySheetState extends State<_CurrencySheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final matches = currencyOptions
-        .where((option) => option.matches(_query))
+        .where(
+          (option) =>
+              option.matches(_query, name: l10n.currencyName(option.code)),
+        )
         .toList(growable: false);
     return SafeArea(
       child: Padding(
@@ -261,7 +265,7 @@ class _CurrencySheetState extends State<_CurrencySheet> {
                   final held = widget.held.contains(option.code);
                   return ListTile(
                     key: Key('wallet-currency-${option.code}'),
-                    title: Text(option.name),
+                    title: Text(l10n.currencyName(option.code)),
                     subtitle: Text(
                       option.symbol == null
                           ? option.code

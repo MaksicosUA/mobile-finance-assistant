@@ -5,6 +5,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
+import '../language/app_language.dart';
 import 'app_settings.dart';
 import 'app_settings_controller.dart';
 
@@ -71,17 +72,34 @@ class AppearanceSettingsSection extends ConsumerWidget {
                 ),
               ),
               Divider(height: 1, color: context.appColors.border),
-              SettingsValueRow(
+              SettingsActionRow(
+                key: const Key('settings-language'),
+                icon: Icons.language_outlined,
                 label: l10n.languageSetting,
-                value: l10n.russianLanguage,
+                value:
+                    settings.language?.nativeName ?? l10n.languageFollowPhone,
+                description: l10n.languageSettingDescription,
+                onPressed: () => _chooseLanguage(context, ref),
               ),
             ],
           ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Text(l10n.settingsNote, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
+  }
+
+  Future<void> _chooseLanguage(BuildContext context, WidgetRef ref) async {
+    final choice = await showModalBottomSheet<_LanguageChoice>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => _LanguageSheet(
+        selected: ref.read(appSettingsControllerProvider).language,
+      ),
+    );
+    if (choice == null) return;
+    ref
+        .read(appSettingsControllerProvider.notifier)
+        .setLanguage(choice.language);
   }
 
   String _accentLabel(AppLocalizations l10n, AppAccent accent) {
@@ -91,6 +109,64 @@ class AppearanceSettingsSection extends ConsumerWidget {
       AppAccent.purple => l10n.purpleAccent,
       AppAccent.terracotta => l10n.terracottaAccent,
     };
+  }
+}
+
+/// What the language sheet closes with. A wrapper, because null is one of the
+/// choices (follow the phone) and closing the sheet is not.
+@immutable
+final class _LanguageChoice {
+  const _LanguageChoice(this.language);
+
+  final AppLanguage? language;
+}
+
+class _LanguageSheet extends StatelessWidget {
+  const _LanguageSheet({required this.selected});
+
+  final AppLanguage? selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SafeArea(
+      child: ListView(
+        key: const Key('language-sheet'),
+        shrinkWrap: true,
+        children: [
+          _option(
+            context,
+            key: const Key('language-phone'),
+            title: l10n.languageFollowPhone,
+            language: null,
+          ),
+          for (final language in AppLanguage.values)
+            _option(
+              context,
+              key: Key('language-${language.code}'),
+              title: language.nativeName,
+              language: language,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _option(
+    BuildContext context, {
+    required Key key,
+    required String title,
+    required AppLanguage? language,
+  }) {
+    final isSelected = selected == language;
+    return ListTile(
+      key: key,
+      title: Text(title),
+      // Selection is carried by the check mark, never by colour alone.
+      trailing: isSelected ? const Icon(Icons.check) : null,
+      selected: isSelected,
+      onTap: () => Navigator.of(context).pop(_LanguageChoice(language)),
+    );
   }
 }
 

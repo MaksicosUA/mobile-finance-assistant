@@ -2,16 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/canonical_timezone.dart';
+import '../../../app/settings/app_settings_controller.dart';
 import '../../../core/platform/speech_input.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../finance_entry/application/finance_entry_controller.dart';
 import '../domain/waiting_phrase.dart';
 import 'waiting_phrases_controller.dart';
-
-/// The language the recogniser listens for. Russian because the sentence
-/// parser reads Russian (ADR 0022): recognising another language would only
-/// produce a sentence nothing can read.
-const voiceEntryLanguageTag = 'ru-RU';
 
 /// What the recogniser heard, on its way to the entry form.
 @immutable
@@ -86,7 +82,12 @@ class VoiceEntryController extends Notifier<bool> {
     try {
       final result = await ref
           .read(speechInputProvider)
-          .listen(languageTag: voiceEntryLanguageTag, prompt: prompt);
+          .listen(
+            // The language of the app, which the sentence parser reads like
+            // the other three (ADR 0034).
+            languageTag: ref.read(appLanguageProvider).speechTag,
+            prompt: prompt,
+          );
       switch (result) {
         case SpeechHeard(:final text):
           final kept = await _keep(text);

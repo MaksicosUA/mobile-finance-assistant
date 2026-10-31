@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../language/app_language.dart';
 import 'app_settings.dart';
 
 abstract interface class AppSettingsStore {
@@ -25,6 +26,7 @@ class SharedPreferencesAppSettingsStore implements AppSettingsStore {
   static const _themeKey = 'mfa_theme';
   static const _accentKey = 'mfa_accent';
   static const _privacyKey = 'mfa_privacy';
+  static const _languageKey = 'mfa_language';
 
   @override
   Future<AppSettings> load() async {
@@ -41,12 +43,14 @@ class SharedPreferencesAppSettingsStore implements AppSettingsStore {
       themeMode: themeMode,
       accent: accent ?? AppAccent.teal,
       privacyMode: preferences.getBool(_privacyKey) ?? false,
+      language: AppLanguage.fromCode(preferences.getString(_languageKey)),
     );
   }
 
   @override
   Future<void> save(AppSettings settings) async {
     final preferences = await SharedPreferences.getInstance();
+    final language = settings.language;
     await Future.wait([
       preferences.setString(
         _themeKey,
@@ -54,6 +58,10 @@ class SharedPreferencesAppSettingsStore implements AppSettingsStore {
       ),
       preferences.setString(_accentKey, settings.accent.name),
       preferences.setBool(_privacyKey, settings.privacyMode),
+      if (language == null)
+        preferences.remove(_languageKey)
+      else
+        preferences.setString(_languageKey, language.code),
     ]);
   }
 }
