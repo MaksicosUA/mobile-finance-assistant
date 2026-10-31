@@ -6,10 +6,13 @@ financial, and carries no authority — the client turns the proposal into an
 ordinary draft and Finance Core remains the only thing that validates and
 commits it (ADR 0022).
 
-Everything here is rules: number shapes, a currency dictionary, a small Russian
-date vocabulary, direction verbs, and matching against categories the user
-already owns. No model, so every filled field can be explained to the user who
-asks why.
+Everything here is rules: number shapes, a currency dictionary, a small date
+vocabulary, direction verbs, and matching against categories the user already
+owns. No model, so every filled field can be explained to the user who asks why.
+
+The tables below are Russian. Ukrainian, English and German are merged into them
+from `text_entry_languages`, so one parser reads all four and needs no language
+to be named (ADR 0034).
 """
 
 from __future__ import annotations
@@ -22,11 +25,15 @@ from decimal import Decimal, InvalidOperation
 from typing import Literal
 from uuid import UUID
 
-OperationDirection = Literal["expense", "income"]
+from .text_entry_languages import (
+    HUNDRED_WORDS,
+    NUMBER_JOINERS,
+    VOCABULARIES,
+    SupportedDateExpression,
+    german_number,
+)
 
-#: The only date phrases that may be sent as a draft's `sourceExpression`,
-#: because they are exactly the ones Finance Core's resolver accepts.
-SupportedDateExpression = Literal["сегодня", "вчера"]
+OperationDirection = Literal["expense", "income"]
 
 ParseGapCode = Literal[
     # Nothing that could be an amount. The one field that cannot be guessed.
@@ -107,7 +114,7 @@ def parse_operation_text(
     """
 
     original = _normalized(text)
-    haystack = original.casefold()
+    haystack = _folded(original)
 
     occurred_on, expression, date_span, date_understood = _find_date(
         haystack, today=today
@@ -159,6 +166,25 @@ def parse_operation_text(
     )
 
 
+#: In capitals these two are currency codes. In lower case they are English
+#: words, and "hair gel 10" is not ten lari. A code becomes its sign, padded so
+#: the sentence keeps its length.
+_WORDLIKE_CODES = {"TRY": "₺  ", "GEL": "₾  "}
+_WORDLIKE_CODE = re.compile(r"\b(?:" + "|".join(_WORDLIKE_CODES) + r")\b")
+
+#: Ukrainian writes an apostrophe inside a word, and `_WORD` would split there:
+#: "п'ять" would be a stray "п" and "ять". Without it the word is the one the
+#: tables hold, however it was typed.
+_APOSTROPHES = str.maketrans("", "", "'’ʼ`")
+
+
+def _folded(text: str) -> str:
+    """The sentence as the tables are written: one spelling per word."""
+
+    with_signs = _WORDLIKE_CODE.sub(lambda code: _WORDLIKE_CODES[code.group()], text)
+    return with_signs.casefold().translate(_APOSTROPHES)
+
+
 def _normalized(text: str) -> str:
     if any(ord(character) < 0x20 or ord(character) == 0x7F for character in text):
         raise ValueError("text contains control characters")
@@ -192,7 +218,7 @@ _INCOME_WORDS = (
     "возврат",
     "выплата",
     "выплатили",
-)
+) + tuple(word for language in VOCABULARIES for word in language.income_words)
 
 _EXPENSE_WORDS = (
     "потратил",
@@ -212,7 +238,7 @@ _EXPENSE_WORDS = (
     "списал",
     "списано",
     "ушло",
-)
+) + tuple(word for language in VOCABULARIES for word in language.expense_words)
 
 
 # Money arriving is said with a verb of motion, and the verb alone proves
@@ -247,12 +273,27 @@ _ARRIVING_MONEY = (
 )
 _INCOME_PHRASES = tuple(
     f"{verb} {money}" for verb in _ARRIVAL_VERBS for money in _ARRIVING_MONEY
-)
+) + tuple(phrase for language in VOCABULARIES for phrase in language.income_phrases)
+
+
+def _from_a_word_start(words: tuple[str, ...]) -> re.Pattern[str]:
+    """Any of `words`, starting where a word starts.
+
+    The same rule keywords follow. Without it "got paid" fires inside "forgot
+    paid" and «вернули» inside «перевернули».
+    """
+
+    longest_first = sorted(words, key=len, reverse=True)
+    return re.compile(r"\b(?:" + "|".join(map(re.escape, longest_first)) + ")")
+
+
+_INCOME = _from_a_word_start(_INCOME_WORDS + _INCOME_PHRASES)
+_EXPENSE = _from_a_word_start(_EXPENSE_WORDS)
 
 
 def _find_direction(haystack: str) -> OperationDirection:
-    income = _first_index(haystack, _INCOME_WORDS + _INCOME_PHRASES)
-    expense = _first_index(haystack, _EXPENSE_WORDS)
+    income = _first_index(haystack, _INCOME)
+    expense = _first_index(haystack, _EXPENSE)
     if income is None:
         return "expense"
     if expense is None:
@@ -261,10 +302,9 @@ def _find_direction(haystack: str) -> OperationDirection:
     return "income" if income < expense else "expense"
 
 
-def _first_index(haystack: str, words: tuple[str, ...]) -> int | None:
-    found = [haystack.find(word) for word in words]
-    positions = [index for index in found if index >= 0]
-    return min(positions) if positions else None
+def _first_index(haystack: str, words: re.Pattern[str]) -> int | None:
+    found = words.search(haystack)
+    return found.start() if found else None
 
 
 # --- dates -------------------------------------------------------------------
@@ -296,6 +336,11 @@ _MONTHS = {
     "ноябрь": 11,
     "декабря": 12,
     "декабрь": 12,
+    **{
+        word: month
+        for language in VOCABULARIES
+        for word, month in language.months.items()
+    },
 }
 
 # The relative days this understands, and — third element — the phrase that may
@@ -310,6 +355,11 @@ _RELATIVE_DAYS: tuple[tuple[str, int, SupportedDateExpression | None], ...] = (
     ("поза-вчера", 2, None),
     ("вчера", 1, "вчера"),
     ("сегодня", 0, "сегодня"),
+    *(day for language in VOCABULARIES for day in language.relative_days),
+)
+_RELATIVE_DAY_PHRASES = tuple(
+    (re.compile(r"\b" + re.escape(phrase)), offset, expression)
+    for phrase, offset, expression in _RELATIVE_DAYS
 )
 
 # 03.08, 3.8.2026, 03/08 — a day and a month, optionally a year. The
@@ -320,11 +370,28 @@ _NUMERIC_DATE = re.compile(
 )
 # «числа» stands where a month would: the day of the month, the most recent one.
 _THIS_MONTH = "числа"
-_MONTH_WORDS = "|".join(sorted(_MONTHS, key=len, reverse=True)) + "|" + _THIS_MONTH
+_MONTH_NAMES = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_MONTH_WORDS = _MONTH_NAMES + "|" + _THIS_MONTH
 
-# 3 августа, 3-го августа, 3го августа, 3 августа 2026, 5-го числа
+# What may stand between a day written in digits and its month: 3-го августа,
+# 3rd of August, 3. August.
+_DAY_SUFFIX = r"(?:-?го|-?ого|-?е|-?є|st|nd|rd|th|\.)?"
+
+# 3 августа, 3-го августа, 3го августа, 3 августа 2026, 5-го числа, 3rd of August
 _NAMED_DATE = re.compile(
-    r"\b(\d{1,2})(?:-?го)?\s+(" + _MONTH_WORDS + r")(?:\s+(\d{4}))?\b"
+    r"\b(\d{1,2})"
+    + _DAY_SUFFIX
+    + r"\s+(?:of\s+)?("
+    + _MONTH_WORDS
+    + r")(?:\s+(\d{4}))?\b"
+)
+
+# August 3, August 3rd, August 3, 2026. English writes the month first. So does a
+# price in any language, "August 20 euro", which is why this one must leave an
+# amount behind to count as a date.
+_MONTH_FIRST_DATE = re.compile(
+    r"\b(" + _MONTH_NAMES + r")\s+(\d{1,2})"
+    r"(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?(?![\d.,]*\d)\b"
 )
 
 # A day said as an ordinal: «третьего сентября», «двадцать восьмого июля»,
@@ -353,16 +420,34 @@ _ORDINAL_DAYS = {
     "девятнадцатого": 19,
     "двадцатого": 20,
     "тридцатого": 30,
+    **{
+        word: day
+        for language in VOCABULARIES
+        for word, day in language.ordinal_days.items()
+    },
 }
-_ORDINAL_TENS = {"двадцать": 20, "тридцать": 30}
-_ORDINAL_DATE = re.compile(
-    r"\b(?:("
+_ORDINAL_TENS = {
+    "двадцать": 20,
+    "тридцать": 30,
+    **{
+        word: tens
+        for language in VOCABULARIES
+        for word, tens in language.ordinal_tens.items()
+    },
+}
+_ORDINAL = (
+    r"(?:("
     + "|".join(_ORDINAL_TENS)
-    + r")\s+)?("
+    + r")[\s-]+)?("
     + "|".join(sorted(_ORDINAL_DAYS, key=len, reverse=True))
-    + r")\s+("
-    + _MONTH_WORDS
-    + r")(?:\s+(\d{4}))?\b"
+    + r")"
+)
+_ORDINAL_DATE = re.compile(
+    r"\b" + _ORDINAL + r"\s+(?:of\s+)?(" + _MONTH_WORDS + r")(?:\s+(\d{4}))?\b"
+)
+# September third, September the twenty-first.
+_MONTH_FIRST_ORDINAL_DATE = re.compile(
+    r"\b(" + _MONTH_NAMES + r")\s+(?:the\s+)?" + _ORDINAL + r"(?:,?\s+(\d{4}))?\b"
 )
 
 
@@ -372,30 +457,39 @@ def _find_date(
     """Return the day, the phrase to send as `sourceExpression`, its span, and
     whether every date-shaped token was understood."""
 
-    for phrase, offset, expression in _RELATIVE_DAYS:
-        index = haystack.find(phrase)
-        if index < 0:
+    for phrase, offset, expression in _RELATIVE_DAY_PHRASES:
+        found = phrase.search(haystack)
+        if found is None:
             continue
-        span = (index, index + len(phrase))
-        return today - timedelta(days=offset), expression, span, True
+        return today - timedelta(days=offset), expression, found.span(), True
 
     match = _ORDINAL_DATE.search(haystack)
     if match is not None:
-        unit = _ORDINAL_DAYS[match.group(2)]
-        tens = _ORDINAL_TENS.get(match.group(1) or "", 0)
-        # «двадцать двадцатого» is not a day; a gap, not a guess.
-        day = tens + unit if not tens or unit < 10 else 0
-        year = int(match.group(4)) if match.group(4) else None
-        resolved = _named_day(day=day, month=match.group(3), year=year, today=today)
-        if resolved is None:
-            return today, None, match.span(), False
-        return resolved, None, match.span(), True
+        return _ordinal_date(match, tens=1, unit=2, month=3, year=4, today=today)
 
     match = _NAMED_DATE.search(haystack)
     if match is not None:
         day = int(match.group(1))
         year = int(match.group(3)) if match.group(3) else None
         resolved = _named_day(day=day, month=match.group(2), year=year, today=today)
+        if resolved is None:
+            return today, None, match.span(), False
+        return resolved, None, match.span(), True
+
+    match = _MONTH_FIRST_ORDINAL_DATE.search(haystack)
+    if match is not None:
+        return _ordinal_date(match, tens=2, unit=3, month=1, year=4, today=today)
+
+    match = _MONTH_FIRST_DATE.search(haystack)
+    if (
+        match is not None
+        and int(match.group(2)) <= 31
+        and _leaves_an_amount(haystack, match.span())
+    ):
+        year = int(match.group(3)) if match.group(3) else None
+        resolved = _named_day(
+            day=int(match.group(2)), month=match.group(1), year=year, today=today
+        )
         if resolved is None:
             return today, None, match.span(), False
         return resolved, None, match.span(), True
@@ -424,6 +518,26 @@ def _find_date(
         return resolved, None, match.span(), True
 
     return today, None, None, True
+
+
+def _ordinal_date(
+    match: re.Match[str], *, tens: int, unit: int, month: int, year: int, today: date
+) -> tuple[date, None, tuple[int, int], bool]:
+    """A day said as an ordinal, wherever its groups fell in the pattern."""
+
+    ones = _ORDINAL_DAYS[match.group(unit)]
+    tens_value = _ORDINAL_TENS.get(match.group(tens) or "", 0)
+    # «двадцать двадцатого» is not a day; a gap, not a guess.
+    day = tens_value + ones if not tens_value or ones < 10 else 0
+    resolved = _named_day(
+        day=day,
+        month=match.group(month),
+        year=int(match.group(year)) if match.group(year) else None,
+        today=today,
+    )
+    if resolved is None:
+        return today, None, match.span(), False
+    return resolved, None, match.span(), True
 
 
 def _leaves_an_amount(haystack: str, span: tuple[int, int]) -> bool:
@@ -529,11 +643,9 @@ _CURRENCY_WORDS: dict[str, str] = {
     "тенге": "KZT",
     "kzt": "KZT",
     "лари": "GEL",
-    "gel": "GEL",
     "лира": "TRY",
     "лиры": "TRY",
     "лир": "TRY",
-    "try": "TRY",
     "шекель": "ILS",
     "шекеля": "ILS",
     "шекелей": "ILS",
@@ -547,6 +659,11 @@ _CURRENCY_WORDS: dict[str, str] = {
     "иен": "JPY",
     "jpy": "JPY",
     "czk": "CZK",
+    **{
+        word: code
+        for language in VOCABULARIES
+        for word, code in language.currency_words.items()
+    },
 }
 
 #: Currency signs, matched anywhere, because they are not word characters.
@@ -572,9 +689,16 @@ _CURRENCY_SIGNS: dict[str, str] = {
 # character an editor can silently lose.
 _THOUSANDS_SEPARATORS = " \u00a0\u202f"
 
+# A comma or a dot groups thousands only in front of exactly three digits, and a
+# cent has two, so "1,250" and "1.250" are both 1250 in every language and "12,50"
+# and "12.50" both twelve fifty. No language has to be named. The first group
+# cannot be a bare zero: "0,125" is not 125.
 _AMOUNT = re.compile(
-    r"(?<![\d.,])(\d{1,3}(?:[" + _THOUSANDS_SEPARATORS + r"]\d{3})+"
-    r"(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+    r"(?<![\d.,])("
+    r"\d{1,3}(?:[" + _THOUSANDS_SEPARATORS + r"]\d{3})+(?:[.,]\d{1,2})?"
+    r"|[1-9]\d{0,2}(?:,\d{3})+(?:\.\d{1,2})?"
+    r"|[1-9]\d{0,2}(?:\.\d{3})+(?:,\d{1,2})?"
+    r"|\d+(?:[.,]\d{1,2})?)"
     r"(?![\d.,]*\d)"
 )
 
@@ -662,6 +786,11 @@ _SPOKEN_UNITS: dict[str, int] = {
     "восьмисот": 800,
     "девятьсот": 900,
     "девятисот": 900,
+    **{
+        word: value
+        for language in VOCABULARIES
+        for word, value in language.spoken_units.items()
+    },
 }
 
 #: A word that multiplies everything gathered before it.
@@ -675,12 +804,42 @@ _SPOKEN_MULTIPLIERS: dict[str, int] = {
     "миллиона": 1_000_000,
     "миллионов": 1_000_000,
     "миллиону": 1_000_000,
+    **{
+        word: value
+        for language in VOCABULARIES
+        for word, value in language.spoken_multipliers.items()
+    },
 }
+
+#: What may follow digits and multiply them: "3 тысячи" is 3000, not 3. Read as
+#: three it was off by a thousand with nothing to show for it. The short forms
+#: are here rather than among the spoken words because nobody says them alone.
+_DIGIT_MULTIPLIERS: dict[str, int] = {
+    **_SPOKEN_MULTIPLIERS,
+    "тыс": 1000,
+    "млн": 1_000_000,
+    **{
+        word: value
+        for language in VOCABULARIES
+        for word, value in language.digit_multipliers.items()
+    },
+}
+# A lone letter counts only when it touches the digits: "5к" is five thousand,
+# and "5 к обеду" is five, towards lunch.
+_AFTER_DIGITS = re.compile(
+    r"(?:\s+(" + "|".join(sorted(_DIGIT_MULTIPLIERS, key=len, reverse=True)) + r")"
+    r"|([кk]))\b"
+)
 
 #: "полторы тысячи" is 1500, and people say it constantly.
 _SPOKEN_HALVES: dict[str, Decimal] = {
     "полтора": Decimal("1.5"),
     "полторы": Decimal("1.5"),
+    **{
+        word: value
+        for language in VOCABULARIES
+        for word, value in language.spoken_halves.items()
+    },
 }
 
 
@@ -708,13 +867,17 @@ class _AmountCandidate:
 #: number descend through these — "сто двадцать пять" is hundreds, then tens,
 #: then units — so a part that does not descend cannot belong to the same
 #: number. That is what tells "сто двадцать" from "три пятьдесят".
-_HUNDREDS, _TENS, _UNITS = 3, 2, 1
+_THOUSANDS, _HUNDREDS, _TENS, _UNITS = 4, 3, 2, 1
 
 #: "ноль целых пять" is how a decimal is dictated: the word is the point.
-_DECIMAL_SEPARATORS = frozenset({"целых", "целая", "целую", "целой", "целого", "целые"})
+_DECIMAL_SEPARATORS = frozenset(
+    {"целых", "целая", "целую", "целой", "целого", "целые"}
+).union(*(language.decimal_separators for language in VOCABULARIES))
 
 
 def _numeral_class(value: Decimal) -> int:
+    if value >= 1000:
+        return _THOUSANDS
     if value >= 100:
         return _HUNDREDS
     if value >= 20 and value % 10 == 0:
@@ -775,6 +938,20 @@ def _spoken_amounts(haystack: str) -> list[_AmountCandidate]:
                 close_number()
                 dictated_point = True
             continue
+        if word in NUMBER_JOINERS and started and last_class in (0, _HUNDREDS):
+            continue
+        if word in HUNDRED_WORDS:
+            # "Two hundred" and "two hundred thousand" both start here, so this
+            # builds the number in hand rather than adding to the total.
+            if current >= 100:
+                close_number()
+            if not started:
+                start = match.start()
+                started = True
+            current = (current if current > 0 else Decimal(1)) * 100
+            last_class = _HUNDREDS
+            end = match.end()
+            continue
         if word in _SPOKEN_UNITS:
             value = Decimal(_SPOKEN_UNITS[word])
         elif word in _SPOKEN_HALVES:
@@ -791,6 +968,8 @@ def _spoken_amounts(haystack: str) -> list[_AmountCandidate]:
             last_class = 0
             end = match.end()
             continue
+        elif (german := german_number(word)) is not None:
+            value = Decimal(german)
         else:
             flush_run()
             continue
@@ -876,9 +1055,18 @@ def _digit_amounts(haystack: str) -> list[_AmountCandidate]:
         value = _decimal(match.group(1))
         if value is None:
             continue
-        candidates.append(
-            _AmountCandidate(start=match.start(), end=match.end(), value=value)
-        )
+        end = match.end()
+        after = _AFTER_DIGITS.match(haystack, end)
+        # Recognition hears «четыре тысячи» and writes "4000 тыс". A figure that
+        # already has its thousands is not multiplied again.
+        if after is not None and value < 1000:
+            word = after.group(1)
+            value *= _DIGIT_MULTIPLIERS[word] if word else 1000
+            # "1,5 тысячи" should read as 1500 in the field, not 1500.0.
+            if value == value.to_integral_value():
+                value = value.to_integral_value()
+            end = after.end()
+        candidates.append(_AmountCandidate(start=match.start(), end=end, value=value))
     return candidates
 
 
@@ -886,9 +1074,26 @@ def _digit_amounts(haystack: str) -> list[_AmountCandidate]:
 #: Norwegian, Danish, Czech or Icelandic, and a sentence does not say which, so
 #: the honest answer is the gap an unresolvable currency sign already gets
 #: rather than a silent euro.
+#:
+#: A cent is here for the same reason: "50 центов" is not fifty of anything the
+#: sentence names, and reading it as fifty euro is off by a hundred.
 _AMBIGUOUS_CURRENCY_WORDS = frozenset(
-    {"крон", "крона", "кроны", "крону", "кроне", "кронах", "кронами"}
-)
+    {
+        "крон",
+        "крона",
+        "кроны",
+        "крону",
+        "кроне",
+        "кронах",
+        "кронами",
+        "цент",
+        "цента",
+        "центов",
+        "копейка",
+        "копейки",
+        "копеек",
+    }
+).union(*(language.ambiguous_currency_words for language in VOCABULARIES))
 
 
 # --- a transfer is not an operation ------------------------------------------
@@ -896,7 +1101,9 @@ _AMBIGUOUS_CURRENCY_WORDS = frozenset(
 #: Word starts that say money moved between the person's own places. A stem,
 #: because the parser already matches from a word start everywhere else:
 #: "перев" reads «перевёл», «перевел», «перевод» and «переведено».
-_TRANSFER_STEMS = ("перев", "обмен", "поменя", "конверт")
+_TRANSFER_STEMS = ("перев", "обмен", "поменя", "конверт") + tuple(
+    stem for language in VOCABULARIES for stem in language.transfer_stems
+)
 
 
 @dataclass(frozen=True)
@@ -917,7 +1124,7 @@ def read_transfer_sides(
     """
 
     try:
-        haystack = _normalized(text).casefold()
+        haystack = _folded(_normalized(text))
     except ValueError:
         return None
     _, _, date_span, _ = _find_date(haystack, today=today)
@@ -1027,9 +1234,10 @@ def _nearest_to_currency(
 
 
 def _decimal(raw: str) -> Decimal | None:
-    normalized = raw.replace(",", ".")
+    normalized = raw
     for separator in _THOUSANDS_SEPARATORS:
         normalized = normalized.replace(separator, "")
+    normalized = _without_grouping(normalized).replace(",", ".")
     try:
         amount = Decimal(normalized)
     except InvalidOperation:
@@ -1037,6 +1245,21 @@ def _decimal(raw: str) -> Decimal | None:
     if not amount.is_finite() or amount <= 0:
         return None
     return amount
+
+
+def _without_grouping(digits: str) -> str:
+    """Drop a comma or a dot that groups thousands rather than marks a decimal."""
+
+    for separator in ",.":
+        groups = digits.split(separator)
+        if len(groups) > 1 and all(len(group) == 3 for group in groups[1:]):
+            return "".join(groups)
+    # "1.250,50": the separator before the last group of three is the grouping.
+    decimal_mark = max(digits.rfind(","), digits.rfind("."))
+    if decimal_mark > 0:
+        head = digits[:decimal_mark]
+        return head.replace(",", "").replace(".", "") + digits[decimal_mark:]
+    return digits
 
 
 def _blank_span(haystack: str, span: tuple[int, int] | None) -> str:
@@ -1085,11 +1308,12 @@ def _find_category(
             if len(keyword) < MINIMUM_KEYWORD_LENGTH:
                 # Two letters would drag half the sentences into one category.
                 continue
+            folded = _folded(keyword)
             for word in words:
-                if word.group().startswith(keyword):
-                    offer(span=word.span(), weight=len(keyword), category=category)
+                if word.group().startswith(folded):
+                    offer(span=word.span(), weight=len(folded), category=category)
                     break
-        needle = unicodedata.normalize("NFC", category.name).casefold()
+        needle = _folded(unicodedata.normalize("NFC", category.name))
         if not needle:
             continue
         index = haystack.find(needle)
