@@ -32,6 +32,29 @@ abstract final class MoneyFormatter {
     return '$sign${style.withCurrency(number, symbol)}';
   }
 
+  /// [money] with every digit it was entered with, for the card a person
+  /// confirms: [format] stops at two decimals, and what is confirmed is the
+  /// figure, not a rounding of it.
+  static String formatExact(
+    Money money, {
+    required String locale,
+    bool privacy = false,
+  }) {
+    final symbol = _currencySymbol(money.currency);
+    final style = _NumberStyle.of(locale);
+    if (privacy) return style.withCurrency(_privacyMask, symbol);
+
+    final isNegative = money.amount.startsWith('-');
+    final unsigned = isNegative ? money.amount.substring(1) : money.amount;
+    final parts = unsigned.split('.');
+    final whole = _groupThousands(parts.first, style.grouping);
+    final number = parts.length > 1
+        ? '$whole${style.decimal}${parts[1]}'
+        : whole;
+    final sign = isNegative && !_isZero(unsigned) ? '−' : '';
+    return '$sign${style.withCurrency(number, symbol)}';
+  }
+
   /// The most decimals a percent is shown with.
   ///
   /// A percent beside a balance is read at a glance; it is not a figure anyone

@@ -252,7 +252,7 @@ void main() {
       await tester.tap(find.byKey(const Key('operation-evaluate')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('finance-confirm')), findsOneWidget);
-      expect(find.textContaining('9876'), findsOneWidget);
+      expect(find.textContaining('9 876'), findsOneWidget);
 
       await _scrollTo(tester, find.byKey(const Key('finance-confirm')));
       await tester.tap(find.byKey(const Key('finance-confirm')));
@@ -260,6 +260,7 @@ void main() {
 
       expect(find.byKey(const Key('finance-confirm')), findsNothing);
       expect(find.byKey(const Key('operation-amount')), findsNothing);
+      expect(find.textContaining('9 876'), findsNothing);
       expect(find.textContaining('9876'), findsNothing);
       expect(find.byKey(const Key('operation-queued')), findsOneWidget);
       expect(find.text('Операция сохранена на устройстве'), findsOneWidget);
@@ -271,6 +272,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('operation-amount')), findsOneWidget);
+      expect(find.textContaining('9 876'), findsNothing);
       expect(find.textContaining('9876'), findsNothing);
       expect(deliveryCoordinator.calls, hasLength(1));
       expect(tester.takeException(), isNull);

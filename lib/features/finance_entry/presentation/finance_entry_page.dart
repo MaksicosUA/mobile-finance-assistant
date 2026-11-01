@@ -10,6 +10,8 @@ import '../../../app/theme/app_tokens.dart';
 import '../../../core/network/api_config.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../home/domain/home_snapshot.dart';
+import '../../home/presentation/money_formatter.dart';
 import '../application/category_catalogue_controller.dart';
 import '../application/finance_entry_controller.dart';
 import '../application/text_entry_controller.dart';
@@ -884,7 +886,12 @@ class _AccountReview extends StatelessWidget {
         _ReviewValue(l10n.accountLabel, draft.name),
         _ReviewValue(
           l10n.openingBalanceField,
-          _exactMoney(draft.openingBalance, draft.currency, privacyEnabled),
+          _exactMoney(
+            context,
+            draft.openingBalance,
+            draft.currency,
+            privacyEnabled,
+          ),
           isMoney: true,
         ),
         _ReviewValue(
@@ -930,7 +937,7 @@ class _OperationReview extends StatelessWidget {
         ),
         _ReviewValue(
           l10n.operationAmountField,
-          _exactMoney(draft.amount, draft.currency, privacyEnabled),
+          _exactMoney(context, draft.amount, draft.currency, privacyEnabled),
           isMoney: true,
         ),
         _ReviewValue(l10n.accountLabel, state.account.name),
@@ -1758,10 +1765,17 @@ final class _ReviewValue {
   final bool isMoney;
 }
 
-String _exactMoney(String amount, String currency, bool privacy) {
-  if (privacy) return '•••••• ${currency == 'EUR' ? '€' : currency}';
-  final localized = amount.replaceFirst('.', ',').replaceFirst('-', '−');
-  return '$localized ${currency == 'EUR' ? '€' : currency}';
+String _exactMoney(
+  BuildContext context,
+  String amount,
+  String currency,
+  bool privacy,
+) {
+  return MoneyFormatter.formatExact(
+    Money(amount: amount, currency: currency),
+    locale: Localizations.localeOf(context).toString(),
+    privacy: privacy,
+  );
 }
 
 String _localizedDate(BuildContext context, String wireDate) {
