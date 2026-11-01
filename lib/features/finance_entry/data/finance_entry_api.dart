@@ -173,6 +173,7 @@ abstract interface class FinanceEntryApiClient {
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   });
 
   /// Reads the same sentence as an exchange. Answers null inside a success
@@ -1045,6 +1046,7 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   }) {
     final sentence = text.trim();
     if (sentence.isEmpty ||
@@ -1066,6 +1068,7 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
         'text': sentence,
         'capturedAt': capturedAt,
         'capturedTimezone': capturedTimezone,
+        'accountCurrency': accountCurrency,
       },
       acceptedStatuses: const {200},
       contract: _ContractKind.textEntry,

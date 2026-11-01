@@ -80,7 +80,7 @@ void main() {
 
       await container
           .read(textEntryControllerProvider.notifier)
-          .parse(phrase.text, phrase: phrase);
+          .parse(phrase.text, accountCurrency: 'EUR', phrase: phrase);
       await pumpEventQueue();
 
       // Said on the 26th in Kyiv; read on the 29th. «вчера» is the 25th.
@@ -112,7 +112,7 @@ void main() {
 
         await container
             .read(textEntryControllerProvider.notifier)
-            .parse(phrase.text, phrase: phrase);
+            .parse(phrase.text, accountCurrency: 'EUR', phrase: phrase);
         await pumpEventQueue();
 
         expect(store.phrases.single.id, phrase.id);
@@ -135,7 +135,7 @@ void main() {
 
       await container
           .read(textEntryControllerProvider.notifier)
-          .parse(phrase.text, phrase: phrase);
+          .parse(phrase.text, accountCurrency: 'EUR', phrase: phrase);
       await pumpEventQueue();
 
       expect(store.phrases, isEmpty);
@@ -155,7 +155,7 @@ void main() {
 
       await container
           .read(textEntryControllerProvider.notifier)
-          .parse('Потратил 10 сегодня');
+          .parse('Потратил 10 сегодня', accountCurrency: 'EUR');
       await pumpEventQueue();
 
       expect(repository.calls.single.capturedAt, '2026-10-29T10:00:00.000Z');
@@ -297,6 +297,7 @@ final class _ParseRepository implements FinanceEntryRepositoryClient {
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   }) async {
     calls.add((
       text: text,

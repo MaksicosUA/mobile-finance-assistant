@@ -73,8 +73,13 @@ class TextEntryController extends Notifier<TextEntryState> {
   /// Reads [text] as of now — or, for a [phrase] said earlier, as of the
   /// moment it was said, so «вчера» keeps meaning the day before it was said
   /// (ADR 0032). Once the server has answered about that phrase it stops
-  /// waiting on the phone.
-  Future<void> parse(String text, {WaitingPhrase? phrase}) async {
+  /// waiting on the phone. [accountCurrency] is the wallet being recorded
+  /// into, which is what a sentence naming no currency means.
+  Future<void> parse(
+    String text, {
+    required String accountCurrency,
+    WaitingPhrase? phrase,
+  }) async {
     if (_requestInFlight) return;
     final sentence = text.trim();
     if (sentence.isEmpty || sentence.length > maximumEntryTextLength) {
@@ -102,6 +107,7 @@ class TextEntryController extends Notifier<TextEntryState> {
         // The day the sentence means is resolved server-side in this zone,
         // never from the phone's idea of the calendar (ADR 0007).
         capturedTimezone: capturedTimezone,
+        accountCurrency: accountCurrency,
       );
       if (phrase != null && _serverHasRead(result)) {
         unawaited(waiting!.forget(phrase.id));

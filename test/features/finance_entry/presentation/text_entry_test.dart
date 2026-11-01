@@ -225,6 +225,29 @@ void main() {
     expect(find.textContaining('не подставил'), findsNothing);
   });
 
+  testWidgets('a sentence is read for the wallet it is recorded into', (
+    tester,
+  ) async {
+    // «кава 50» on a hryvnia wallet names no currency, and euro is not what it
+    // means there (issue 0013).
+    final repository = _FakeRepository(
+      walletCurrency: 'UAH',
+      proposal: _proposal(amount: '50', currency: 'UAH'),
+    );
+    await _pumpPage(tester, repository: repository);
+
+    await tester.enterText(
+      find.byKey(const Key('operation-sentence')),
+      'кава 50',
+    );
+    await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+    await tester.pumpAndSettle();
+
+    expect(repository.parsed.single.accountCurrency, 'UAH');
+    expect(_amountText(tester), '50');
+    expect(find.textContaining('не подставил'), findsNothing);
+  });
+
   testWidgets('a refused currency still leaves the date and category read', (
     tester,
   ) async {
@@ -801,6 +824,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     List<OperationProposal>? proposals,
     this.failure,
     this.accountsFailure,
+    this.walletCurrency = 'EUR',
   }) : proposal = proposal ?? _proposal(),
        _queued = List<OperationProposal>.of(proposals ?? const []);
 
@@ -810,7 +834,15 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
 
   /// Why the account cannot be read, when it cannot — offline, say.
   final FinanceEntryFailureKind? accountsFailure;
-  final List<({String text, String capturedAt, String capturedTimezone})>
+  final String walletCurrency;
+  final List<
+    ({
+      String text,
+      String capturedAt,
+      String capturedTimezone,
+      String accountCurrency,
+    })
+  >
   parsed = [];
   int evaluated = 0;
 
@@ -826,13 +858,13 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
       value: FinanceAccountSetup(
         canonicalTimezone: 'Europe/Berlin',
         timezoneRevision: 1,
-        accounts: const [
+        accounts: [
           FinanceAccount(
             accountId: '11111111-1111-4111-8111-111111111111',
             userId: '22222222-2222-4222-8222-222222222222',
             commandId: '33333333-3333-4333-8333-333333333333',
             name: 'Основной счёт',
-            currency: 'EUR',
+            currency: walletCurrency,
             openingBalance: '100.00',
             openingBalanceOn: '2026-07-01',
             openingTimezone: 'Europe/Berlin',
@@ -867,11 +899,13 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   }) async {
     parsed.add((
       text: text,
       capturedAt: capturedAt,
       capturedTimezone: capturedTimezone,
+      accountCurrency: accountCurrency,
     ));
     final kind = failure;
     if (kind != null) {

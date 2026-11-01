@@ -484,7 +484,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
         setState(() => _phraseInField = spoken.kept);
         ref
             .read(textEntryControllerProvider.notifier)
-            .parse(spoken.text, phrase: spoken.kept);
+            .parse(
+              spoken.text,
+              accountCurrency: widget.state.account.currency,
+              phrase: spoken.kept,
+            );
         return;
       }
       // Opened from Home's entry action: the keyboard belongs on the sentence,
@@ -515,7 +519,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     setState(() => _phraseInField = phrase);
     ref
         .read(textEntryControllerProvider.notifier)
-        .parse(phrase.text, phrase: phrase);
+        .parse(
+          phrase.text,
+          accountCurrency: widget.state.account.currency,
+          phrase: phrase,
+        );
   }
 
   /// Reads the sentence again as an exchange and opens the transfer screen
@@ -639,7 +647,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
             saidAt: _phraseInField?.saidAt,
             onParse: () => ref
                 .read(textEntryControllerProvider.notifier)
-                .parse(_sentenceController.text, phrase: _phraseInField),
+                .parse(
+                  _sentenceController.text,
+                  accountCurrency: widget.state.account.currency,
+                  phrase: _phraseInField,
+                ),
             onOpenTransfer: () => unawaited(_openTransfer()),
           ),
           if (widget.state.accountCreated) ...[
