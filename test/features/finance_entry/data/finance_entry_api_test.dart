@@ -746,7 +746,9 @@ void main() {
       expect(proposal.amount, '12.50');
       expect(proposal.occurredOn, '2026-08-12');
       expect(proposal.sourceExpression, 'вчера');
-      expect(adapter.requests.single.uri.path, '/api/v1/operations/parse');
+      // The address that names the other direction's category. The old one is
+      // frozen for installed clients, which read it with a closed key set.
+      expect(adapter.requests.single.uri.path, '/api/v1/operations/parse/v2');
       expect(
         (adapter.requests.single.data
             as Map<String, Object?>)['accountCurrency'],
@@ -776,6 +778,38 @@ void main() {
       expect(proposal.amount, isNull);
       expect(proposal.gaps, [OperationParseGap.amountNotFound]);
     });
+
+    test(
+      'a question about the direction arrives with both categories',
+      () async {
+        final unclear = _proposal();
+        (unclear['proposal']! as Map<String, Object?>)
+          ..['otherCategoryId'] = '77777777-7777-4777-8777-777777777777'
+          ..['gaps'] = ['DIRECTION_NOT_CLEAR'];
+        final adapter = _QueueAdapter([_JsonResponse(200, unclear)]);
+        final api = _api(adapter);
+
+        final result = await api.parseOperationText(
+          accessToken: 'access-token',
+          text: 'подарок 5000',
+          capturedAt: '2026-08-13T09:00:00Z',
+          capturedTimezone: 'Europe/Berlin',
+          accountCurrency: 'EUR',
+        );
+
+        final proposal =
+            (result as FinanceEntrySuccess<OperationProposal>).value;
+        expect(proposal.gaps, [OperationParseGap.directionNotClear]);
+        expect(
+          proposal.categoryIdFor(FinanceOperationType.expense),
+          '66666666-6666-4666-8666-666666666666',
+        );
+        expect(
+          proposal.categoryIdFor(FinanceOperationType.income),
+          '77777777-7777-4777-8777-777777777777',
+        );
+      },
+    );
 
     test('a proposal that tries to be confirmable is refused', () async {
       final confirmable = _proposal();
@@ -1318,6 +1352,7 @@ Map<String, Object?> _proposal() {
       'sourceExpression': 'вчера',
       'categoryId': '66666666-6666-4666-8666-666666666666',
       'category': 'продукты',
+      'otherCategoryId': null,
       'gaps': <Object?>[],
     },
   };

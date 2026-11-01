@@ -417,6 +417,7 @@
   "entrySentenceGapAmbiguous": "У фразі кілька чисел — уточніть суму.",
   "entrySentenceGapDate": "Дату не зрозумів — перевірте її.",
   "entrySentenceGapCategory": "Категорію не підібрав — виберіть її.",
+  "entrySentenceGapDirection": "Не зрозумів, це витрата чи дохід — виберіть.",
   "entrySentenceGapTransfer": "Це переказ між гаманцями, а не дохід чи витрата — тому нічого не заповнив.",
   "entrySentenceOpenTransfer": "Відкрити переказ",
   "categoryKeywordsTitle": "Слова категорії",

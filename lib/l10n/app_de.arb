@@ -417,6 +417,7 @@
   "entrySentenceGapAmbiguous": "Mehrere Zahlen im Satz — gib den Betrag an.",
   "entrySentenceGapDate": "Datum nicht verstanden — prüfe es.",
   "entrySentenceGapCategory": "Keine Kategorie gefunden — wähle eine aus.",
+  "entrySentenceGapDirection": "Nicht klar, ob Ausgabe oder Einnahme — wähle eins aus.",
   "entrySentenceGapTransfer": "Das ist eine Umbuchung, keine Einnahme oder Ausgabe — deshalb habe ich nichts ausgefüllt.",
   "entrySentenceOpenTransfer": "Umbuchung öffnen",
   "categoryKeywordsTitle": "Stichwörter der Kategorie",

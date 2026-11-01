@@ -2184,6 +2184,10 @@ enum OperationParseGap {
   /// is proposed at all: booking either side as income or expense would invent
   /// money that never entered or left (ADR 0029).
   transferNotAnOperation,
+
+  /// Nothing says which way the money went, and the words lead to a category of
+  /// income. The form asks rather than letting expense stand as the default.
+  directionNotClear,
 }
 
 /// What one written sentence appears to mean.
@@ -2201,6 +2205,7 @@ final class OperationProposal {
     required this.sourceExpression,
     required this.categoryId,
     required this.category,
+    this.otherCategoryId,
     this.gaps = const [],
   });
 
@@ -2216,6 +2221,7 @@ final class OperationProposal {
       'sourceExpression',
       'categoryId',
       'category',
+      'otherCategoryId',
       'gaps',
     });
     return OperationProposal(
@@ -2234,6 +2240,7 @@ final class OperationProposal {
       ),
       categoryId: _optionalUuid(proposal, 'categoryId'),
       category: _optionalBoundedText(proposal, 'category', maximumLength: 100),
+      otherCategoryId: _optionalUuid(proposal, 'otherCategoryId'),
       gaps: _parseGaps(proposal['gaps']),
     );
   }
@@ -2245,7 +2252,15 @@ final class OperationProposal {
   final String? sourceExpression;
   final String? categoryId;
   final String? category;
+
+  /// The category the same words reach if the money went the other way, so
+  /// answering or correcting the direction does not mean choosing it again.
+  final String? otherCategoryId;
   final List<OperationParseGap> gaps;
+
+  /// The category these words reach in [direction], if any.
+  String? categoryIdFor(FinanceOperationType direction) =>
+      direction == type ? categoryId : otherCategoryId;
 }
 
 List<OperationParseGap> _parseGaps(Object? raw) {
@@ -2265,6 +2280,7 @@ List<OperationParseGap> _parseGaps(Object? raw) {
       'CATEGORY_NOT_MATCHED' => OperationParseGap.categoryNotMatched,
       'CURRENCY_NOT_UNDERSTOOD' => OperationParseGap.currencyNotUnderstood,
       'TRANSFER_NOT_AN_OPERATION' => OperationParseGap.transferNotAnOperation,
+      'DIRECTION_NOT_CLEAR' => OperationParseGap.directionNotClear,
       _ => null,
     };
     if (gap != null) gaps.add(gap);

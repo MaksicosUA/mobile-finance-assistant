@@ -516,6 +516,17 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   /// a category the words no longer support (issue 0011). A deliberate choice
   /// is not the parser's to undo.
   bool _categoryFilledBySentence = false;
+
+  /// What the sentence was last read as, for the category its words reach in
+  /// the other direction. Correcting the direction is not a reason to choose
+  /// the category all over again.
+  OperationProposal? _proposal;
+
+  /// The sentence did not say which way the money went and the person has not
+  /// either. Until they do nothing is selected and the form does not go on:
+  /// letting the default stand is how a gift arrived as spending.
+  bool _directionUnanswered = false;
+  final _directionQuestionKey = GlobalKey();
   bool _validateContinuously = false;
 
   /// The waiting phrase whose words are in the sentence field, if any.
@@ -613,8 +624,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   /// Fills the form from a proposal. It fills fields and nothing else: the
   /// operation is still written by the ordinary confirm path below (ADR 0022).
   void _applyProposal(OperationProposal proposal) {
-    final catalogue = ref.read(categoryCatalogueProvider.notifier);
     setState(() {
+      _proposal = proposal;
+      _directionUnanswered = proposal.gaps.contains(
+        OperationParseGap.directionNotClear,
+      );
       _type = proposal.type;
       // A missing amount leaves whatever is already typed alone: the parser
       // reporting a gap must not erase the user's own correction.
@@ -639,30 +653,46 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
         _categoryChoice = const CategoryUnset();
         _categoryFilledBySentence = false;
       }
-      final categoryId = proposal.categoryId;
-      if (categoryId == null) {
-        // Unlike the amount, a category the parser filled is withdrawn when a
-        // later sentence matches nothing: the person rewrote the words, and
-        // leaving the old one would confirm an operation against a category
-        // the sentence contradicts. What they chose by hand stays.
-        if (_categoryFilledBySentence) {
-          _categoryChoice = const CategoryUnset();
-          _categoryFilledBySentence = false;
-        }
-        return;
-      }
-      for (final category in catalogue.forDirection(proposal.type)) {
-        if (category.categoryId != categoryId) continue;
-        _categoryChoice = CategoryFromCatalogue(category);
-        _categoryFilledBySentence = true;
-        _categoryController.clear();
-        return;
-      }
-      // The proposal named a category this catalogue does not offer, so nothing
-      // was filled. Whatever an earlier sentence left behind is just as stale.
-      if (_categoryFilledBySentence) {
+      _fillCategory(proposal.categoryId, proposal.type);
+    });
+  }
+
+  /// Puts in the category a sentence reached, when this catalogue offers it.
+  void _fillCategory(String? categoryId, FinanceOperationType direction) {
+    final catalogue = ref.read(categoryCatalogueProvider.notifier);
+    for (final category in catalogue.forDirection(direction)) {
+      if (category.categoryId != categoryId) continue;
+      _categoryChoice = CategoryFromCatalogue(category);
+      _categoryFilledBySentence = true;
+      _categoryController.clear();
+      return;
+    }
+    // Unlike the amount, a category the parser filled is withdrawn when a later
+    // sentence matches nothing: the person rewrote the words, and leaving the
+    // old one would confirm an operation against a category the sentence
+    // contradicts. What they chose by hand stays.
+    if (_categoryFilledBySentence) {
+      _categoryChoice = const CategoryUnset();
+      _categoryFilledBySentence = false;
+    }
+  }
+
+  /// Sets the direction, whether by answering the question or by the switch.
+  void _chooseDirection(FinanceOperationType type) {
+    setState(() {
+      _directionUnanswered = false;
+      if (type == _type) return;
+      _type = type;
+      // Categories are typed by direction, so a selection made for an expense
+      // cannot survive a switch to income — it would be submitted against the
+      // wrong catalogue and rejected.
+      if (_categoryChoice is CategoryFromCatalogue) {
         _categoryChoice = const CategoryUnset();
         _categoryFilledBySentence = false;
+      }
+      final proposal = _proposal;
+      if (proposal != null && _categoryChoice is CategoryUnset) {
+        _fillCategory(proposal.categoryIdFor(type), type);
       }
     });
   }
@@ -721,6 +751,9 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
                   phrase: _phraseInField,
                 ),
             onOpenTransfer: () => unawaited(_openTransfer()),
+            directionUnanswered: _directionUnanswered,
+            directionQuestionKey: _directionQuestionKey,
+            onChooseDirection: _chooseDirection,
           ),
           if (widget.state.accountCreated) ...[
             const SizedBox(height: AppSpacing.md),
@@ -756,20 +789,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
                 label: Text(l10n.operationIncome),
               ),
             ],
-            selected: {_type},
+            selected: _directionUnanswered ? const {} : {_type},
+            emptySelectionAllowed: _directionUnanswered,
             onSelectionChanged: widget.state.isSubmitting
                 ? null
-                : (values) => setState(() {
-                    _type = values.single;
-                    // Categories are typed by direction, so a selection made
-                    // for an expense cannot survive a switch to income — it
-                    // would be submitted against the wrong catalogue and
-                    // rejected.
-                    if (_categoryChoice is CategoryFromCatalogue) {
-                      _categoryChoice = const CategoryUnset();
-                      _categoryFilledBySentence = false;
-                    }
-                  }),
+                : (values) => _chooseDirection(values.single),
           ),
           // Which wallet this goes in. Offered only when there is a choice:
           // one wallet needs no picker (ADR 0029).
@@ -902,6 +926,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   }
 
   void _submit() {
+    if (_directionUnanswered) {
+      final question = _directionQuestionKey.currentContext;
+      if (question != null) unawaited(Scrollable.ensureVisible(question));
+      return;
+    }
     setState(() => _validateContinuously = true);
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final choice = _categoryChoice;
@@ -1522,6 +1551,9 @@ class _SentenceField extends StatelessWidget {
     required this.accountCurrency,
     required this.onParse,
     required this.onOpenTransfer,
+    required this.directionUnanswered,
+    required this.directionQuestionKey,
+    required this.onChooseDirection,
     this.saidAt,
   });
 
@@ -1542,6 +1574,9 @@ class _SentenceField extends StatelessWidget {
   /// Offered rather than taken: a recognised transfer is still a proposal, and
   /// moving someone off the form they are filling is not this screen's call.
   final VoidCallback onOpenTransfer;
+  final bool directionUnanswered;
+  final Key directionQuestionKey;
+  final ValueChanged<FinanceOperationType> onChooseDirection;
 
   @override
   Widget build(BuildContext context) {
@@ -1595,7 +1630,7 @@ class _SentenceField extends StatelessWidget {
           _StatusMessage(
             key: const Key('operation-sentence-result'),
             icon:
-                parsed.proposal.gaps.isEmpty &&
+                _openGaps(parsed.proposal).isEmpty &&
                     _currencyIsUsable(parsed.proposal)
                 ? Icons.check_circle_outline_rounded
                 : Icons.info_outline_rounded,
@@ -1614,9 +1649,35 @@ class _SentenceField extends StatelessWidget {
               label: Text(l10n.entrySentenceOpenTransfer),
             ),
           ],
+          if (directionUnanswered) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _DirectionQuestion(
+              key: directionQuestionKey,
+              enabled: enabled,
+              onChoose: onChooseDirection,
+            ),
+          ],
         ],
       ],
     );
+  }
+
+  /// The gaps still worth saying. An answered direction is closed, and a
+  /// category cannot be called missing while the direction is open: the words
+  /// may lead to the other side.
+  List<OperationParseGap> _openGaps(OperationProposal proposal) {
+    if (!proposal.gaps.contains(OperationParseGap.directionNotClear)) {
+      return proposal.gaps;
+    }
+    return [
+      for (final gap in proposal.gaps)
+        if (switch (gap) {
+          OperationParseGap.categoryNotMatched => false,
+          OperationParseGap.directionNotClear => directionUnanswered,
+          _ => true,
+        })
+          gap,
+    ];
   }
 
   /// Whether the amount may be typed into this account's field at all.
@@ -1641,7 +1702,7 @@ class _SentenceField extends StatelessWidget {
     }
     return [
       l10n.entrySentenceFilled,
-      for (final gap in proposal.gaps) _gapMessage(l10n, gap),
+      for (final gap in _openGaps(proposal)) _gapMessage(l10n, gap),
       if (!proposal.gaps.contains(OperationParseGap.currencyNotUnderstood) &&
           proposal.currency != accountCurrency)
         l10n.entrySentenceCurrencyMismatch(proposal.currency, accountCurrency),
@@ -1656,7 +1717,50 @@ class _SentenceField extends StatelessWidget {
       OperationParseGap.categoryNotMatched => l10n.entrySentenceGapCategory,
       OperationParseGap.currencyNotUnderstood => l10n.entrySentenceGapCurrency,
       OperationParseGap.transferNotAnOperation => l10n.entrySentenceGapTransfer,
+      OperationParseGap.directionNotClear => l10n.entrySentenceGapDirection,
     };
+  }
+}
+
+/// One tap on what a sentence left open, before anything is confirmed.
+class _DirectionQuestion extends StatelessWidget {
+  const _DirectionQuestion({
+    super.key,
+    required this.enabled,
+    required this.onChoose,
+  });
+
+  final bool enabled;
+  final ValueChanged<FinanceOperationType> onChoose;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            key: const Key('operation-direction-expense'),
+            onPressed: enabled
+                ? () => onChoose(FinanceOperationType.expense)
+                : null,
+            icon: const Icon(Icons.south_east_rounded),
+            label: Text(l10n.operationExpense),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: OutlinedButton.icon(
+            key: const Key('operation-direction-income'),
+            onPressed: enabled
+                ? () => onChoose(FinanceOperationType.income)
+                : null,
+            icon: const Icon(Icons.north_west_rounded),
+            label: Text(l10n.operationIncome),
+          ),
+        ),
+      ],
+    );
   }
 }
 

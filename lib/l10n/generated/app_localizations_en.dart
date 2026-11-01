@@ -1441,6 +1441,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get entrySentenceGapCategory => 'No category matched — choose one.';
 
   @override
+  String get entrySentenceGapDirection =>
+      'Not sure if this is an expense or income — choose one.';
+
+  @override
   String get entrySentenceGapTransfer =>
       'This is a transfer between wallets, not income or spending — so nothing was filled in.';
 
