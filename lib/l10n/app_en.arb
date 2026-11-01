@@ -417,6 +417,7 @@
   "entrySentenceGapAmbiguous": "The sentence has several numbers — specify the amount.",
   "entrySentenceGapDate": "Date not understood — check it.",
   "entrySentenceGapCategory": "No category matched — choose one.",
+  "entrySentenceGapDirection": "Not sure if this is an expense or income — choose one.",
   "entrySentenceGapTransfer": "This is a transfer between wallets, not income or spending — so nothing was filled in.",
   "entrySentenceOpenTransfer": "Open transfer",
   "categoryKeywordsTitle": "Category words",

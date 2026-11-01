@@ -1142,6 +1142,10 @@
   "@entrySentenceGapCategory": {
     "description": "Natural-language entry (ADR 0022)."
   },
+  "entrySentenceGapDirection": "Не понял, расход это или доход — выберите.",
+  "@entrySentenceGapDirection": {
+    "description": "Natural-language entry: the sentence does not say which way the money went, and two buttons follow."
+  },
   "entrySentenceGapTransfer": "Это перевод между кошельками, а не доход или трата — поэтому ничего не заполнил.",
   "@entrySentenceGapTransfer": {
     "description": "Natural-language entry (ADR 0022): the sentence is a transfer (ADR 0029)."

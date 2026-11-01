@@ -1440,6 +1440,10 @@ class AppLocalizationsUk extends AppLocalizations {
   String get entrySentenceGapCategory => 'Категорію не підібрав — виберіть її.';
 
   @override
+  String get entrySentenceGapDirection =>
+      'Не зрозумів, це витрата чи дохід — виберіть.';
+
+  @override
   String get entrySentenceGapTransfer =>
       'Це переказ між гаманцями, а не дохід чи витрата — тому нічого не заповнив.';
 

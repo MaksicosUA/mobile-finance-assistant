@@ -1458,6 +1458,10 @@ class AppLocalizationsDe extends AppLocalizations {
       'Keine Kategorie gefunden — wähle eine aus.';
 
   @override
+  String get entrySentenceGapDirection =>
+      'Nicht klar, ob Ausgabe oder Einnahme — wähle eins aus.';
+
+  @override
   String get entrySentenceGapTransfer =>
       'Das ist eine Umbuchung, keine Einnahme oder Ausgabe — deshalb habe ich nichts ausgefüllt.';
 

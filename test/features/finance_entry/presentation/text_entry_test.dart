@@ -22,6 +22,9 @@ import '../../voice_entry/waiting_phrases_test.dart'
 import 'package:mobile_finance_assistant/l10n/generated/app_localizations.dart';
 
 const _groceriesId = '44444444-4444-4444-8444-444444444444';
+const _giftOutId = '55555555-5555-4555-8555-555555555555';
+const _giftInId = '66666666-6666-4666-8666-666666666666';
+const _freelanceId = '77777777-7777-4777-8777-777777777777';
 
 /// Entering an operation by writing a sentence (ADR 0022).
 ///
@@ -474,6 +477,248 @@ void main() {
     },
   );
 
+  group('which way the money went', () {
+    Future<void> read(WidgetTester tester, String sentence) async {
+      await tester.enterText(
+        find.byKey(const Key('operation-sentence')),
+        sentence,
+      );
+      await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+      await tester.pumpAndSettle();
+    }
+
+    Set<FinanceOperationType> selectedDirection(WidgetTester tester) => tester
+        .widget<SegmentedButton<FinanceOperationType>>(
+          find.byKey(const Key('operation-type')),
+        )
+        .selected;
+
+    testWidgets('a sentence that does not say is asked about, nothing chosen', (
+      tester,
+    ) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(proposal: _unclearGift()),
+      );
+
+      await read(tester, 'подарок 5000');
+
+      expect(find.byKey(const Key('operation-direction-expense')), findsOne);
+      expect(find.byKey(const Key('operation-direction-income')), findsOne);
+      expect(find.textContaining('расход это или доход'), findsOneWidget);
+      // Defaulting here is how a gift arrived as spending.
+      expect(selectedDirection(tester), isEmpty);
+    });
+
+    testWidgets('one tap on income brings the income category with it', (
+      tester,
+    ) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(proposal: _unclearGift()),
+      );
+      await read(tester, 'подарок 5000');
+      expect(_pickedCategory(tester), _giftOutId);
+
+      await tester.tap(find.byKey(const Key('operation-direction-income')));
+      await tester.pumpAndSettle();
+
+      expect(selectedDirection(tester), {FinanceOperationType.income});
+      expect(_pickedCategory(tester), _giftInId);
+      expect(find.byKey(const Key('operation-direction-income')), findsNothing);
+      expect(find.textContaining('расход это или доход'), findsNothing);
+    });
+
+    testWidgets('one tap on expense keeps what was filled', (tester) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(proposal: _unclearGift()),
+      );
+      await read(tester, 'подарок 5000');
+
+      await tester.tap(find.byKey(const Key('operation-direction-expense')));
+      await tester.pumpAndSettle();
+
+      expect(selectedDirection(tester), {FinanceOperationType.expense});
+      expect(_pickedCategory(tester), _giftOutId);
+      expect(
+        find.byKey(const Key('operation-direction-expense')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('the switch itself answers the question', (tester) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(proposal: _unclearGift()),
+      );
+      await read(tester, 'подарок 5000');
+
+      await tester.tap(find.text('Доход').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('operation-direction-income')), findsNothing);
+      expect(_pickedCategory(tester), _giftInId);
+    });
+
+    testWidgets('the form does not go on until the question is answered', (
+      tester,
+    ) async {
+      final repository = _FakeRepository(proposal: _unclearGift());
+      await _pumpPage(tester, repository: repository);
+      await read(tester, 'подарок 5000');
+
+      await tester.tap(find.byKey(const Key('operation-evaluate')));
+      await tester.pumpAndSettle();
+      expect(repository.evaluated, 0);
+      expect(find.byKey(const Key('operation-direction-income')), findsOne);
+
+      await tester.tap(find.byKey(const Key('operation-direction-income')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('operation-evaluate')));
+      await tester.pumpAndSettle();
+
+      expect(repository.evaluated, 1);
+      expect(repository.draft?.type, FinanceOperationType.income);
+      expect(repository.draft?.categoryId, _giftInId);
+    });
+
+    testWidgets('going on scrolls back to a question left out of sight', (
+      tester,
+    ) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(proposal: _unclearGift()),
+        size: const Size(390, 500),
+      );
+      await read(tester, 'подарок 5000');
+      await tester.ensureVisible(find.byKey(const Key('operation-evaluate')));
+      await tester.pumpAndSettle();
+      final out = tester.getTopLeft(
+        find.byKey(const Key('operation-direction-income')),
+      );
+      expect(out.dy, lessThan(0));
+
+      await tester.tap(find.byKey(const Key('operation-evaluate')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .getTopLeft(find.byKey(const Key('operation-direction-income')))
+            .dy,
+        inInclusiveRange(0, 500),
+      );
+    });
+
+    testWidgets('a category only income knows arrives with the answer', (
+      tester,
+    ) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(
+          proposal: const OperationProposal(
+            type: FinanceOperationType.expense,
+            amount: '500',
+            currency: 'EUR',
+            occurredOn: '2026-07-29',
+            sourceExpression: null,
+            categoryId: null,
+            category: null,
+            otherCategoryId: _freelanceId,
+            gaps: [
+              OperationParseGap.categoryNotMatched,
+              OperationParseGap.directionNotClear,
+            ],
+          ),
+        ),
+      );
+      await read(tester, 'фриланс 500');
+      // Missing is not yet true: the words may lead to the other side.
+      expect(find.textContaining('Категорию не подобрал'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('operation-direction-income')));
+      await tester.pumpAndSettle();
+
+      expect(_pickedCategory(tester), _freelanceId);
+    });
+
+    testWidgets('correcting a stated direction brings the category too', (
+      tester,
+    ) async {
+      // The complaint itself: the card said expense, and switching it to income
+      // left «Без категории» to choose all over again.
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(
+          proposal: const OperationProposal(
+            type: FinanceOperationType.expense,
+            amount: '5000',
+            currency: 'EUR',
+            occurredOn: '2026-07-29',
+            sourceExpression: null,
+            categoryId: _giftOutId,
+            category: 'подарил',
+            otherCategoryId: _giftInId,
+          ),
+        ),
+      );
+      await read(tester, 'подарил 5000');
+      expect(find.byKey(const Key('operation-direction-income')), findsNothing);
+
+      await tester.tap(find.text('Доход').last);
+      await tester.pumpAndSettle();
+      expect(_pickedCategory(tester), _giftInId);
+
+      await tester.tap(find.text('Расход').last);
+      await tester.pumpAndSettle();
+      expect(_pickedCategory(tester), _giftOutId);
+    });
+
+    testWidgets('a switch with nothing to bring leaves the category empty', (
+      tester,
+    ) async {
+      await _pumpPage(tester, repository: _FakeRepository());
+      await read(tester, 'потратил 12,50 на продукты');
+
+      await tester.tap(find.text('Доход').last);
+      await tester.pumpAndSettle();
+
+      expect(_pickedCategory(tester), isNull);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a clearer sentence takes the question back', (tester) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeRepository(proposals: [_unclearGift(), _proposal()]),
+      );
+      await read(tester, 'подарок 5000');
+      await read(tester, 'купил продукты 12,50');
+
+      expect(find.byKey(const Key('operation-direction-income')), findsNothing);
+      expect(selectedDirection(tester), {FinanceOperationType.expense});
+    });
+
+    for (final language in const ['ru', 'uk', 'en', 'de']) {
+      testWidgets('the question fits at 200% in $language', (tester) async {
+        await _pumpPage(
+          tester,
+          repository: _FakeRepository(proposal: _unclearGift()),
+          size: const Size(360, 3000),
+          locale: Locale(language),
+          textScale: 2,
+        );
+        await read(tester, 'подарок 5000');
+
+        expect(tester.takeException(), isNull);
+        final button = tester.getSize(
+          find.byKey(const Key('operation-direction-income')),
+        );
+        expect(button.height, greaterThanOrEqualTo(48));
+      });
+    }
+  });
+
   group('phrases said without a connection (ADR 0032)', () {
     testWidgets('a waiting phrase is read as of when it was said, then goes', (
       tester,
@@ -648,8 +893,11 @@ Future<void> _pumpPage(
   HeardSentence? heard,
   MemoryWaitingPhraseStore? waiting,
   bool privacy = false,
+  Size size = const Size(390, 1800),
+  Locale locale = const Locale('ru'),
+  double textScale = 1,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(390, 1800));
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
@@ -677,7 +925,7 @@ Future<void> _pumpPage(
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        locale: const Locale('ru'),
+        locale: locale,
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: const [
           AppLocalizations.delegate,
@@ -686,6 +934,12 @@ Future<void> _pumpPage(
           GlobalCupertinoLocalizations.delegate,
         ],
         theme: AppTheme.light(AppAccent.teal),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         home: Scaffold(
           body: FinanceEntryPage(
             onBackHome: _ignore,
@@ -760,6 +1014,19 @@ OperationProposal _unmatchedProposal() => const OperationProposal(
   categoryId: null,
   category: null,
   gaps: [OperationParseGap.categoryNotMatched],
+);
+
+/// «подарок 5000»: both directions have the word and nothing says which.
+OperationProposal _unclearGift() => const OperationProposal(
+  type: FinanceOperationType.expense,
+  amount: '5000',
+  currency: 'EUR',
+  occurredOn: '2026-07-29',
+  sourceExpression: null,
+  categoryId: _giftOutId,
+  category: 'подарок',
+  otherCategoryId: _giftInId,
+  gaps: [OperationParseGap.directionNotClear],
 );
 
 final class _FixedCapture implements FinanceCaptureContextSource {
@@ -845,6 +1112,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
   >
   parsed = [];
   int evaluated = 0;
+  FinanceOperationDraft? draft;
 
   @override
   Future<FinanceEntryResult<FinanceAccountSetup>> listAccounts() async {
@@ -889,6 +1157,24 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
             direction: FinanceOperationType.expense,
             systemKey: null,
           ),
+          const FinanceCategory(
+            categoryId: _giftOutId,
+            name: 'Подарки',
+            direction: FinanceOperationType.expense,
+            systemKey: 'gifts_out',
+          ),
+          const FinanceCategory(
+            categoryId: _giftInId,
+            name: 'Подарки',
+            direction: FinanceOperationType.income,
+            systemKey: 'gifts_in',
+          ),
+          const FinanceCategory(
+            categoryId: _freelanceId,
+            name: 'Подработка',
+            direction: FinanceOperationType.income,
+            systemKey: 'freelance',
+          ),
         ],
       ),
     );
@@ -924,7 +1210,13 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     FinanceOperationDraft draft,
   ) async {
     evaluated += 1;
-    throw UnimplementedError();
+    this.draft = draft;
+    return FinanceEntryFailureResult<FinanceOperationEvaluation>(
+      FinanceEntryFailure(
+        kind: FinanceEntryFailureKind.unknown,
+        requestId: 'req_synthetic',
+      ),
+    );
   }
 
   @override

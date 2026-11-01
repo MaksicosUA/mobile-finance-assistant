@@ -1061,7 +1061,7 @@ final class FinanceEntryApi implements FinanceEntryApiClient {
     }
     return _request(
       method: 'POST',
-      path: '/api/v1/operations/parse',
+      path: '/api/v1/operations/parse/v2',
       accessToken: accessToken,
       body: <String, Object?>{
         'schemaVersion': '1',

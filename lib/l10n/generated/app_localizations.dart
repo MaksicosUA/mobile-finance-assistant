@@ -2615,6 +2615,12 @@ abstract class AppLocalizations {
   /// **'Категорию не подобрал — выберите её.'**
   String get entrySentenceGapCategory;
 
+  /// Natural-language entry: the sentence does not say which way the money went, and two buttons follow.
+  ///
+  /// In ru, this message translates to:
+  /// **'Не понял, расход это или доход — выберите.'**
+  String get entrySentenceGapDirection;
+
   /// Natural-language entry (ADR 0022): the sentence is a transfer (ADR 0029).
   ///
   /// In ru, this message translates to:
