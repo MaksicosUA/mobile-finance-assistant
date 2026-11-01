@@ -37,6 +37,22 @@ class Vocabulary:
     #: `sourceExpression`. The expression stays the one Finance Core's resolver
     #: knows, whichever language the phrase was in.
     relative_days: tuple[tuple[str, int, SupportedDateExpression | None], ...]
+    #: A stretch of time, in every form a count can take, with how many days and
+    #: months it is. An hour is neither, and its number must still not be read
+    #: as money.
+    time_units: dict[str, tuple[int, int]]
+    #: What puts that stretch behind us, after it: "3 дні тому".
+    ago_after: tuple[str, ...]
+    #: The same, before it: "vor 3 Tagen".
+    ago_before: tuple[str, ...]
+    #: Stands where a number would and gives none: "кілька днів тому".
+    vague_counts: tuple[str, ...]
+    #: Monday is 0, as `date.weekday` counts.
+    weekdays: dict[str, int]
+    #: Before a weekday: "last Friday".
+    last_words: tuple[str, ...]
+    #: A past that names no single day: "last week".
+    vague_dates: tuple[str, ...]
     ordinal_days: dict[str, int]
     ordinal_tens: dict[str, int]
     currency_words: dict[str, str]
@@ -78,7 +94,26 @@ def _ukrainian_income_phrases() -> tuple[str, ...]:
         "кешбэк",
         "гонорар",
     )
-    return tuple(f"{verb} {money}" for verb in verbs for money in arriving)
+    given = (
+        "подарував",
+        "подарувала",
+        "дав",
+        "дала",
+        "дали",
+        "переказав",
+        "переказала",
+        "переказали",
+        "перевів",
+        "перевела",
+        "перевели",
+        "скинув",
+        "скинула",
+    )
+    return (
+        *(f"{verb} {money}" for verb in verbs for money in arriving),
+        *(f"{verb} мені" for verb in given),
+        *(f"мені {verb}" for verb in given),
+    )
 
 
 UKRAINIAN = Vocabulary(
@@ -104,6 +139,15 @@ UKRAINIAN = Vocabulary(
         "повернення",
         "виплата",
         "виплатили",
+        "подарували",
+        "продав",
+        "продала",
+        "продали",
+        "продано",
+        "продаж",
+        "кешбек",
+        "скинули",
+        "дали",
     ),
     expense_words=(
         "витратив",
@@ -124,6 +168,11 @@ UKRAINIAN = Vocabulary(
         "списали",
         "списано",
         "пішло",
+        "подарував",
+        "подарувала",
+        "ми подарували",
+        "замовив",
+        "замовила",
     ),
     income_phrases=_ukrainian_income_phrases(),
     months={
@@ -159,6 +208,55 @@ UKRAINIAN = Vocabulary(
         ("вчора", 1, "вчера"),
         ("учора", 1, "вчера"),
         ("сьогодні", 0, "сегодня"),
+    ),
+    time_units={
+        "день": (1, 0),
+        "дні": (1, 0),
+        "дня": (1, 0),
+        "днів": (1, 0),
+        "тиждень": (7, 0),
+        "тижні": (7, 0),
+        "тижня": (7, 0),
+        "тижнів": (7, 0),
+        "місяць": (0, 1),
+        "місяці": (0, 1),
+        "місяця": (0, 1),
+        "місяців": (0, 1),
+        "рік": (0, 12),
+        "роки": (0, 12),
+        "року": (0, 12),
+        "років": (0, 12),
+        "годину": (0, 0),
+        "години": (0, 0),
+        "годин": (0, 0),
+        "хвилину": (0, 0),
+        "хвилини": (0, 0),
+        "хвилин": (0, 0),
+    },
+    ago_after=("тому",),
+    ago_before=(),
+    vague_counts=("кілька", "кількох", "декілька"),
+    weekdays={
+        "понеділок": 0,
+        "вівторок": 1,
+        "середа": 2,
+        "середу": 2,
+        "четвер": 3,
+        "пятниця": 4,
+        "пятницю": 4,
+        "субота": 5,
+        "суботу": 5,
+        "неділя": 6,
+        "неділю": 6,
+    },
+    last_words=("минулий", "минула", "минулу", "минуле"),
+    vague_dates=(
+        "минулого тижня",
+        "того тижня",
+        "минулого місяця",
+        "того місяця",
+        "днями",
+        "нещодавно",
     ),
     ordinal_days={
         "першого": 1,
@@ -312,10 +410,17 @@ ENGLISH = Vocabulary(
         "expense",
         "charged",
         "cost",
+        "gave",
+        "ordered",
     ),
     income_phrases=(
         "got paid",
         "got back",
+        "got a gift",
+        "gift from",
+        "gave me",
+        "sent me",
+        "was given",
         "cash back",
         "money came",
         "payment came",
@@ -342,6 +447,34 @@ ENGLISH = Vocabulary(
         ("yesterday", 1, "вчера"),
         ("today", 0, "сегодня"),
     ),
+    time_units={
+        "day": (1, 0),
+        "days": (1, 0),
+        "week": (7, 0),
+        "weeks": (7, 0),
+        "month": (0, 1),
+        "months": (0, 1),
+        "year": (0, 12),
+        "years": (0, 12),
+        "hour": (0, 0),
+        "hours": (0, 0),
+        "minute": (0, 0),
+        "minutes": (0, 0),
+    },
+    ago_after=("ago",),
+    ago_before=(),
+    vague_counts=("couple of", "couple", "few", "several"),
+    weekdays={
+        "monday": 0,
+        "tuesday": 1,
+        "wednesday": 2,
+        "thursday": 3,
+        "friday": 4,
+        "saturday": 5,
+        "sunday": 6,
+    },
+    last_words=("last",),
+    vague_dates=("last week", "last month", "recently", "the other day"),
     ordinal_days={
         "first": 1,
         "second": 2,
@@ -627,8 +760,15 @@ GERMAN = Vocabulary(
         "ausgabe",
         "abgebucht",
         "überwiesen",
+        "bestellt",
     ),
-    income_phrases=(),
+    income_phrases=(
+        "mir geschenkt",
+        "mir gegeben",
+        "mir überwiesen",
+        "hat mir",
+        "haben mir",
+    ),
     # April, August, September and November are the English words.
     months={
         "januar": 1,
@@ -645,6 +785,46 @@ GERMAN = Vocabulary(
         ("vorgestern", 2, None),
         ("gestern", 1, "вчера"),
         ("heute", 0, "сегодня"),
+    ),
+    time_units={
+        "tag": (1, 0),
+        "tage": (1, 0),
+        "tagen": (1, 0),
+        "woche": (7, 0),
+        "wochen": (7, 0),
+        "monat": (0, 1),
+        "monate": (0, 1),
+        "monaten": (0, 1),
+        "jahr": (0, 12),
+        "jahre": (0, 12),
+        "jahren": (0, 12),
+        "stunde": (0, 0),
+        "stunden": (0, 0),
+        "minute": (0, 0),
+        "minuten": (0, 0),
+    },
+    ago_after=(),
+    ago_before=("vor",),
+    vague_counts=("ein paar", "paar", "einigen", "mehreren", "wenigen"),
+    weekdays={
+        "montag": 0,
+        "dienstag": 1,
+        "mittwoch": 2,
+        "donnerstag": 3,
+        "freitag": 4,
+        "samstag": 5,
+        "sonnabend": 5,
+        "sonntag": 6,
+    },
+    last_words=("letzten", "letzte", "letzter", "vergangenen", "vorigen"),
+    vague_dates=(
+        "letzte woche",
+        "letzter woche",
+        "vorige woche",
+        "letzten monat",
+        "vor kurzem",
+        "neulich",
+        "kürzlich",
     ),
     ordinal_days=_german_ordinals(),
     ordinal_tens={},

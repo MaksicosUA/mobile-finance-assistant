@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -52,6 +53,9 @@ ParseGapCode = Literal[
     # or out of them. No amount is proposed, because booking either side as
     # income or expense invents money that never entered or left (ADR 0029).
     "TRANSFER_NOT_AN_OPERATION",
+    # Nothing says which way the money went, and the words lead to a category
+    # of income. Expense is only the default when nothing points elsewhere.
+    "DIRECTION_NOT_CLEAR",
 ]
 
 #: The longest sentence accepted. A phrase is one operation, not a paragraph.
@@ -100,6 +104,9 @@ class ParsedOperation:
     #: spelling: the text is evidence, the link is what reports read.
     category: str | None
     gaps: tuple[ParseGapCode, ...]
+    #: What the same words lead to if the money went the other way, so answering
+    #: or correcting the direction does not mean choosing the category again.
+    other_category_id: UUID | None = None
 
 
 def parse_operation_text(
@@ -123,7 +130,8 @@ def parse_operation_text(
     occurred_on, expression, date_span, date_understood = _find_date(
         haystack, today=today
     )
-    direction = _find_direction(haystack)
+    stated_direction = _find_direction(haystack)
+    direction: OperationDirection = stated_direction or "expense"
     # The date is cut out before looking for money, so "03.08" cannot be read
     # as the numbers 3 and 8.
     without_date = _blank_span(haystack, date_span)
@@ -144,8 +152,14 @@ def parse_operation_text(
         )
     currency = _find_currency(without_date, default=default_currency)
     amount, amount_gap = _find_amount(without_date, currency)
-    category_id, category_text = _find_category(
-        haystack, original=original, direction=direction, categories=categories
+    expense_match = _find_category(
+        haystack, original=original, direction="expense", categories=categories
+    )
+    income_match = _find_category(
+        haystack, original=original, direction="income", categories=categories
+    )
+    category_id, category_text = (
+        income_match if direction == "income" else expense_match
     )
 
     gaps: list[ParseGapCode] = []
@@ -157,6 +171,8 @@ def parse_operation_text(
         gaps.append("DATE_NOT_UNDERSTOOD")
     if category_id is None:
         gaps.append("CATEGORY_NOT_MATCHED")
+    if stated_direction is None and income_match[0] is not None:
+        gaps.append("DIRECTION_NOT_CLEAR")
 
     return ParsedOperation(
         operation_type=direction,
@@ -167,6 +183,7 @@ def parse_operation_text(
         category_id=category_id,
         category=category_text,
         gaps=tuple(gaps),
+        other_category_id=(expense_match if direction == "income" else income_match)[0],
     )
 
 
@@ -222,6 +239,16 @@ _INCOME_WORDS = (
     "возврат",
     "выплата",
     "выплатили",
+    "подарили",
+    "дали",
+    "скинули",
+    "продал",
+    "продала",
+    "продали",
+    "продано",
+    "продажа",
+    "кэшбэк",
+    "кешбэк",
 ) + tuple(word for language in VOCABULARIES for word in language.income_words)
 
 _EXPENSE_WORDS = (
@@ -242,6 +269,11 @@ _EXPENSE_WORDS = (
     "списал",
     "списано",
     "ушло",
+    "подарил",
+    "подарила",
+    "мы подарили",
+    "заказал",
+    "заказала",
 ) + tuple(word for language in VOCABULARIES for word in language.expense_words)
 
 
@@ -275,9 +307,26 @@ _ARRIVING_MONEY = (
     "кешбэк",
     "гонорар",
 )
-_INCOME_PHRASES = tuple(
-    f"{verb} {money}" for verb in _ARRIVAL_VERBS for money in _ARRIVING_MONEY
-) + tuple(phrase for language in VOCABULARIES for phrase in language.income_phrases)
+# Money given to the person and money they gave are the same verb. «мне» is all
+# that tells «подарила мне» from «подарила маме».
+_GIVEN_VERBS = (
+    "подарил",
+    "подарила",
+    "дал",
+    "дала",
+    "перевел",
+    "перевёл",
+    "перевела",
+    "перевели",
+    "скинул",
+    "скинула",
+)
+_INCOME_PHRASES = (
+    *(f"{verb} {money}" for verb in _ARRIVAL_VERBS for money in _ARRIVING_MONEY),
+    *(f"{verb} мне" for verb in _GIVEN_VERBS),
+    *(f"мне {verb}" for verb in _GIVEN_VERBS),
+    *(phrase for language in VOCABULARIES for phrase in language.income_phrases),
+)
 
 
 def _from_a_word_start(words: tuple[str, ...]) -> re.Pattern[str]:
@@ -295,20 +344,25 @@ _INCOME = _from_a_word_start(_INCOME_WORDS + _INCOME_PHRASES)
 _EXPENSE = _from_a_word_start(_EXPENSE_WORDS)
 
 
-def _find_direction(haystack: str) -> OperationDirection:
-    income = _first_index(haystack, _INCOME)
-    expense = _first_index(haystack, _EXPENSE)
+def _find_direction(haystack: str) -> OperationDirection | None:
+    """Which way the sentence says the money went, or None when it does not."""
+
+    income = _INCOME.search(haystack)
+    expense = _EXPENSE.search(haystack)
+    if income is None and expense is None:
+        return None
     if income is None:
         return "expense"
     if expense is None:
         return "income"
-    # Both are named; the earlier verb is the one the sentence is about.
-    return "income" if income < expense else "expense"
-
-
-def _first_index(haystack: str, words: re.Pattern[str]) -> int | None:
-    found = words.search(haystack)
-    return found.start() if found else None
+    # Both are named; the earlier verb is the one the sentence is about. At the
+    # same spot the longer one is: «подарил» is how «подарили» starts, and the
+    # two mean opposite things.
+    return (
+        "income"
+        if (income.start(), -income.end()) < (expense.start(), -expense.end())
+        else "expense"
+    )
 
 
 # --- dates -------------------------------------------------------------------
@@ -364,6 +418,129 @@ _RELATIVE_DAYS: tuple[tuple[str, int, SupportedDateExpression | None], ...] = (
 _RELATIVE_DAY_PHRASES = tuple(
     (re.compile(r"\b" + re.escape(phrase)), offset, expression)
     for phrase, offset, expression in _RELATIVE_DAYS
+)
+
+
+def _any_of(words: tuple[str, ...]) -> str:
+    """An alternation that tries the longest word first."""
+
+    return "|".join(map(re.escape, sorted(words, key=len, reverse=True)))
+
+
+# How long ago: 3 дня назад, две недели назад, неделю назад, vor 3 Tagen. The
+# number comes from the same reader as money, and the whole phrase is cut out
+# with the date, because «3 дня назад купил кофе» read as a coffee for three.
+_TIME_UNITS: dict[str, tuple[int, int]] = {
+    "день": (1, 0),
+    "дня": (1, 0),
+    "дней": (1, 0),
+    "неделю": (7, 0),
+    "недели": (7, 0),
+    "недель": (7, 0),
+    "месяц": (0, 1),
+    "месяца": (0, 1),
+    "месяцев": (0, 1),
+    "год": (0, 12),
+    "года": (0, 12),
+    "лет": (0, 12),
+    "час": (0, 0),
+    "часа": (0, 0),
+    "часов": (0, 0),
+    "минуту": (0, 0),
+    "минуты": (0, 0),
+    "минут": (0, 0),
+    **{
+        word: length
+        for language in VOCABULARIES
+        for word, length in language.time_units.items()
+    },
+}
+_TIME_UNIT = _any_of(tuple(_TIME_UNITS))
+_AGO_AFTER = re.compile(
+    r"\b(?P<unit>"
+    + _TIME_UNIT
+    + r")\s+(?:"
+    + _any_of(("назад", *(w for lang in VOCABULARIES for w in lang.ago_after)))
+    + r")\b"
+)
+# "vor" also means "before", so unlike «неделю назад» this one needs its count:
+# "vor einer Woche" says one, "vor Tagen" says nothing.
+_AGO_BEFORE = re.compile(
+    r"\b(?:"
+    + _any_of(tuple(w for lang in VOCABULARIES for w in lang.ago_before))
+    + r")\s+(?:(?P<article>einem|einer)\s+|(?:\w+\s+){0,2}?)(?P<unit>"
+    + _TIME_UNIT
+    + r")\b"
+)
+_VAGUE_COUNT = re.compile(
+    r"\b(?:"
+    + _any_of(
+        (
+            "несколько",
+            "нескольких",
+            "пару",
+            "пара",
+            *(w for lang in VOCABULARIES for w in lang.vague_counts),
+        )
+    )
+    + r")\s+$"
+)
+#: Past this it is not a date someone means.
+_LONGEST_AGO = 999
+#: The earliest day the operation contract accepts.
+_EARLIEST_DAY = date(1900, 1, 1)
+
+# Monday is 0. The nominative is here because recognition drops the «в».
+_WEEKDAYS: dict[str, int] = {
+    "понедельник": 0,
+    "вторник": 1,
+    "среда": 2,
+    "среду": 2,
+    "четверг": 3,
+    "пятница": 4,
+    "пятницу": 4,
+    "суббота": 5,
+    "субботу": 5,
+    "воскресенье": 6,
+    **{
+        word: day
+        for language in VOCABULARIES
+        for word, day in language.weekdays.items()
+    },
+}
+_WEEKDAY = re.compile(
+    r"\b(?:(?P<last>"
+    + _any_of(
+        (
+            "прошлый",
+            "прошлую",
+            "прошлое",
+            "последний",
+            "последнюю",
+            "последнее",
+            *(w for lang in VOCABULARIES for w in lang.last_words),
+        )
+    )
+    + r")\s+)?(?P<day>"
+    + _any_of(tuple(_WEEKDAYS))
+    + r")\b"
+)
+# A week or a month is not a day, and the form is not told which one. Saying so
+# costs one correction; today would be a wrong date nobody was warned about.
+_VAGUE_DATE = re.compile(
+    r"\b(?:"
+    + _any_of(
+        (
+            "на прошлой неделе",
+            "на той неделе",
+            "в прошлом месяце",
+            "в том месяце",
+            "на днях",
+            "недавно",
+            *(w for lang in VOCABULARIES for w in lang.vague_dates),
+        )
+    )
+    + r")\b"
 )
 
 # 03.08, 3.8.2026, 03/08 — a day and a month, optionally a year. The
@@ -467,6 +644,11 @@ def _find_date(
             continue
         return today - timedelta(days=offset), expression, found.span(), True
 
+    ago = _time_ago(haystack, today=today)
+    if ago is not None:
+        ago_day, span = ago
+        return ago_day or today, None, span, ago_day is not None
+
     match = _ORDINAL_DATE.search(haystack)
     if match is not None:
         return _ordinal_date(match, tens=1, unit=2, month=3, year=4, today=today)
@@ -521,7 +703,84 @@ def _find_date(
             return today, None, match.span(), False
         return resolved, None, match.span(), True
 
+    match = _WEEKDAY.search(haystack)
+    if match is not None:
+        return _weekday(match, today=today)
+
+    match = _VAGUE_DATE.search(haystack)
+    if match is not None:
+        return today, None, match.span(), False
+
     return today, None, None, True
+
+
+def _time_ago(
+    haystack: str, *, today: date
+) -> tuple[date | None, tuple[int, int]] | None:
+    """The day a stretch of time ago, and where the sentence says it.
+
+    None when the sentence says nothing of the kind. The day is None when it
+    says so without naming one: «пару дней назад» is two or three, and a gap.
+    """
+
+    found = _AGO_AFTER.search(haystack) or _AGO_BEFORE.search(haystack)
+    if found is None:
+        return None
+    unit_start = found.start("unit")
+    vague = _VAGUE_COUNT.search(haystack, 0, unit_start)
+    if vague is not None:
+        return None, (vague.start(), found.end())
+    number = _count_before(haystack, unit_start)
+    start = found.start() if number is None else min(found.start(), number.start)
+    span = (start, found.end())
+    if number is not None:
+        count = number.value
+    elif found.re is _AGO_BEFORE and found.group("article") is None:
+        return None, span
+    else:
+        # «неделю назад», "a week ago".
+        count = Decimal(1)
+    if count != count.to_integral_value() or count > _LONGEST_AGO:
+        return None, span
+    days, months = _TIME_UNITS[found.group("unit")]
+    resolved = _months_before(
+        today - timedelta(days=days * int(count)), months * int(count)
+    )
+    return (resolved if resolved >= _EARLIEST_DAY else None), span
+
+
+def _count_before(haystack: str, position: int) -> _AmountCandidate | None:
+    """The number that ends right before `position`, digits or words."""
+
+    for number in (*_digit_amounts(haystack), *_spoken_amounts(haystack)):
+        if number.end <= position and not haystack[number.end : position].strip():
+            return number
+    return None
+
+
+def _months_before(day: date, months: int) -> date:
+    """The same day that many months earlier, or the last one a short month has."""
+
+    year, month = divmod(day.year * 12 + day.month - 1 - months, 12)
+    month += 1
+    return date(year, month, min(day.day, monthrange(year, month)[1]))
+
+
+def _weekday(
+    match: re.Match[str], *, today: date
+) -> tuple[date, None, tuple[int, int], bool]:
+    """The most recent such weekday; nothing is recorded in the future."""
+
+    weekday = _WEEKDAYS[match.group("day")]
+    days_back = (today.weekday() - weekday) % 7
+    if match.group("last") is not None:
+        if days_back == 0:
+            days_back = 7
+        elif weekday < today.weekday():
+            # "Last Monday" said on a Thursday is this week's or the one before,
+            # and people mean both. A week out is worth one correction.
+            return today, None, match.span(), False
+    return today - timedelta(days=days_back), None, match.span(), True
 
 
 def _ordinal_date(
