@@ -1,7 +1,7 @@
 name: mobile_finance_assistant
 description: Mobile-first personal finance assistant.
 publish_to: none
-version: 0.1.30+3
+version: 0.1.31+3
 
 environment:
   sdk: ^3.12.2
