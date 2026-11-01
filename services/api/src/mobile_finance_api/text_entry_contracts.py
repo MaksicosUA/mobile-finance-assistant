@@ -59,6 +59,9 @@ ParseGap = Literal[
     # amount, which is the safe reading: nothing is filled, nothing is
     # confirmed, and no money is invented.
     "TRANSFER_NOT_AN_OPERATION",
+    # Nothing says which way the money went. An older client drops this and
+    # keeps the expense it has always shown.
+    "DIRECTION_NOT_CLEAR",
 ]
 
 TextEntryErrorCode = Literal["TEXT_ENTRY_UNAVAILABLE"]
@@ -104,6 +107,21 @@ class ParsedOperationProposal(TextEntryApiModel):
 class ParseOperationResponse(TextEntryApiModel):
     schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
     proposal: ParsedOperationProposal
+
+
+class ParsedOperationProposalV2(ParsedOperationProposal):
+    """The proposal plus what the words mean if the money went the other way.
+
+    A separate shape because every installed client reads the first one with a
+    closed key set: one more key there stops entry by sentence altogether.
+    """
+
+    other_category_id: UUID | None = Field(default=None, alias="otherCategoryId")
+
+
+class ParseOperationResponseV2(TextEntryApiModel):
+    schema_version: Literal["1"] = Field(default="1", alias="schemaVersion")
+    proposal: ParsedOperationProposalV2
 
 
 class ParsedTransferSide(TextEntryApiModel):

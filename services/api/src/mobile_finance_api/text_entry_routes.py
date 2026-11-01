@@ -19,15 +19,18 @@ from .category_contracts import ListCategoriesResponse
 from .text_entry import (
     DEFAULT_CURRENCY,
     CategoryOption,
+    ParsedOperation,
     parse_operation_text,
     read_transfer_sides,
 )
 from .text_entry_contracts import (
     ParsedOperationProposal,
+    ParsedOperationProposalV2,
     ParsedTransferProposal,
     ParsedTransferSide,
     ParseOperationRequest,
     ParseOperationResponse,
+    ParseOperationResponseV2,
     ParseTransferResponse,
     TextEntryErrorCode,
     TextEntryErrorDetail,
@@ -65,6 +68,47 @@ CategoryRepositoryDependency = Annotated[
 CurrentUserDependency = Annotated[AuthenticatedUser, Depends(current_user)]
 
 
+async def _read_sentence(
+    request: ParseOperationRequest,
+    repository: CategoryReader,
+    user_id: UUID,
+) -> ParsedOperation:
+    catalogue = await repository.list_categories(user_id=user_id)
+    # Read separately because the catalogue response is frozen for the
+    # installed client; only the parser needs these (ADR 0020 step 3).
+    keywords = await repository.list_category_keywords(user_id=user_id)
+    # The day the sentence means, in the user's own timezone. The parser
+    # never decides what "today" is.
+    today = request.captured_at.astimezone(ZoneInfo(request.captured_timezone)).date()
+    return parse_operation_text(
+        text=request.text,
+        today=today,
+        categories=tuple(
+            CategoryOption(
+                category_id=category.category_id,
+                name=category.name,
+                direction=category.direction,
+                keywords=keywords.get(category.category_id, ()),
+            )
+            for category in catalogue.categories
+        ),
+        default_currency=request.account_currency or DEFAULT_CURRENCY,
+    )
+
+
+def _proposal_fields(parsed: ParsedOperation) -> dict[str, object]:
+    return {
+        "operation_type": parsed.operation_type,
+        "amount": parsed.amount,
+        "currency": parsed.currency,
+        "occurred_on": parsed.occurred_on,
+        "source_expression": parsed.source_expression,
+        "category_id": parsed.category_id,
+        "category": parsed.category,
+        "gaps": parsed.gaps,
+    }
+
+
 @router.post(
     "/parse",
     response_model=ParseOperationResponse,
@@ -85,45 +129,48 @@ async def parse_operation(
 ) -> ParseOperationResponse:
     user_id = _user_id(user)
     try:
-        catalogue = await repository.list_categories(user_id=user_id)
-        # Read separately because the catalogue response is frozen for the
-        # installed client; only the parser needs these (ADR 0020 step 3).
-        keywords = await repository.list_category_keywords(user_id=user_id)
-        # The day the sentence means, in the user's own timezone. The parser
-        # never decides what "today" is.
-        today = request.captured_at.astimezone(
-            ZoneInfo(request.captured_timezone)
-        ).date()
-        parsed = parse_operation_text(
-            text=request.text,
-            today=today,
-            categories=tuple(
-                CategoryOption(
-                    category_id=category.category_id,
-                    name=category.name,
-                    direction=category.direction,
-                    keywords=keywords.get(category.category_id, ()),
-                )
-                for category in catalogue.categories
-            ),
-            default_currency=request.account_currency or DEFAULT_CURRENCY,
-        )
+        parsed = await _read_sentence(request, repository, user_id)
         return ParseOperationResponse(
-            proposal=ParsedOperationProposal(
-                operation_type=parsed.operation_type,
-                amount=parsed.amount,
-                currency=parsed.currency,
-                occurred_on=parsed.occurred_on,
-                source_expression=parsed.source_expression,
-                category_id=parsed.category_id,
-                category=parsed.category,
-                gaps=parsed.gaps,
-            )
+            proposal=ParsedOperationProposal.model_validate(_proposal_fields(parsed))
         )
     except Exception:
         public_error = _unavailable()
     # Raised outside the active handler so the sentence itself, amounts, and
     # category names are not retained as public exception context.
+    raise public_error
+
+
+@router.post(
+    "/parse/v2",
+    response_model=ParseOperationResponseV2,
+    response_model_by_alias=True,
+    responses={
+        401: {"description": "Authentication is required"},
+        422: {"description": "The request is malformed"},
+        503: {
+            "model": TextEntryErrorResponse,
+            "description": "The sentence cannot be read",
+        },
+    },
+)
+async def parse_operation_v2(
+    request: ParseOperationRequest,
+    repository: CategoryRepositoryDependency,
+    user: CurrentUserDependency,
+) -> ParseOperationResponseV2:
+    user_id = _user_id(user)
+    try:
+        parsed = await _read_sentence(request, repository, user_id)
+        return ParseOperationResponseV2(
+            proposal=ParsedOperationProposalV2.model_validate(
+                {
+                    **_proposal_fields(parsed),
+                    "other_category_id": parsed.other_category_id,
+                }
+            )
+        )
+    except Exception:
+        public_error = _unavailable()
     raise public_error
 
 

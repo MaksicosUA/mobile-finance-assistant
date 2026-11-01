@@ -1124,3 +1124,409 @@ def test_a_verb_of_arrival_alone_proves_nothing(text: str) -> None:
     """A person arrives too. Only the verb next to what arrived means income."""
 
     assert _parse(text).operation_type == "expense"
+
+
+# --- how long ago ------------------------------------------------------------
+#
+# 13 August 2026 is a Thursday. A day said in a sentence used to land on today
+# with nothing to show for it, and the number in "3 дня назад" became the amount.
+
+
+@pytest.mark.parametrize(
+    ("text", "expected", "amount"),
+    [
+        ("3 дня назад купил кофе за 5", date(2026, 8, 10), Decimal(5)),
+        ("купил кофе за 5 3 дня назад", date(2026, 8, 10), Decimal(5)),
+        ("три дня назад кофе 5", date(2026, 8, 10), Decimal(5)),
+        ("двадцать пять дней назад такси 300", date(2026, 7, 19), Decimal(300)),
+        ("день назад кофе 5", date(2026, 8, 12), Decimal(5)),
+        ("неделю назад кофе 5", date(2026, 8, 6), Decimal(5)),
+        ("две недели назад кофе 5", date(2026, 7, 30), Decimal(5)),
+        ("месяц назад кофе 5", date(2026, 7, 13), Decimal(5)),
+        ("3 месяца назад кофе 5", date(2026, 5, 13), Decimal(5)),
+        ("год назад кофе 5", date(2025, 8, 13), Decimal(5)),
+        ("3 дні тому купив каву за 5", date(2026, 8, 10), Decimal(5)),
+        ("п'ять днів тому таксі 100", date(2026, 8, 8), Decimal(100)),
+        ("тиждень тому кава 5", date(2026, 8, 6), Decimal(5)),
+        ("два тижні тому кава 5", date(2026, 7, 30), Decimal(5)),
+        ("місяць тому кава 5", date(2026, 7, 13), Decimal(5)),
+        ("3 days ago bought coffee for 5", date(2026, 8, 10), Decimal(5)),
+        ("five days ago taxi 100", date(2026, 8, 8), Decimal(100)),
+        ("twenty-five days ago taxi 300", date(2026, 7, 19), Decimal(300)),
+        ("a week ago coffee 5", date(2026, 8, 6), Decimal(5)),
+        ("two weeks ago coffee 5", date(2026, 7, 30), Decimal(5)),
+        ("a month ago coffee 5", date(2026, 7, 13), Decimal(5)),
+        ("vor 3 tagen kaffee 5", date(2026, 8, 10), Decimal(5)),
+        ("vor fünf tagen taxi 100", date(2026, 8, 8), Decimal(100)),
+        ("vor einer woche kaffee 5", date(2026, 8, 6), Decimal(5)),
+        ("vor zwei wochen kaffee 5", date(2026, 7, 30), Decimal(5)),
+        ("vor einem monat kaffee 5", date(2026, 7, 13), Decimal(5)),
+    ],
+)
+def test_how_long_ago_dates_the_operation_and_stays_out_of_the_amount(
+    text: str, expected: date, amount: Decimal
+) -> None:
+    parsed = _parse(text)
+
+    assert parsed.occurred_on == expected
+    assert parsed.amount == amount
+    assert "DATE_NOT_UNDERSTOOD" not in parsed.gaps
+    # Only the two phrases Finance Core resolves may travel (ADR 0007).
+    assert parsed.source_expression is None
+
+
+def test_the_number_of_days_is_never_the_amount() -> None:
+    parsed = _parse("3 дня назад купил кофе")
+
+    assert parsed.occurred_on == date(2026, 8, 10)
+    assert parsed.amount is None
+    assert "AMOUNT_NOT_FOUND" in parsed.gaps
+
+
+def test_a_month_ago_lands_on_the_last_day_of_a_shorter_month() -> None:
+    parsed = parse_operation_text(text="месяц назад кофе 5", today=date(2026, 3, 31))
+
+    assert parsed.occurred_on == date(2026, 2, 28)
+
+
+def test_hours_ago_is_today_and_its_number_is_not_money() -> None:
+    parsed = _parse("2 часа назад кофе 5")
+
+    assert parsed.occurred_on == _TODAY
+    assert parsed.amount == Decimal(5)
+    assert "DATE_NOT_UNDERSTOOD" not in parsed.gaps
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "пару дней назад кофе 5",
+        "несколько дней назад кофе 5",
+        "полторы недели назад кофе 5",
+        "99999 дней назад кофе 5",
+        "кілька днів тому кава 5",
+        "a couple of days ago coffee 5",
+        "a few days ago coffee 5",
+        "vor ein paar tagen kaffee 5",
+        "vor einigen tagen kaffee 5",
+        "vor tagen kaffee 5",
+        "на прошлой неделе кофе 5",
+        "в прошлом месяце кофе 5",
+        "на днях кофе 5",
+        "недавно кофе 5",
+        "минулого тижня кава 5",
+        "last week coffee 5",
+        "the other day coffee 5",
+        "letzte woche kaffee 5",
+        "neulich kaffee 5",
+    ],
+)
+def test_a_past_that_names_no_single_day_is_a_gap(text: str) -> None:
+    parsed = _parse(text)
+
+    assert parsed.occurred_on == _TODAY
+    assert "DATE_NOT_UNDERSTOOD" in parsed.gaps
+    assert parsed.amount == Decimal(5)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("в понедельник кофе 5", date(2026, 8, 10)),
+        ("во вторник кофе 5", date(2026, 8, 11)),
+        ("в среду кофе 5", date(2026, 8, 12)),
+        # Today is Thursday, and nothing is recorded in the future.
+        ("в четверг кофе 5", _TODAY),
+        ("в пятницу кофе 5", date(2026, 8, 7)),
+        ("в воскресенье кофе 5", date(2026, 8, 9)),
+        ("у понеділок кава 5", date(2026, 8, 10)),
+        ("у п'ятницю кава 5", date(2026, 8, 7)),
+        ("у неділю кава 5", date(2026, 8, 9)),
+        ("on friday coffee 5", date(2026, 8, 7)),
+        ("am freitag kaffee 5", date(2026, 8, 7)),
+        ("am sonntag kaffee 5", date(2026, 8, 9)),
+        # "Last" has one reading when the day has not come round this week yet,
+        # and when it is today.
+        ("в прошлую пятницу кофе 5", date(2026, 8, 7)),
+        ("в прошлый четверг кофе 5", date(2026, 8, 6)),
+        ("last friday coffee 5", date(2026, 8, 7)),
+        ("letzten freitag kaffee 5", date(2026, 8, 7)),
+    ],
+)
+def test_a_weekday_is_the_most_recent_one(text: str, expected: date) -> None:
+    parsed = _parse(text)
+
+    assert parsed.occurred_on == expected
+    assert parsed.amount == Decimal(5)
+    assert "DATE_NOT_UNDERSTOOD" not in parsed.gaps
+
+
+def test_last_monday_said_on_a_thursday_could_be_either_monday() -> None:
+    parsed = _parse("в прошлый понедельник кофе 5")
+
+    assert parsed.occurred_on == _TODAY
+    assert "DATE_NOT_UNDERSTOOD" in parsed.gaps
+
+
+def test_a_written_date_outranks_the_weekday_beside_it() -> None:
+    assert _parse("в пятницу 3 августа кофе 5").occurred_on == date(2026, 8, 3)
+
+
+def test_a_word_about_going_back_is_not_a_date() -> None:
+    parsed = _parse("вернул назад 100")
+
+    assert parsed.occurred_on == _TODAY
+    assert parsed.amount == Decimal(100)
+    assert "DATE_NOT_UNDERSTOOD" not in parsed.gaps
+
+
+def test_an_exchange_said_days_ago_keeps_both_its_amounts() -> None:
+    sides = read_transfer_sides(
+        text="3 дня назад обменял 100 евро на 5200 гривен", today=_TODAY
+    )
+
+    assert sides is not None
+    sent, received = sides
+    assert (sent.amount, received.amount) == (Decimal(100), Decimal(5200))
+
+
+# --- which way the money went ------------------------------------------------
+
+_GIFT_OUT = UUID("55555555-5555-4555-8555-555555555555")
+_GIFT_IN = UUID("66666666-6666-4666-8666-666666666666")
+_FREELANCE = UUID("77777777-7777-4777-8777-777777777777")
+
+_WITH_GIFTS = (
+    *_CATEGORIES,
+    CategoryOption(
+        category_id=_GIFT_OUT,
+        name="Подарки",
+        direction="expense",
+        keywords=("подар", "gift", "geschenk", "подару"),
+    ),
+    CategoryOption(
+        category_id=_GIFT_IN,
+        name="Подарки",
+        direction="income",
+        keywords=("подар", "gift", "geschenk", "подару"),
+    ),
+    CategoryOption(
+        category_id=_FREELANCE,
+        name="Подработка",
+        direction="income",
+        keywords=("фриланс", "заказ"),
+    ),
+)
+
+
+def _gifts(text: str) -> object:
+    return parse_operation_text(text=text, today=_TODAY, categories=_WITH_GIFTS)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "подарили 5000",
+        "мне подарили 5000 евро",
+        "родители подарили 1000",
+        "мама подарила мне 200",
+        "мне подарил брат 200",
+        "подарував мені 200",
+        "мені подарували 200",
+        "mom gave me a gift 200",
+        "got a gift 200",
+        "gift from mom 200",
+        "mama hat mir ein geschenk gemacht 200",
+    ],
+)
+def test_money_given_to_the_person_is_income(text: str) -> None:
+    parsed = _gifts(text)
+
+    assert parsed.operation_type == "income"
+    assert parsed.category_id == _GIFT_IN
+    assert parsed.other_category_id == _GIFT_OUT
+    assert "DIRECTION_NOT_CLEAR" not in parsed.gaps
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "подарил другу 500",
+        "подарила маме 300",
+        "мы подарили маме 500",
+        "подарував другу 500",
+        "ми подарували мамі 500",
+        "gave a gift to a friend 500",
+    ],
+)
+def test_money_the_person_gave_is_an_expense(text: str) -> None:
+    parsed = _gifts(text)
+
+    assert parsed.operation_type == "expense"
+    assert parsed.category_id == _GIFT_OUT
+    assert "DIRECTION_NOT_CLEAR" not in parsed.gaps
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "продал велосипед 500",
+        "продала телефон 300",
+        "продав велосипед 500",
+        "кэшбэк 50",
+        "sold my bike 500",
+        "fahrrad verkauft 500",
+        "мне дали 200",
+        "перевели мне 300",
+        "мне скинули 100",
+        "mom sent me 200",
+    ],
+)
+def test_other_money_that_arrived_is_income(text: str) -> None:
+    assert _gifts(text).operation_type == "income"
+
+
+@pytest.mark.parametrize(
+    "text", ["подарок 5000", "подарок от мамы 500", "подарунок 500", "gift 500"]
+)
+def test_a_word_of_both_directions_is_asked_about_rather_than_guessed(
+    text: str,
+) -> None:
+    parsed = _gifts(text)
+
+    assert "DIRECTION_NOT_CLEAR" in parsed.gaps
+    # What an installed client keeps showing, because it drops the gap.
+    assert parsed.operation_type == "expense"
+    assert parsed.category_id == _GIFT_OUT
+    assert parsed.other_category_id == _GIFT_IN
+
+
+def test_a_word_only_income_owns_is_asked_about_too() -> None:
+    parsed = _gifts("фриланс 500")
+
+    assert parsed.gaps == ("CATEGORY_NOT_MATCHED", "DIRECTION_NOT_CLEAR")
+    assert parsed.operation_type == "expense"
+    assert parsed.category_id is None
+    assert parsed.other_category_id == _FREELANCE
+
+
+@pytest.mark.parametrize(
+    ("text", "direction", "category", "other"),
+    [
+        ("получил подарок 5000", "income", _GIFT_IN, _GIFT_OUT),
+        ("купил подарок 500", "expense", _GIFT_OUT, _GIFT_IN),
+        # Same stem as an income keyword, and ordering pizza is plainly spending.
+        ("заказал пиццу 300", "expense", None, _FREELANCE),
+        ("кафе 50", "expense", _CAFE, None),
+    ],
+)
+def test_a_sentence_that_says_which_way_is_not_asked_about(
+    text: str, direction: str, category: UUID | None, other: UUID | None
+) -> None:
+    parsed = _gifts(text)
+
+    assert parsed.operation_type == direction
+    assert parsed.category_id == category
+    assert parsed.other_category_id == other
+    assert "DIRECTION_NOT_CLEAR" not in parsed.gaps
+
+
+@pytest.mark.parametrize("text", ["кофе 50", "500", "мама 200"])
+def test_a_sentence_with_nothing_of_income_stays_a_silent_expense(text: str) -> None:
+    parsed = _gifts(text)
+
+    assert parsed.operation_type == "expense"
+    assert parsed.other_category_id is None
+    assert "DIRECTION_NOT_CLEAR" not in parsed.gaps
+
+
+def test_at_one_spot_the_longer_word_decides() -> None:
+    # «подарил» is where «подарили» starts, and they mean opposite things.
+    assert _gifts("подарили 100").operation_type == "income"
+    assert _gifts("подарил 100").operation_type == "expense"
+
+
+class _GiftCategories:
+    async def list_categories(self, *, user_id: UUID) -> ListCategoriesResponse:
+        del user_id
+        created = datetime(2026, 6, 1, tzinfo=UTC)
+        return ListCategoriesResponse(
+            categories=(
+                Category(
+                    category_id=_GIFT_OUT,
+                    name="Подарки",
+                    direction="expense",
+                    created_at=created,
+                ),
+                Category(
+                    category_id=_GIFT_IN,
+                    name="Подарки",
+                    direction="income",
+                    created_at=created,
+                ),
+            )
+        )
+
+    async def list_category_keywords(
+        self, *, user_id: UUID
+    ) -> dict[UUID, tuple[str, ...]]:
+        del user_id
+        return {}
+
+
+def _read_over_http(path: str) -> tuple[int, dict[str, object]]:
+    async def scenario() -> tuple[int, dict[str, object]]:
+        app = create_app(
+            current_user_authenticator=_StaticAuthenticator(),
+            category_repository=_GiftCategories(),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                path,
+                json={
+                    "text": "подарки 500",
+                    "capturedAt": "2026-08-13T09:00:00Z",
+                    "capturedTimezone": "Europe/Berlin",
+                },
+                headers=_AUTH,
+            )
+        return response.status_code, response.json()
+
+    return asyncio.run(scenario())
+
+
+def test_the_old_address_answers_with_exactly_the_keys_an_installed_client_reads() -> (
+    None
+):
+    status, body = _read_over_http("/api/v1/operations/parse")
+
+    assert status == 200
+    proposal = body["proposal"]
+    assert isinstance(proposal, dict)
+    # Every installed client parses this with a closed key set: one more key
+    # here stops entry by sentence altogether instead of degrading it.
+    assert set(proposal) == {
+        "type",
+        "amount",
+        "currency",
+        "occurredOn",
+        "sourceExpression",
+        "categoryId",
+        "category",
+        "gaps",
+    }
+    assert proposal["type"] == "expense"
+    assert proposal["categoryId"] == str(_GIFT_OUT)
+
+
+def test_the_new_address_names_the_category_of_the_other_direction() -> None:
+    status, body = _read_over_http("/api/v1/operations/parse/v2")
+
+    assert status == 200
+    proposal = body["proposal"]
+    assert isinstance(proposal, dict)
+    assert proposal["categoryId"] == str(_GIFT_OUT)
+    assert proposal["otherCategoryId"] == str(_GIFT_IN)
+    assert proposal["gaps"] == ["DIRECTION_NOT_CLEAR"]
