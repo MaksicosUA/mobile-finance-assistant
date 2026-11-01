@@ -57,9 +57,10 @@ ParseGapCode = Literal[
 #: The longest sentence accepted. A phrase is one operation, not a paragraph.
 MAX_TEXT_LENGTH = 280
 
-#: What a sentence that names **no** currency at all is assumed to mean. It is
-#: never applied to a sentence that does name one: an unreadable currency is a
-#: gap, because assuming euro there writes a wrong amount confidently.
+#: What a sentence that names **no** currency at all is assumed to mean when the
+#: caller does not say which wallet it is for. It is never applied to a sentence
+#: that does name one: an unreadable currency is a gap, because assuming here
+#: writes a wrong amount confidently.
 DEFAULT_CURRENCY = "EUR"
 
 #: The shortest keyword allowed. Below this a keyword stops describing a
@@ -106,11 +107,14 @@ def parse_operation_text(
     text: str,
     today: date,
     categories: tuple[CategoryOption, ...] = (),
+    default_currency: str = DEFAULT_CURRENCY,
 ) -> ParsedOperation:
     """Propose an operation from `text`, as understood on `today`.
 
     `today` is the local date in the account's canonical timezone, already
     resolved by the caller: this function never decides what "today" means.
+    `default_currency` is what a sentence naming no currency means: the
+    currency of the wallet it is being recorded into.
     """
 
     original = _normalized(text)
@@ -131,14 +135,14 @@ def parse_operation_text(
         return ParsedOperation(
             operation_type=direction,
             amount=None,
-            currency=DEFAULT_CURRENCY,
+            currency=default_currency,
             occurred_on=occurred_on,
             source_expression=expression,
             category_id=None,
             category=None,
             gaps=("TRANSFER_NOT_AN_OPERATION",),
         )
-    currency = _find_currency(without_date)
+    currency = _find_currency(without_date, default=default_currency)
     amount, amount_gap = _find_amount(without_date, currency)
     category_id, category_text = _find_category(
         haystack, original=original, direction=direction, categories=categories
@@ -1189,7 +1193,7 @@ def _currency_mentions(haystack: str) -> list[tuple[int, int, str]]:
     return found
 
 
-def _find_currency(haystack: str) -> _Currency:
+def _find_currency(haystack: str, *, default: str) -> _Currency:
     best: tuple[int, int, str] | None = None
     for match in _WORD.finditer(haystack):
         code = _CURRENCY_WORDS.get(match.group())
@@ -1209,7 +1213,7 @@ def _find_currency(haystack: str) -> _Currency:
         match.group() in _AMBIGUOUS_CURRENCY_WORDS for match in _WORD.finditer(haystack)
     )
     if best is None:
-        return _Currency(code=DEFAULT_CURRENCY, span=None, understood=understood)
+        return _Currency(code=default, span=None, understood=understood)
     return _Currency(code=best[2], span=(best[0], best[1]), understood=understood)
 
 

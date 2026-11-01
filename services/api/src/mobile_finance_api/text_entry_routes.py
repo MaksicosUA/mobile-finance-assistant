@@ -16,7 +16,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from .auth import AuthenticatedUser, current_user
 from .category_contracts import ListCategoriesResponse
-from .text_entry import CategoryOption, parse_operation_text, read_transfer_sides
+from .text_entry import (
+    DEFAULT_CURRENCY,
+    CategoryOption,
+    parse_operation_text,
+    read_transfer_sides,
+)
 from .text_entry_contracts import (
     ParsedOperationProposal,
     ParsedTransferProposal,
@@ -101,6 +106,7 @@ async def parse_operation(
                 )
                 for category in catalogue.categories
             ),
+            default_currency=request.account_currency or DEFAULT_CURRENCY,
         )
         return ParseOperationResponse(
             proposal=ParsedOperationProposal(

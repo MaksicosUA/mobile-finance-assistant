@@ -252,7 +252,7 @@ void main() {
       await tester.tap(find.byKey(const Key('operation-evaluate')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('finance-confirm')), findsOneWidget);
-      expect(find.textContaining('9876'), findsOneWidget);
+      expect(find.textContaining('9 876'), findsOneWidget);
 
       await _scrollTo(tester, find.byKey(const Key('finance-confirm')));
       await tester.tap(find.byKey(const Key('finance-confirm')));
@@ -260,6 +260,7 @@ void main() {
 
       expect(find.byKey(const Key('finance-confirm')), findsNothing);
       expect(find.byKey(const Key('operation-amount')), findsNothing);
+      expect(find.textContaining('9 876'), findsNothing);
       expect(find.textContaining('9876'), findsNothing);
       expect(find.byKey(const Key('operation-queued')), findsOneWidget);
       expect(find.text('Операция сохранена на устройстве'), findsOneWidget);
@@ -271,11 +272,91 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('operation-amount')), findsOneWidget);
+      expect(find.textContaining('9 876'), findsNothing);
       expect(find.textContaining('9876'), findsNothing);
       expect(deliveryCoordinator.calls, hasLength(1));
       expect(tester.takeException(), isNull);
     },
   );
+
+  group('the currency of the first account', () {
+    Future<void> fillAndSubmit(WidgetTester tester) async {
+      await tester.enterText(find.byKey(const Key('account-name')), 'Счёт');
+      await tester.enterText(find.byKey(const Key('opening-balance')), '100');
+      await _scrollTo(tester, find.byKey(const Key('account-evaluate')));
+      await tester.tap(find.byKey(const Key('account-evaluate')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> choose(WidgetTester tester, String code) async {
+      await _scrollTo(tester, find.byKey(const Key('account-currency')));
+      await tester.tap(find.byKey(const Key('account-currency')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('wallet-currency-search')),
+        code,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key('wallet-currency-$code')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('starts from the phone region', (tester) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeFinanceRepository(_emptySetup()),
+      );
+
+      expect(find.text('Евро · EUR'), findsOneWidget);
+    });
+
+    testWidgets('is the one chosen on the form', (tester) async {
+      final repository = _FakeFinanceRepository(_emptySetup());
+      await _pumpPage(tester, repository: repository);
+
+      await choose(tester, 'USD');
+      await fillAndSubmit(tester);
+
+      expect(repository.accountDrafts.single.currency, 'USD');
+      // Said on its own line: it is the one thing here that cannot be undone.
+      expect(find.text('Доллар США · USD'), findsOneWidget);
+      expect(find.textContaining(r'$'), findsOneWidget);
+    });
+
+    testWidgets('names itself beside the opening balance', (tester) async {
+      await _pumpPage(
+        tester,
+        repository: _FakeFinanceRepository(_emptySetup()),
+      );
+
+      await choose(tester, 'UAH');
+
+      final field = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const Key('opening-balance')),
+          matching: find.byType(TextField),
+        ),
+      );
+      expect(field.decoration?.suffixText, 'UAH');
+    });
+
+    testWidgets('is asked for when the phone names no region', (tester) async {
+      final repository = _FakeFinanceRepository(_emptySetup());
+      await _pumpPage(tester, repository: repository, phoneNamesNoRegion: true);
+
+      await fillAndSubmit(tester);
+
+      expect(find.text('Выберите валюту'), findsOneWidget);
+      expect(repository.accountDrafts, isEmpty);
+
+      await choose(tester, 'GBP');
+      await _scrollTo(tester, find.byKey(const Key('account-evaluate')));
+      await tester.tap(find.byKey(const Key('account-evaluate')));
+      await tester.pumpAndSettle();
+
+      expect(repository.accountDrafts.single.currency, 'GBP');
+    });
+  });
 
   testWidgets('storage failure keeps review and explains local durability', (
     tester,
@@ -470,11 +551,13 @@ Future<void> _pumpPage(
   AppSettings settings = const AppSettings(),
   HomeRepository? homeRepository,
   OperationDeliveryCoordinator? operationDeliveryCoordinator,
+  bool phoneNamesNoRegion = false,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         initialAppSettingsProvider.overrideWithValue(settings),
+        if (phoneNamesNoRegion) phoneRegionProvider.overrideWithValue(null),
         financeEntryRepositoryProvider.overrideWithValue(repository),
         financeEntryClockProvider.overrideWithValue(
           () => DateTime.utc(2026, 7, 29, 10),
@@ -646,6 +729,8 @@ final class _FakeOperationDeliveryCoordinator
 }
 
 final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
+  final List<FinanceAccountDraft> accountDrafts = [];
+
   @override
   Future<FinanceEntryResult<DateTime>> requestAccountDeletion({
     required String password,
@@ -754,6 +839,7 @@ final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords(
@@ -833,13 +919,16 @@ final class _FakeFinanceRepository implements FinanceEntryRepositoryClient {
   @override
   Future<FinanceEntryResult<FinanceAccountEvaluation>> evaluateAccount(
     FinanceAccountDraft draft,
-  ) async => _success(
-    FinanceAccountNeedsConfirmation(
-      draft: draft,
-      draftHash:
-          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    ),
-  );
+  ) async {
+    accountDrafts.add(draft);
+    return _success(
+      FinanceAccountNeedsConfirmation(
+        draft: draft,
+        draftHash:
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      ),
+    );
+  }
 
   @override
   Future<FinanceEntryResult<FinanceAccountCommit>> commitAccount(

@@ -148,4 +148,58 @@ void main() {
       );
     });
   });
+
+  group('an exact amount on a confirmation card', () {
+    final dollars = Money(amount: '1250.5', currency: 'USD');
+
+    test('is written the way the language writes a number', () {
+      expect(MoneyFormatter.formatExact(dollars, locale: 'en'), r'$1,250.5');
+      expect(MoneyFormatter.formatExact(dollars, locale: 'de'), r'1.250,5 $');
+      expect(MoneyFormatter.formatExact(dollars, locale: 'ru'), r'1 250,5 $');
+    });
+
+    test('keeps every digit that was entered', () {
+      expect(
+        MoneyFormatter.formatExact(
+          Money(amount: '0.125', currency: 'EUR'),
+          locale: 'ru',
+        ),
+        '0,125 €',
+      );
+    });
+
+    test('adds no decimals nobody entered', () {
+      expect(
+        MoneyFormatter.formatExact(
+          Money(amount: '100', currency: 'UAH'),
+          locale: 'ru',
+        ),
+        '100 UAH',
+      );
+    });
+
+    test('carries a sign only when there is something to sign', () {
+      expect(
+        MoneyFormatter.formatExact(
+          Money(amount: '-3.50', currency: 'EUR'),
+          locale: 'ru',
+        ),
+        '−3,50 €',
+      );
+      expect(
+        MoneyFormatter.formatExact(
+          Money(amount: '-0', currency: 'EUR'),
+          locale: 'ru',
+        ),
+        '0 €',
+      );
+    });
+
+    test('hides the amount in privacy mode', () {
+      expect(
+        MoneyFormatter.formatExact(dollars, locale: 'en', privacy: true),
+        r'$••••••',
+      );
+    });
+  });
 }

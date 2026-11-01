@@ -656,6 +656,13 @@ class AppLocalizationsUk extends AppLocalizations {
   String get accountNameRequired => 'Вкажіть назву рахунку';
 
   @override
+  String get accountCurrencyRequired => 'Оберіть валюту';
+
+  @override
+  String get accountCurrencyHelp =>
+      'Потім валюту цього рахунку не змінити. Для інших валют можна буде відкрити окремі гаманці.';
+
+  @override
   String get openingBalanceField => 'Початковий залишок';
 
   @override
@@ -1111,7 +1118,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get savingsGoalIssueUnsupportedCurrency =>
-      'Поки підтримується лише EUR.';
+      'Ця валюта поки не підтримується.';
 
   @override
   String get savingsGoalIssueBeforeBaseline =>

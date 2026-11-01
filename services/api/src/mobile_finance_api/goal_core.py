@@ -600,10 +600,6 @@ def _creation_issues(
         issues.append(GoalIssue(code="ACCOUNT_UNAVAILABLE", field="accountId"))
     elif context.currency != command.currency:
         issues.append(GoalIssue(code="ACCOUNT_CURRENCY_MISMATCH", field="currency"))
-    # No verified currency registry or rate provenance exists yet, so anything
-    # outside the account base currency fails closed exactly as operations do.
-    if command.currency != "EUR":
-        issues.append(GoalIssue(code="UNSUPPORTED_CURRENCY", field="currency"))
     # A target before the baseline describes a deadline the account did not yet
     # exist for. Corrections only move the baseline earlier (ADR 0016), so this
     # bound can widen later but never invalidates an accepted goal.

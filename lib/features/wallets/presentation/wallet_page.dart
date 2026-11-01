@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme/app_tokens.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/wallet_controller.dart';
-import '../domain/currency_options.dart';
+import 'currency_sheet.dart';
 
 /// Open a wallet in another currency (ADR 0029).
 ///
@@ -117,7 +117,10 @@ class _WalletPageState extends ConsumerState<WalletPage> {
           onTap: state.isSubmitting
               ? null
               : () async {
-                  final picked = await _pickCurrency(state, l10n);
+                  final picked = await showCurrencySheet(
+                    context,
+                    held: state.heldCurrencies,
+                  );
                   if (picked == null || !mounted) return;
                   setState(() => _currency = picked);
                   ref.read(walletControllerProvider.notifier).discardReview();
@@ -192,96 +195,6 @@ class _WalletPageState extends ConsumerState<WalletPage> {
             child: Text(l10n.walletConfirmAction),
           ),
       ],
-    );
-  }
-
-  Future<String?> _pickCurrency(WalletReady state, AppLocalizations l10n) {
-    return showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => _CurrencySheet(
-        held: state.heldCurrencies,
-        searchLabel: l10n.walletCurrencySearch,
-        heldLabel: l10n.walletCurrencyHeld,
-      ),
-    );
-  }
-}
-
-class _CurrencySheet extends StatefulWidget {
-  const _CurrencySheet({
-    required this.held,
-    required this.searchLabel,
-    required this.heldLabel,
-  });
-
-  final Set<String> held;
-  final String searchLabel;
-  final String heldLabel;
-
-  @override
-  State<_CurrencySheet> createState() => _CurrencySheetState();
-}
-
-class _CurrencySheetState extends State<_CurrencySheet> {
-  var _query = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final matches = currencyOptions
-        .where(
-          (option) =>
-              option.matches(_query, name: l10n.currencyName(option.code)),
-        )
-        .toList(growable: false);
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: TextField(
-                key: const Key('wallet-currency-search'),
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: widget.searchLabel,
-                  prefixIcon: const Icon(Icons.search),
-                ),
-                onChanged: (value) => setState(() => _query = value),
-              ),
-            ),
-            Flexible(
-              child: ListView.builder(
-                key: const Key('wallet-currency-list'),
-                shrinkWrap: true,
-                itemCount: matches.length,
-                itemBuilder: (context, index) {
-                  final option = matches[index];
-                  final held = widget.held.contains(option.code);
-                  return ListTile(
-                    key: Key('wallet-currency-${option.code}'),
-                    title: Text(l10n.currencyName(option.code)),
-                    subtitle: Text(
-                      option.symbol == null
-                          ? option.code
-                          : '${option.code} · ${option.symbol}',
-                    ),
-                    // Still selectable: a bank account and cash are both euro
-                    // and both real (ADR 0029).
-                    trailing: held ? Text(widget.heldLabel) : null,
-                    onTap: () => Navigator.of(context).pop(option.code),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

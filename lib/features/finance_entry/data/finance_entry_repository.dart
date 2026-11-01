@@ -126,6 +126,7 @@ abstract interface class FinanceEntryRepositoryClient {
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   });
 
   Future<FinanceEntryResult<TransferProposal?>> parseTransferText({
@@ -555,6 +556,7 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   }) {
     // Reading a sentence writes nothing, so this needs none of the commit
     // preflight a financial command does (ADR 0022).
@@ -564,6 +566,7 @@ final class FinanceEntryRepository implements FinanceEntryRepositoryClient {
         text: text,
         capturedAt: capturedAt,
         capturedTimezone: capturedTimezone,
+        accountCurrency: accountCurrency,
       ),
     );
   }

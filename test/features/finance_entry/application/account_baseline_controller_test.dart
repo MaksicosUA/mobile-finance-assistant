@@ -745,6 +745,7 @@ final class _FakeFinanceEntryRepository
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords(

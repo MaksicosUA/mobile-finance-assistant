@@ -296,8 +296,6 @@ def _issues(
         issues.append(BudgetIssue(code="ACCOUNT_UNAVAILABLE", field="accountId"))
     elif context.currency != command.currency:
         issues.append(BudgetIssue(code="ACCOUNT_CURRENCY_MISMATCH", field="currency"))
-    if command.currency != "EUR":
-        issues.append(BudgetIssue(code="UNSUPPORTED_CURRENCY", field="currency"))
     if command.category_id is not None:
         if category_direction is None:
             issues.append(BudgetIssue(code="CATEGORY_UNAVAILABLE", field="categoryId"))

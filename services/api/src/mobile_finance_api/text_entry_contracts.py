@@ -76,6 +76,9 @@ class ParseOperationRequest(TextEntryApiModel):
     # (ADR 0007).
     captured_at: UtcTimestamp = Field(alias="capturedAt")
     captured_timezone: TimezoneName = Field(alias="capturedTimezone")
+    # The wallet being recorded into, which is what a sentence naming no
+    # currency means. Omitted by every client older than issue 0013.
+    account_currency: CurrencyCode | None = Field(default=None, alias="accountCurrency")
 
 
 class ParsedOperationProposal(TextEntryApiModel):

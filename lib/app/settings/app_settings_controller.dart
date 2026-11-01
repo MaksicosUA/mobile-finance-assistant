@@ -27,6 +27,16 @@ final phoneLanguageProvider = Provider<AppLanguage>((ref) {
   return resolveAppLanguage(binding.platformDispatcher.locales);
 });
 
+/// The country the phone says it is in, when one of its languages names one.
+final phoneRegionProvider = Provider<String?>((ref) {
+  final binding = WidgetsFlutterBinding.ensureInitialized();
+  for (final locale in binding.platformDispatcher.locales) {
+    final region = locale.countryCode;
+    if (region != null && region.isNotEmpty) return region;
+  }
+  return null;
+});
+
 /// The language the app is in: the person's choice, or else the phone's.
 final appLanguageProvider = Provider<AppLanguage>((ref) {
   final chosen = ref.watch(

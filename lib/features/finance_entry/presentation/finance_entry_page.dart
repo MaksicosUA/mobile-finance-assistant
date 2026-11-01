@@ -10,6 +10,8 @@ import '../../../app/theme/app_tokens.dart';
 import '../../../core/network/api_config.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../home/domain/home_snapshot.dart';
+import '../../home/presentation/money_formatter.dart';
 import '../application/category_catalogue_controller.dart';
 import '../application/finance_entry_controller.dart';
 import '../application/text_entry_controller.dart';
@@ -19,6 +21,7 @@ import '../../transfers/presentation/transfer_page.dart';
 import '../../voice_entry/application/voice_entry_controller.dart';
 import '../../voice_entry/application/waiting_phrases_controller.dart';
 import '../../voice_entry/domain/waiting_phrase.dart';
+import '../../wallets/presentation/currency_sheet.dart';
 import 'widgets/category_picker.dart';
 
 class FinanceEntryPage extends ConsumerStatefulWidget {
@@ -277,11 +280,13 @@ class _AccountFormState extends State<_AccountForm> {
   late final TextEditingController _nameController;
   late final TextEditingController _balanceController;
   late DateTime _openingDate;
+  String? _currency;
   bool _validateContinuously = false;
 
   @override
   void initState() {
     super.initState();
+    _currency = widget.state.initialInput.currency;
     _nameController = TextEditingController(
       text: widget.state.initialInput.name,
     );
@@ -340,6 +345,12 @@ class _AccountFormState extends State<_AccountForm> {
                 : null,
           ),
           const SizedBox(height: AppSpacing.sm),
+          _CurrencyField(
+            value: _currency,
+            enabled: !widget.state.isSubmitting,
+            onChanged: (value) => setState(() => _currency = value),
+          ),
+          const SizedBox(height: AppSpacing.md),
           TextFormField(
             key: const Key('opening-balance'),
             controller: _balanceController,
@@ -356,7 +367,7 @@ class _AccountFormState extends State<_AccountForm> {
             textInputAction: TextInputAction.done,
             decoration: InputDecoration(
               labelText: l10n.openingBalanceField,
-              suffixText: 'EUR',
+              suffixText: _currency,
               helperText: l10n.openingBalanceHelp,
             ),
             validator: (value) {
@@ -402,9 +413,66 @@ class _AccountFormState extends State<_AccountForm> {
     widget.onSubmit(
       AccountSetupInput(
         name: _nameController.text,
+        currency: _currency,
         openingBalance: _balanceController.text,
         openingBalanceOn: _openingDate,
       ),
+    );
+  }
+}
+
+/// The first wallet's currency. It settles the profile and cannot be changed
+/// afterwards, so the field says so and the form will not go on without one.
+class _CurrencyField extends StatelessWidget {
+  const _CurrencyField({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String? value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return FormField<String>(
+      initialValue: value,
+      validator: (chosen) =>
+          chosen == null ? l10n.accountCurrencyRequired : null,
+      builder: (field) {
+        final chosen = field.value;
+        return Semantics(
+          button: true,
+          enabled: enabled,
+          child: InkWell(
+            key: const Key('account-currency'),
+            onTap: enabled
+                ? () async {
+                    final picked = await showCurrencySheet(context);
+                    if (picked == null) return;
+                    field.didChange(picked);
+                    onChanged(picked);
+                  }
+                : null,
+            child: InputDecorator(
+              isEmpty: chosen == null,
+              decoration: InputDecoration(
+                labelText: l10n.walletCurrencyField,
+                helperText: l10n.accountCurrencyHelp,
+                helperMaxLines: 4,
+                errorText: field.errorText,
+                enabled: enabled,
+                suffixIcon: const Icon(Icons.expand_more_rounded),
+              ),
+              child: chosen == null
+                  ? null
+                  : Text('${l10n.currencyName(chosen)} · $chosen'),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -484,7 +552,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
         setState(() => _phraseInField = spoken.kept);
         ref
             .read(textEntryControllerProvider.notifier)
-            .parse(spoken.text, phrase: spoken.kept);
+            .parse(
+              spoken.text,
+              accountCurrency: widget.state.account.currency,
+              phrase: spoken.kept,
+            );
         return;
       }
       // Opened from Home's entry action: the keyboard belongs on the sentence,
@@ -515,7 +587,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     setState(() => _phraseInField = phrase);
     ref
         .read(textEntryControllerProvider.notifier)
-        .parse(phrase.text, phrase: phrase);
+        .parse(
+          phrase.text,
+          accountCurrency: widget.state.account.currency,
+          phrase: phrase,
+        );
   }
 
   /// Reads the sentence again as an exchange and opens the transfer screen
@@ -639,7 +715,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
             saidAt: _phraseInField?.saidAt,
             onParse: () => ref
                 .read(textEntryControllerProvider.notifier)
-                .parse(_sentenceController.text, phrase: _phraseInField),
+                .parse(
+                  _sentenceController.text,
+                  accountCurrency: widget.state.account.currency,
+                  phrase: _phraseInField,
+                ),
             onOpenTransfer: () => unawaited(_openTransfer()),
           ),
           if (widget.state.accountCreated) ...[
@@ -871,8 +951,17 @@ class _AccountReview extends StatelessWidget {
       rows: [
         _ReviewValue(l10n.accountLabel, draft.name),
         _ReviewValue(
+          l10n.walletCurrencyField,
+          '${l10n.currencyName(draft.currency)} · ${draft.currency}',
+        ),
+        _ReviewValue(
           l10n.openingBalanceField,
-          _exactMoney(draft.openingBalance, draft.currency, privacyEnabled),
+          _exactMoney(
+            context,
+            draft.openingBalance,
+            draft.currency,
+            privacyEnabled,
+          ),
           isMoney: true,
         ),
         _ReviewValue(
@@ -918,7 +1007,7 @@ class _OperationReview extends StatelessWidget {
         ),
         _ReviewValue(
           l10n.operationAmountField,
-          _exactMoney(draft.amount, draft.currency, privacyEnabled),
+          _exactMoney(context, draft.amount, draft.currency, privacyEnabled),
           isMoney: true,
         ),
         _ReviewValue(l10n.accountLabel, state.account.name),
@@ -1746,10 +1835,17 @@ final class _ReviewValue {
   final bool isMoney;
 }
 
-String _exactMoney(String amount, String currency, bool privacy) {
-  if (privacy) return '•••••• ${currency == 'EUR' ? '€' : currency}';
-  final localized = amount.replaceFirst('.', ',').replaceFirst('-', '−');
-  return '$localized ${currency == 'EUR' ? '€' : currency}';
+String _exactMoney(
+  BuildContext context,
+  String amount,
+  String currency,
+  bool privacy,
+) {
+  return MoneyFormatter.formatExact(
+    Money(amount: amount, currency: currency),
+    locale: Localizations.localeOf(context).toString(),
+    privacy: privacy,
+  );
 }
 
 String _localizedDate(BuildContext context, String wireDate) {

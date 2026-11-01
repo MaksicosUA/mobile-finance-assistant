@@ -269,6 +269,17 @@ def test_a_currency_the_account_does_not_use_is_refused() -> None:
     ]
 
 
+def test_a_ceiling_takes_the_currency_of_its_wallet() -> None:
+    """A first wallet may be in anything, so a ceiling may be too (issue 0013)."""
+
+    repository = _Repository(context=_context(currency="USD"))
+    asyncio.run(
+        _core(repository).set_budget(user_id=_USER_ID, command=_command(currency="USD"))
+    )
+
+    assert len(repository.written) == 1
+
+
 def test_an_income_category_cannot_carry_a_ceiling() -> None:
     """Budgeting income is not a thing anyone means."""
 

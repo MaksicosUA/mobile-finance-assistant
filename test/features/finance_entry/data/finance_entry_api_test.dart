@@ -738,6 +738,7 @@ void main() {
         text: 'Потратил 12,50 на продукты вчера',
         capturedAt: '2026-08-13T09:00:00Z',
         capturedTimezone: 'Europe/Berlin',
+        accountCurrency: 'EUR',
       );
 
       final proposal = (result as FinanceEntrySuccess<OperationProposal>).value;
@@ -746,6 +747,11 @@ void main() {
       expect(proposal.occurredOn, '2026-08-12');
       expect(proposal.sourceExpression, 'вчера');
       expect(adapter.requests.single.uri.path, '/api/v1/operations/parse');
+      expect(
+        (adapter.requests.single.data
+            as Map<String, Object?>)['accountCurrency'],
+        'EUR',
+      );
     });
 
     test('a proposal without an amount is valid, not malformed', () async {
@@ -762,6 +768,7 @@ void main() {
         text: 'Купил продукты',
         capturedAt: '2026-08-13T09:00:00Z',
         capturedTimezone: 'Europe/Berlin',
+        accountCurrency: 'EUR',
       );
 
       // Refusing to guess is the designed answer, so it must parse cleanly.
@@ -782,6 +789,7 @@ void main() {
         text: 'Потратил 12',
         capturedAt: '2026-08-13T09:00:00Z',
         capturedTimezone: 'Europe/Berlin',
+        accountCurrency: 'EUR',
       );
 
       // A proposal is powerless by contract. If it ever grows the fields that
@@ -803,6 +811,7 @@ void main() {
         text: 'Потратил 12',
         capturedAt: '2026-08-13T09:00:00Z',
         capturedTimezone: 'Europe/Berlin',
+        accountCurrency: 'EUR',
       );
 
       // A gap is a hint. Refusing to fill the form because of a hint the
@@ -820,6 +829,7 @@ void main() {
         text: '   ',
         capturedAt: '2026-08-13T09:00:00Z',
         capturedTimezone: 'Europe/Berlin',
+        accountCurrency: 'EUR',
       );
 
       expect(_failure(result).kind, FinanceEntryFailureKind.invalidInput);
@@ -839,6 +849,7 @@ void main() {
         text: 'Потратил 12',
         capturedAt: '2026-08-13T09:00:00Z',
         capturedTimezone: 'Europe/Berlin',
+        accountCurrency: 'EUR',
       );
 
       final failure = _failure(result);

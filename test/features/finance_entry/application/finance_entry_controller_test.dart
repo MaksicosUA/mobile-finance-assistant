@@ -134,6 +134,7 @@ void main() {
           .evaluateAccount(
             AccountSetupInput(
               name: '  Тестовый счёт  ',
+              currency: 'EUR',
               openingBalance: '-12,50',
               openingBalanceOn: DateTime(2026, 7, 1),
             ),
@@ -152,6 +153,71 @@ void main() {
       expect(draft.canonicalTimezone, configuredHomeApiTimezone);
       expect(draft.toJson()['openingBalance'], isA<String>());
       expect(state.review.draftHash, _draftHash);
+    });
+
+    test('a first account is opened in the currency chosen', () async {
+      final repository = _FakeFinanceEntryRepository(
+        listResult: _success(_emptyAccountSetup()),
+        onEvaluateAccount: (draft) => _success(
+          FinanceAccountNeedsConfirmation(draft: draft, draftHash: _draftHash),
+        ),
+      );
+      final container = _container(
+        repository,
+        commandIdFactory: () => _accountCommandId,
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(
+        financeEntryControllerProvider.notifier,
+      );
+      await controller.load();
+
+      await controller.evaluateAccount(
+        AccountSetupInput(
+          name: 'Счёт',
+          currency: 'USD',
+          openingBalance: '10.00',
+          openingBalanceOn: DateTime(2026, 7, 1),
+        ),
+      );
+      expect(repository.accountDrafts.single.currency, 'USD');
+
+      // Going back to change a word must not lose what was chosen.
+      controller.editAccount();
+      final editing =
+          container.read(financeEntryControllerProvider)
+              as FinanceAccountEditing;
+      expect(editing.initialInput.currency, 'USD');
+    });
+
+    test('no currency is not a currency', () async {
+      final repository = _FakeFinanceEntryRepository(
+        listResult: _success(_emptyAccountSetup()),
+      );
+      final container = _container(
+        repository,
+        commandIdFactory: () => _accountCommandId,
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(
+        financeEntryControllerProvider.notifier,
+      );
+      await controller.load();
+
+      await controller.evaluateAccount(
+        AccountSetupInput(
+          name: 'Счёт',
+          currency: null,
+          openingBalance: '10.00',
+          openingBalanceOn: DateTime(2026, 7, 1),
+        ),
+      );
+
+      expect(repository.accountDrafts, isEmpty);
+      final state =
+          container.read(financeEntryControllerProvider)
+              as FinanceAccountEditing;
+      expect(state.failure?.kind, FinanceEntryFailureKind.invalidInput);
     });
 
     test(
@@ -203,6 +269,7 @@ void main() {
         await controller.evaluateAccount(
           AccountSetupInput(
             name: 'Тестовый счёт',
+            currency: 'EUR',
             openingBalance: '10.00',
             openingBalanceOn: DateTime(2026, 7, 1),
           ),
@@ -269,6 +336,7 @@ void main() {
         await controller.evaluateAccount(
           AccountSetupInput(
             name: 'Тестовый счёт',
+            currency: 'EUR',
             openingBalance: '10.00',
             openingBalanceOn: DateTime(2026, 7, 1),
           ),
@@ -316,6 +384,7 @@ void main() {
       await controller.evaluateAccount(
         AccountSetupInput(
           name: 'Тестовый счёт',
+          currency: 'EUR',
           openingBalance: '10.00',
           openingBalanceOn: DateTime(2026, 7, 1),
         ),
@@ -1397,6 +1466,7 @@ final class _FakeFinanceEntryRepository
     required String text,
     required String capturedAt,
     required String capturedTimezone,
+    required String accountCurrency,
   }) => throw UnimplementedError();
   @override
   Future<FinanceEntryResult<CategoryKeywords>> listCategoryKeywords(

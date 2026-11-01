@@ -661,6 +661,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get accountNameRequired => 'Gib einen Kontonamen ein';
 
   @override
+  String get accountCurrencyRequired => 'Wähle eine Währung';
+
+  @override
+  String get accountCurrencyHelp =>
+      'Die Währung dieses Kontos lässt sich später nicht ändern. Für andere Währungen kannst du eigene Konten eröffnen.';
+
+  @override
   String get openingBalanceField => 'Anfangssaldo';
 
   @override
@@ -1123,7 +1130,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get savingsGoalIssueUnsupportedCurrency =>
-      'Bisher wird nur EUR unterstützt.';
+      'Diese Währung wird noch nicht unterstützt.';
 
   @override
   String get savingsGoalIssueBeforeBaseline =>
