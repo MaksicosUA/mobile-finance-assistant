@@ -356,11 +356,6 @@ def test_an_undeclared_monthly_intent_is_stored_as_zero() -> None:
         ({}, None, ("ACCOUNT_UNAVAILABLE", "accountId")),
         ({}, _context(currency="USD"), ("ACCOUNT_CURRENCY_MISMATCH", "currency")),
         (
-            {"currency": "USD"},
-            _context(currency="USD"),
-            ("UNSUPPORTED_CURRENCY", "currency"),
-        ),
-        (
             {"targetOn": "2025-12-31"},
             _context(opening_balance_on=date(2026, 1, 1)),
             ("TARGET_BEFORE_ACCOUNT_BASELINE", "targetOn"),
@@ -378,6 +373,18 @@ def test_creation_is_rejected_deterministically(
         asyncio.run(core.create(user_id=_USER_ID, command=_command(**changes)))
     assert expected in [(issue.code, issue.field) for issue in rejection.value.issues]
     assert repository.writes == 0
+
+
+def test_a_goal_takes_the_currency_of_its_wallet() -> None:
+    """A first wallet may be in anything, so a goal may be too (issue 0013)."""
+
+    repository = _FakeRepository(context=_context(currency="USD"))
+    core = GoalCore(repository=repository, clock=_clock)
+    response = asyncio.run(
+        core.create(user_id=_USER_ID, command=_command(currency="USD"))
+    )
+    assert response.goal.currency == "USD"
+    assert repository.writes == 1
 
 
 def test_exact_replay_returns_the_original_and_writes_nothing() -> None:
