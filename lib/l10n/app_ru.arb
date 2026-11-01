@@ -389,6 +389,10 @@
   "accountNameField": "Название счёта",
   "accountNameHint": "Например, Основной счёт",
   "accountNameRequired": "Укажите название счёта",
+  "accountCurrencyRequired": "Выберите валюту",
+  "@accountCurrencyRequired": {"description": "First account form, when no currency is chosen."},
+  "accountCurrencyHelp": "Потом валюту этого счёта не изменить. Для других валют можно будет открыть отдельные кошельки.",
+  "@accountCurrencyHelp": {"description": "First account form, under the currency field."},
   "openingBalanceField": "Начальный остаток",
   "openingBalanceHelp": "Это исходный остаток, а не доход или расход.",
   "openingBalanceDateField": "Дата начального остатка",
@@ -725,7 +729,7 @@
   "@savingsGoalIssueCurrencyMismatch": {
     "description": "Savings goals (ADR 0019)."
   },
-  "savingsGoalIssueUnsupportedCurrency": "Пока поддерживается только EUR.",
+  "savingsGoalIssueUnsupportedCurrency": "Эта валюта пока не поддерживается.",
   "@savingsGoalIssueUnsupportedCurrency": {
     "description": "Savings goals (ADR 0019)."
   },

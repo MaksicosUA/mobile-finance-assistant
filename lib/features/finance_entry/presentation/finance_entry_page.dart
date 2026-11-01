@@ -21,6 +21,7 @@ import '../../transfers/presentation/transfer_page.dart';
 import '../../voice_entry/application/voice_entry_controller.dart';
 import '../../voice_entry/application/waiting_phrases_controller.dart';
 import '../../voice_entry/domain/waiting_phrase.dart';
+import '../../wallets/presentation/currency_sheet.dart';
 import 'widgets/category_picker.dart';
 
 class FinanceEntryPage extends ConsumerStatefulWidget {
@@ -279,11 +280,13 @@ class _AccountFormState extends State<_AccountForm> {
   late final TextEditingController _nameController;
   late final TextEditingController _balanceController;
   late DateTime _openingDate;
+  String? _currency;
   bool _validateContinuously = false;
 
   @override
   void initState() {
     super.initState();
+    _currency = widget.state.initialInput.currency;
     _nameController = TextEditingController(
       text: widget.state.initialInput.name,
     );
@@ -342,6 +345,12 @@ class _AccountFormState extends State<_AccountForm> {
                 : null,
           ),
           const SizedBox(height: AppSpacing.sm),
+          _CurrencyField(
+            value: _currency,
+            enabled: !widget.state.isSubmitting,
+            onChanged: (value) => setState(() => _currency = value),
+          ),
+          const SizedBox(height: AppSpacing.md),
           TextFormField(
             key: const Key('opening-balance'),
             controller: _balanceController,
@@ -358,7 +367,7 @@ class _AccountFormState extends State<_AccountForm> {
             textInputAction: TextInputAction.done,
             decoration: InputDecoration(
               labelText: l10n.openingBalanceField,
-              suffixText: 'EUR',
+              suffixText: _currency,
               helperText: l10n.openingBalanceHelp,
             ),
             validator: (value) {
@@ -404,9 +413,66 @@ class _AccountFormState extends State<_AccountForm> {
     widget.onSubmit(
       AccountSetupInput(
         name: _nameController.text,
+        currency: _currency,
         openingBalance: _balanceController.text,
         openingBalanceOn: _openingDate,
       ),
+    );
+  }
+}
+
+/// The first wallet's currency. It settles the profile and cannot be changed
+/// afterwards, so the field says so and the form will not go on without one.
+class _CurrencyField extends StatelessWidget {
+  const _CurrencyField({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String? value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return FormField<String>(
+      initialValue: value,
+      validator: (chosen) =>
+          chosen == null ? l10n.accountCurrencyRequired : null,
+      builder: (field) {
+        final chosen = field.value;
+        return Semantics(
+          button: true,
+          enabled: enabled,
+          child: InkWell(
+            key: const Key('account-currency'),
+            onTap: enabled
+                ? () async {
+                    final picked = await showCurrencySheet(context);
+                    if (picked == null) return;
+                    field.didChange(picked);
+                    onChanged(picked);
+                  }
+                : null,
+            child: InputDecorator(
+              isEmpty: chosen == null,
+              decoration: InputDecoration(
+                labelText: l10n.walletCurrencyField,
+                helperText: l10n.accountCurrencyHelp,
+                helperMaxLines: 4,
+                errorText: field.errorText,
+                enabled: enabled,
+                suffixIcon: const Icon(Icons.expand_more_rounded),
+              ),
+              child: chosen == null
+                  ? null
+                  : Text('${l10n.currencyName(chosen)} · $chosen'),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -884,6 +950,10 @@ class _AccountReview extends StatelessWidget {
       failure: state.failure,
       rows: [
         _ReviewValue(l10n.accountLabel, draft.name),
+        _ReviewValue(
+          l10n.walletCurrencyField,
+          '${l10n.currencyName(draft.currency)} · ${draft.currency}',
+        ),
         _ReviewValue(
           l10n.openingBalanceField,
           _exactMoney(

@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/canonical_timezone.dart';
+import '../../../app/settings/app_settings_controller.dart';
 import '../../../core/money/entered_amount.dart';
 import '../../../core/network/api_config.dart';
 import '../../../core/platform/finance_capture_context.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../home/application/home_controller.dart';
+import '../../wallets/domain/currency_options.dart';
 import '../data/finance_command_id.dart';
 import '../data/finance_entry_repository.dart';
 import '../domain/finance_entry_models.dart';
@@ -150,10 +152,12 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
     final current = state;
     if (_requestInFlight || current is! FinanceAccountEditing) return;
     late final String name;
+    late final String currency;
     late final String openingBalance;
     late final String openingBalanceOn;
     try {
       name = _requiredText(input.name, maximumLength: 100);
+      currency = input.currency ?? (throw const FormatException('No currency'));
       openingBalance = normalizeMoneyInput(
         input.openingBalance,
         allowNegative: true,
@@ -190,7 +194,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
       final draft = FinanceAccountDraft(
         commandId: ref.read(financeCommandIdFactoryProvider)(),
         name: name,
-        currency: 'EUR',
+        currency: currency,
         openingBalance: openingBalance,
         openingBalanceOn: openingBalanceOn,
         canonicalTimezone: configuredHomeApiTimezone,
@@ -327,6 +331,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
     state = FinanceAccountEditing(
       initialInput: AccountSetupInput(
         name: draft.name,
+        currency: draft.currency,
         openingBalance: draft.openingBalance,
         openingBalanceOn: _parseDate(draft.openingBalanceOn),
       ),
@@ -634,6 +639,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
   AccountSetupInput _defaultAccountInput(DateTime canonicalLocalDate) =>
       AccountSetupInput(
         name: '',
+        currency: currencyOfRegion(ref.read(phoneRegionProvider)),
         openingBalance: '0',
         openingBalanceOn: canonicalLocalDate,
       );

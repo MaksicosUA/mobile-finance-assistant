@@ -654,6 +654,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountNameRequired => 'Enter an account name';
 
   @override
+  String get accountCurrencyRequired => 'Choose a currency';
+
+  @override
+  String get accountCurrencyHelp =>
+      'This account\'s currency can\'t be changed later. You can open separate wallets for other currencies.';
+
+  @override
   String get openingBalanceField => 'Opening balance';
 
   @override
@@ -1110,7 +1117,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get savingsGoalIssueUnsupportedCurrency =>
-      'Only EUR is supported for now.';
+      'This currency isn\'t supported yet.';
 
   @override
   String get savingsGoalIssueBeforeBaseline =>

@@ -7,11 +7,16 @@ import '../domain/finance_entry_result.dart';
 final class AccountSetupInput {
   const AccountSetupInput({
     required this.name,
+    required this.currency,
     required this.openingBalance,
     required this.openingBalanceOn,
   });
 
   final String name;
+
+  /// Null until there is one: the form asks rather than assuming a currency
+  /// the wallet could never be changed out of.
+  final String? currency;
   final String openingBalance;
   final DateTime openingBalanceOn;
 }

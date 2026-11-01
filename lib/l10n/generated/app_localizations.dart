@@ -1235,6 +1235,18 @@ abstract class AppLocalizations {
   /// **'Укажите название счёта'**
   String get accountNameRequired;
 
+  /// First account form, when no currency is chosen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выберите валюту'**
+  String get accountCurrencyRequired;
+
+  /// First account form, under the currency field.
+  ///
+  /// In ru, this message translates to:
+  /// **'Потом валюту этого счёта не изменить. Для других валют можно будет открыть отдельные кошельки.'**
+  String get accountCurrencyHelp;
+
   /// No description provided for @openingBalanceField.
   ///
   /// In ru, this message translates to:
@@ -2036,7 +2048,7 @@ abstract class AppLocalizations {
   /// Savings goals (ADR 0019).
   ///
   /// In ru, this message translates to:
-  /// **'Пока поддерживается только EUR.'**
+  /// **'Эта валюта пока не поддерживается.'**
   String get savingsGoalIssueUnsupportedCurrency;
 
   /// Savings goals (ADR 0019).
