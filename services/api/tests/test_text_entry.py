@@ -652,6 +652,38 @@ def test_the_request_refuses_an_empty_or_oversized_sentence() -> None:
             )
 
 
+# --- a sentence that names no currency ----------------------------------------
+
+
+def test_silence_means_the_wallet_it_is_recorded_into() -> None:
+    parsed = parse_operation_text(
+        text="Потратил 50 на кофе", today=_TODAY, default_currency="UAH"
+    )
+
+    assert (parsed.amount, parsed.currency) == (Decimal("50"), "UAH")
+    assert "CURRENCY_NOT_UNDERSTOOD" not in parsed.gaps
+
+
+def test_a_named_currency_wins_over_the_wallet() -> None:
+    parsed = parse_operation_text(
+        text="Потратил 50 евро на кофе", today=_TODAY, default_currency="UAH"
+    )
+
+    assert parsed.currency == "EUR"
+
+
+def test_an_unreadable_currency_stays_a_gap_on_any_wallet() -> None:
+    parsed = parse_operation_text(
+        text="Потратил 800 крон", today=_TODAY, default_currency="UAH"
+    )
+
+    assert "CURRENCY_NOT_UNDERSTOOD" in parsed.gaps
+
+
+def test_no_wallet_named_keeps_the_euro_an_installed_client_expects() -> None:
+    assert parse_operation_text(text="Потратил 50", today=_TODAY).currency == "EUR"
+
+
 # --- transport ---------------------------------------------------------------
 
 
@@ -670,6 +702,55 @@ def test_parsing_requires_authentication() -> None:
                 },
             )
         assert response.status_code == 401
+
+    asyncio.run(scenario())
+
+
+def test_the_wallet_named_in_the_request_answers_a_silent_sentence() -> None:
+    async def scenario() -> None:
+        app = create_app(
+            current_user_authenticator=_StaticAuthenticator(),
+            category_repository=_FakeCategories(),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/operations/parse",
+                json={
+                    "text": "Потратил 12 на продукты",
+                    "capturedAt": "2026-08-13T09:00:00Z",
+                    "capturedTimezone": "Europe/Berlin",
+                    "accountCurrency": "USD",
+                },
+                headers=_AUTH,
+            )
+        assert response.status_code == 200, response.text
+        assert response.json()["proposal"]["currency"] == "USD"
+
+    asyncio.run(scenario())
+
+
+def test_a_wallet_currency_must_look_like_a_currency() -> None:
+    async def scenario() -> None:
+        app = create_app(
+            current_user_authenticator=_StaticAuthenticator(),
+            category_repository=_FakeCategories(),
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/operations/parse",
+                json={
+                    "text": "Потратил 12",
+                    "capturedAt": "2026-08-13T09:00:00Z",
+                    "capturedTimezone": "Europe/Berlin",
+                    "accountCurrency": "usd",
+                },
+                headers=_AUTH,
+            )
+        assert response.status_code == 422
 
     asyncio.run(scenario())
 
