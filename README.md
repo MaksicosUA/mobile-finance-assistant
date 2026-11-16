@@ -26,6 +26,10 @@ project memory, and agent instructions are intentionally maintained outside it.
   signs every other device out
 - Argon2id password hashing, ten-minute access JWTs, rotating opaque refresh
   tokens, replay detection, and immediate server-side session revocation
+- `GET /api/v1/health`, open to anyone, saying only whether a request that needs
+  the database would be served; a host timer asks it every five minutes and
+  tells a watcher outside, and each nightly dump leaves the host sealed to a
+  key the host does not hold (see `infra/docker/README.md`)
 - Authenticated `GET /api/v2/home` returning a persistent first-use empty state
   or the newest account-scoped PostgreSQL Home projection; `/api/v1/home`
   remains a fail-closed compatibility contract for representable revisions

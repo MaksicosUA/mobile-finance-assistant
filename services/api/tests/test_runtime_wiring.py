@@ -90,6 +90,7 @@ def test_the_adapters_the_read_routes_need_are_present(runtime_app) -> None:  # 
         "profile_repository",
         "account_data_repository",
         "credential_repository",
+        "service_health",
         "app_release_store",
     ):
         assert required in state, required

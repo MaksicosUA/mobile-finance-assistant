@@ -9,6 +9,11 @@
 #
 # Custom format rather than plain SQL: it is compressed, and `pg_restore` can
 # pull a single table out of it without replaying the rest.
+#
+# A dump that stays on this volume is lost with it, so each one is then sent
+# away sealed (`offsite.py`), and a watcher elsewhere is told how the run ended.
+# Silence is the third answer: a host that is gone tells nobody, and the
+# watcher notices the missing word.
 
 set -euo pipefail
 
@@ -40,7 +45,33 @@ TARGET="$DESTINATION/mfa-$STAMP.dump"
 # Written to a temporary name and moved into place only once it is complete,
 # so a run interrupted halfway never leaves a file that looks finished.
 PARTIAL="$TARGET.partial"
-trap 'rm -f "$PARTIAL"' EXIT
+
+# Which step was under way, for the watcher to pass on. A word, never a path
+# or an error text: the address it goes to is someone else's server.
+STAGE="dump"
+
+# Tells the watcher how this run ended, if there is one to tell. Telling can
+# fail without changing the answer: a backup that worked is not undone by a
+# watcher that could not be reached, and one that failed stays failed.
+tell() {
+  local status="$1" address="${MFA_BACKUP_PING_URL:-}"
+  [ -n "$address" ] || return 0
+  if [ "$status" -ne 0 ]; then
+    address="$address/fail"
+  fi
+  curl -fsS --max-time 10 --retry 2 -o /dev/null \
+    --data-raw "$([ "$status" -eq 0 ] && echo ok || echo "$STAGE")" \
+    "$address" 2>/dev/null \
+    || echo "the backup watcher could not be told" >&2
+}
+
+finish() {
+  local status=$?
+  rm -f "$PARTIAL"
+  tell "$status"
+  exit "$status"
+}
+trap finish EXIT
 
 # No password: the image trusts its own local socket, and an argument would be
 # readable in the process list for as long as the dump runs.
@@ -55,10 +86,24 @@ if [ "$SIZE" -lt "$MINIMUM_BYTES" ]; then
 fi
 
 mv "$PARTIAL" "$TARGET"
-trap - EXIT
 chmod 600 "$TARGET"
 echo "wrote $TARGET ($SIZE bytes)"
 
 # Retention runs only after a good dump, so a run of failures can never age out
 # the last working copy.
-find "$DESTINATION" -maxdepth 1 -name 'mfa-*.dump' -mtime "+$KEEP_DAYS" -print -delete
+#
+# In minutes, with an hour's slack: `-mtime +14` means "fifteen days or more",
+# and the timer does not fire at the same minute every night. An erased account
+# is promised that backups hold it for fourteen days and no longer (ADR 0030),
+# so a dump has to be gone at the run fourteen days after its own.
+STAGE="retention"
+find "$DESTINATION" -maxdepth 1 \
+  \( -name 'mfa-*.dump' -o -name 'mfa-*.dump.sent' \) \
+  -mmin "+$((KEEP_DAYS * 1440 - 60))" -print -delete
+# Left by a run that was killed halfway.
+find "$DESTINATION" -maxdepth 1 -name 'mfa-*.partial' -mmin +1440 -delete
+
+# After retention, so nothing about to be aged out is sent first. A failure
+# here fails the run, and the dump just written stays where it is.
+STAGE="offsite"
+python3 "$HERE/offsite.py" "$DESTINATION"
