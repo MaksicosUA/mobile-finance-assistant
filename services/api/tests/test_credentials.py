@@ -68,7 +68,7 @@ def test_no_two_codes_are_the_same() -> None:
         "ABCDEFGHJKMNPQRSTVWX",
         "ABCDE FGHJK MNPQR STVWX",
         "  ABCDE-FGHJK-MNPQR-STVWX\t",
-        "ABCDE–FGHJK—MNPQR−STVWX",
+        "ABCDE\u2013FGHJK\u2014MNPQR\u2212STVWX",  # an en dash, an em dash, a minus
         "abcde fghjk-mnpqrstvwx",
     ],
 )
@@ -93,7 +93,7 @@ def test_a_letter_the_alphabet_leaves_out_is_read_as_the_digit_it_looks_like() -
         "ABCDE-FGHJK-MNPQR-STVWX-0",
         "ABCDE-FGHJK-MNPQR-STVWU",
         "ABCDE-FGHJK-MNPQR-STVW!",
-        "АВСDE-FGHJK-MNPQR-STVWX",  # Cyrillic look-alikes are not the code
+        "\u0410\u0412\u0421DE-FGHJK-MNPQR-STVWX",  # Cyrillic А, В, С are not the code
         "A" * 65,
     ],
 )

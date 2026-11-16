@@ -26,7 +26,7 @@ _LENGTH = _GROUPS * _GROUP_LENGTH
 _MISREAD = str.maketrans({"O": "0", "I": "1", "L": "1"})
 #: Whatever a keyboard puts between the groups: a hyphen, the dashes a phone
 #: substitutes for one, or a space.
-_SEPARATORS = str.maketrans("", "", " \t-‐‑‒–—−")
+_SEPARATORS = str.maketrans("", "", " \t-\u2010\u2011\u2012\u2013\u2014\u2212")
 _DOMAIN = b"mfa-recovery-code-v1:"
 DIGEST_BYTES = hashlib.sha256().digest_size
 #: The longest text worth reading as a code, separators included.
