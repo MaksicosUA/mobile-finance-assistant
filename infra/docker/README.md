@@ -145,7 +145,7 @@ Open http://localhost:8080 and sign in with System **PostgreSQL**, Server
 password from `sudo grep ^MFA_READONLY_DB_PASSWORD= .env`. `sudo ./adminer.sh stop`
 when done.
 
-`users` and `auth_refresh_tokens` refuse `SELECT *`, because two of their columns
+`users` and `auth_refresh_tokens` refuse `SELECT *`, because some of their columns
 are hidden: in Adminer, choose the columns under **Select** before opening them.
 For accounts, `account_admin list` is quicker anyway.
 
