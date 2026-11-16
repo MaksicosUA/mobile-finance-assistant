@@ -128,9 +128,11 @@ Once, and again after a migration adds a column to `users` or
 
     sudo ./readonly-role.sh
 
-It creates `mfa_readonly`, which can read every table except the password hash
-and the refresh-token hash, runs every statement in a read-only transaction, and
-can therefore change nothing. Its password is generated into `.env` and never
+It creates `mfa_readonly`, which can read every table except the password hash,
+the recovery-code hash and the refresh-token hash, runs every statement in a
+read-only transaction, and can therefore change nothing. A column a migration
+adds to those two tables stays unreadable until the script is run again, so
+forgetting to run it hides something rather than exposing it. Its password is generated into `.env` and never
 printed.
 
 When you want to look:

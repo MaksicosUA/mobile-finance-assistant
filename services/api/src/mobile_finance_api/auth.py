@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from typing import Annotated, Protocol
+from uuid import UUID
 
 from fastapi import HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -41,6 +42,9 @@ class AuthenticatedUser(BaseModel):
         str,
         StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
     ]
+    #: The session this request arrived on, when the verifier knows it. Changing
+    #: a password signs out every other one and has to know which to keep.
+    session_id: UUID | None = None
 
 
 class AuthenticationRequired(Exception):
@@ -102,10 +106,11 @@ class PostgresCurrentUserAuthenticator:
             ).one_or_none()
         if row is None:
             raise AuthenticationRequired
-        user, _ = row
+        user, session = row
         return AuthenticatedUser(
             subject=str(user.id),
             display_name=user.display_name,
+            session_id=session.id,
         )
 
 

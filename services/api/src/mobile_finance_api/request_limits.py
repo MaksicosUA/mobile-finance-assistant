@@ -94,6 +94,17 @@ def _registration_by_ip() -> SlidingWindow:
     return SlidingWindow(Limit(attempts=10, seconds=_HOUR))
 
 
+def _recovery_by_address() -> SlidingWindow:
+    # A code carries 100 bits, so this is not what makes guessing hopeless. It
+    # keeps one address from being hammered, and the answer is the same whether
+    # or not anyone owns it.
+    return SlidingWindow(Limit(attempts=10, seconds=_QUARTER_HOUR))
+
+
+def _recovery_by_ip() -> SlidingWindow:
+    return SlidingWindow(Limit(attempts=30, seconds=_QUARTER_HOUR))
+
+
 def _password_by_user() -> SlidingWindow:
     return SlidingWindow(Limit(attempts=5, seconds=_QUARTER_HOUR))
 
@@ -111,6 +122,8 @@ class RequestLimits:
     login_by_address: SlidingWindow = field(default_factory=_login_by_address)
     login_by_ip: SlidingWindow = field(default_factory=_login_by_ip)
     registration_by_ip: SlidingWindow = field(default_factory=_registration_by_ip)
+    recovery_by_address: SlidingWindow = field(default_factory=_recovery_by_address)
+    recovery_by_ip: SlidingWindow = field(default_factory=_recovery_by_ip)
     password_by_user: SlidingWindow = field(default_factory=_password_by_user)
     reads_by_user: SlidingWindow = field(default_factory=_reads_by_user)
     writes_by_user: SlidingWindow = field(default_factory=_writes_by_user)

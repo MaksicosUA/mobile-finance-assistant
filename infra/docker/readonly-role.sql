@@ -32,30 +32,45 @@ $$;
 GRANT USAGE ON SCHEMA public TO mfa_readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO mfa_readonly;
 
--- Two columns stay out of sight. A password hash and a refresh-token hash are
--- nothing anyone needs to read, and they are what an attacker would want. A
--- table-level grant cannot leave a column out, so these two tables are granted
--- column by column instead.
+-- Three columns stay out of sight. A password hash, a recovery-code hash and a
+-- refresh-token hash are nothing anyone needs to read, and they are what an
+-- attacker would want. A table-level grant cannot leave a column out, so these
+-- two tables are granted column by column instead.
 REVOKE SELECT ON public.users, public.auth_refresh_tokens FROM mfa_readonly;
-REVOKE SELECT (password_hash) ON public.users FROM mfa_readonly;
-REVOKE SELECT (token_hash) ON public.auth_refresh_tokens FROM mfa_readonly;
 DO $$
 DECLARE
     target text;
-    hidden text;
+    hidden text[];
+    present text;
     readable text;
 BEGIN
     FOR target, hidden IN
         SELECT * FROM (
-            VALUES ('users', 'password_hash'), ('auth_refresh_tokens', 'token_hash')
+            VALUES
+                ('users', ARRAY['password_hash', 'recovery_code_hash']),
+                ('auth_refresh_tokens', ARRAY['token_hash'])
         ) AS pairs (target, hidden)
     LOOP
+        -- A grant made before a column joined this list is taken back. Only
+        -- columns that exist are named: this file also runs against a database
+        -- that has not been migrated that far yet.
+        SELECT string_agg(quote_ident(c.column_name), ', ' ORDER BY c.ordinal_position)
+          INTO present
+          FROM information_schema.columns AS c
+         WHERE c.table_schema = 'public'
+           AND c.table_name = target
+           AND c.column_name = ANY (hidden);
+        IF present IS NOT NULL THEN
+            EXECUTE format(
+                'REVOKE SELECT (%s) ON public.%I FROM mfa_readonly', present, target
+            );
+        END IF;
         SELECT string_agg(quote_ident(c.column_name), ', ' ORDER BY c.ordinal_position)
           INTO readable
           FROM information_schema.columns AS c
          WHERE c.table_schema = 'public'
            AND c.table_name = target
-           AND c.column_name <> hidden;
+           AND c.column_name <> ALL (hidden);
         EXECUTE format('GRANT SELECT (%s) ON public.%I TO mfa_readonly', readable, target);
     END LOOP;
 END

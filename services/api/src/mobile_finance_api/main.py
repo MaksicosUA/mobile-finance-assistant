@@ -36,6 +36,8 @@ from .auth_service import AuthenticationService, UnavailableAuthenticationServic
 from .budget_core import BudgetCore, UnavailableBudgetRepository
 from .budget_routes import router as budget_router
 from .category_routes import router as category_router
+from .credential_routes import router as credential_router
+from .credentials import UnavailableCredentialRepository
 from .finance_core import FinanceCore, UnavailableFinanceOperationRepository
 from .goal_core import GoalCore, UnavailableGoalRepository
 from .goal_routes import router as goal_router
@@ -291,6 +293,7 @@ def create_app(
     analytics_repository: object | None = None,
     profile_repository: object | None = None,
     account_data_repository: object | None = None,
+    credential_repository: object | None = None,
     app_release_store: AppReleaseStore | None = None,
     app_download_link_secret: bytes | None = None,
     database_engine: AsyncEngine | None = None,
@@ -407,6 +410,11 @@ def create_app(
         if account_data_repository is not None
         else UnavailableAccountDataRepository()
     )
+    application.state.credential_repository = (
+        credential_repository
+        if credential_repository is not None
+        else UnavailableCredentialRepository()
+    )
     application.state.analytics_repository = (
         analytics_repository
         if analytics_repository is not None
@@ -448,6 +456,15 @@ def create_app(
                 status_code=422,
                 content={"detail": {"code": "MALFORMED_ACCOUNT_REQUEST"}},
             )
+        if request.url.path.startswith(
+            ("/api/v1/auth/password/", "/api/v1/auth/recovery-code")
+        ):
+            # Carries a password or a recovery code, and says nothing about
+            # which part was refused.
+            return JSONResponse(
+                status_code=422,
+                content={"detail": {"code": "MALFORMED_CREDENTIAL_REQUEST"}},
+            )
         # The default handler answers with the refused input, and a refused
         # body is whatever the person wrote.
         safe_errors = [
@@ -465,6 +482,7 @@ def create_app(
 
     application.add_middleware(RequestIdMiddleware)
     application.include_router(auth_router)
+    application.include_router(credential_router)
     application.include_router(account_router)
     application.include_router(operation_router)
     application.include_router(planned_cost_router)
