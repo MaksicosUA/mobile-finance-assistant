@@ -21,6 +21,9 @@ project memory, and agent instructions are intentionally maintained outside it.
   storage
 - Native login and registration flow with secure session restoration
 - Self-hosted FastAPI authentication backed by PostgreSQL
+- A recovery code, shown once and stored only as a digest, that resets a
+  forgotten password without any email; changing a password while signed in
+  signs every other device out
 - Argon2id password hashing, ten-minute access JWTs, rotating opaque refresh
   tokens, replay detection, and immediate server-side session revocation
 - Authenticated `GET /api/v2/home` returning a persistent first-use empty state

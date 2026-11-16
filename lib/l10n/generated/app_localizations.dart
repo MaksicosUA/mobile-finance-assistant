@@ -3838,6 +3838,270 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'{zone, select, Europe_Lisbon{Лиссабон} Europe_Dublin{Дублин} Europe_London{Лондон} Atlantic_Canary{Канарские острова} Europe_Madrid{Мадрид} Europe_Paris{Париж} Europe_Brussels{Брюссель} Europe_Amsterdam{Амстердам} Europe_Berlin{Берлин} Europe_Zurich{Цюрих} Europe_Vienna{Вена} Europe_Prague{Прага} Europe_Rome{Рим} Europe_Warsaw{Варшава} Europe_Budapest{Будапешт} Europe_Stockholm{Стокгольм} Europe_Oslo{Осло} Europe_Copenhagen{Копенгаген} Europe_Belgrade{Белград} Europe_Zagreb{Загреб} Europe_Ljubljana{Любляна} Europe_Bratislava{Братислава} Europe_Athens{Афины} Europe_Bucharest{Бухарест} Europe_Sofia{София} Europe_Helsinki{Хельсинки} Europe_Tallinn{Таллин} Europe_Riga{Рига} Europe_Vilnius{Вильнюс} Europe_Kyiv{Киев} Europe_Chisinau{Кишинёв} Europe_Minsk{Минск} Europe_Istanbul{Стамбул} Europe_Moscow{Москва} Asia_Tbilisi{Тбилиси} Asia_Yerevan{Ереван} Asia_Baku{Баку} Asia_Nicosia{Никосия} Asia_Jerusalem{Иерусалим} Asia_Dubai{Дубай} Asia_Tashkent{Ташкент} Asia_Almaty{Алматы} Asia_Bishkek{Бишкек} Asia_Bangkok{Бангкок} Asia_Singapore{Сингапур} Asia_Hong_Kong{Гонконг} Asia_Shanghai{Шанхай} Asia_Seoul{Сеул} Asia_Tokyo{Токио} Australia_Perth{Перт} Australia_Sydney{Сидней} Pacific_Auckland{Окленд} Africa_Cairo{Каир} Africa_Johannesburg{Йоханнесбург} America_Sao_Paulo{Сан-Паулу} America_Argentina_Buenos_Aires{Буэнос-Айрес} America_New_York{Нью-Йорк} America_Toronto{Торонто} America_Chicago{Чикаго} America_Denver{Денвер} America_Los_Angeles{Лос-Анджелес} America_Mexico_City{Мехико} other{UTC}}'**
   String timezoneCity(String zone);
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Забыли пароль?'**
+  String get forgotPasswordAction;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый пароль'**
+  String get recoverTitle;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Введите код восстановления, который вы сохранили, и придумайте новый пароль.'**
+  String get recoverDescription;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Код восстановления'**
+  String get recoveryCodeField;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'20 букв и цифр. Регистр и дефисы не важны.'**
+  String get recoveryCodeFieldHelp;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'В коде должно быть 20 латинских букв и цифр'**
+  String get recoveryCodeInvalid;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый пароль'**
+  String get newPasswordField;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сменить пароль'**
+  String get recoverAction;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Вернуться ко входу'**
+  String get backToLoginAction;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Почта или код не подошли. Если вы уже сменили пароль этим кодом, войдите с новым паролем.'**
+  String get recoveryRejectedError;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пароль изменён. Войдите с новым паролем.'**
+  String get passwordResetNotice;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Код восстановления'**
+  String get recoveryCodeTitle;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сохраните этот код'**
+  String get recoveryCodeHeadline;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Он вернёт доступ к аккаунту, если вы забудете пароль. Мы показываем его один раз и не храним у себя.'**
+  String get recoveryCodeIntro;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Запишите код на бумаге или сохраните в менеджере паролей.'**
+  String get recoveryCodeKeepPaper;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не храните его только в этом телефоне: без телефона вы останетесь и без кода.'**
+  String get recoveryCodeKeepElsewhere;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Никому его не показывайте: с кодом и вашей почтой можно сменить пароль.'**
+  String get recoveryCodeKeepSecret;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Код одноразовый: после смены пароля вы получите новый.'**
+  String get recoveryCodeSingleUse;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Снимок этого экрана отключён, чтобы код не попал в галерею.'**
+  String get recoveryCodeNoScreenshot;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Скопировать код'**
+  String get recoveryCodeCopyAction;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Код скопирован'**
+  String get recoveryCodeCopied;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Код сохранён в надёжном месте'**
+  String get recoveryCodeSavedCheck;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get recoveryCodeDoneAction;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'БЕЗОПАСНОСТЬ'**
+  String get securitySection;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сменить пароль'**
+  String get passwordChangeAction;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'На других устройствах будет выполнен выход'**
+  String get passwordChangeActionDescription;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Код восстановления'**
+  String get recoveryCodeAction;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Вернёт доступ, если вы забудете пароль'**
+  String get recoveryCodeActionDescription;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Создан {date}'**
+  String recoveryCodeStatusCreated(DateTime date);
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не создан'**
+  String get recoveryCodeStatusMissing;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Новый код восстановления'**
+  String get recoveryCodeIssueHeadline;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Код вернёт доступ к аккаунту, если вы забудете пароль. Писем мы не отправляем, поэтому другого способа нет.'**
+  String get recoveryCodeIssueWhat;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Если код у вас уже был, он перестанет работать: действует только последний.'**
+  String get recoveryCodeIssueReplaces;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Мы покажем код один раз. Приготовьте, куда его записать.'**
+  String get recoveryCodeIssueShownOnce;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Текущий пароль'**
+  String get currentPasswordField;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пароль подтверждает, что код просите именно вы'**
+  String get recoveryCodeIssuePasswordHelp;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Показать код'**
+  String get recoveryCodeIssueSubmit;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Неверный пароль'**
+  String get credentialPasswordRejected;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Не удалось связаться с сервером. Ничего не изменилось. Проверьте интернет и попробуйте ещё раз.'**
+  String get credentialUnreachable;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сервер не смог выполнить запрос. Ничего не изменилось. Попробуйте позже.'**
+  String get credentialUnavailable;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Сессия закончилась. Войдите снова. Ничего не изменилось.'**
+  String get credentialAuthentication;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Смена пароля'**
+  String get passwordChangeTitle;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'После смены на всех других устройствах будет выполнен выход, а здесь вы останетесь в аккаунте. Код восстановления не изменится.'**
+  String get passwordChangeIntro;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пароль изменён. На других устройствах выполнен выход.'**
+  String get passwordChangeDone;
 }
 
 class _AppLocalizationsDelegate

@@ -2333,4 +2333,163 @@ class AppLocalizationsDe extends AppLocalizations {
     });
     return '$_temp0';
   }
+
+  @override
+  String get forgotPasswordAction => 'Passwort vergessen?';
+
+  @override
+  String get recoverTitle => 'Neues Passwort';
+
+  @override
+  String get recoverDescription =>
+      'Gib den Wiederherstellungscode ein, den du gespeichert hast, und wähle ein neues Passwort.';
+
+  @override
+  String get recoveryCodeField => 'Wiederherstellungscode';
+
+  @override
+  String get recoveryCodeFieldHelp =>
+      '20 Buchstaben und Ziffern. Groß- und Kleinschreibung und Bindestriche sind egal.';
+
+  @override
+  String get recoveryCodeInvalid => 'Der Code hat 20 Buchstaben und Ziffern';
+
+  @override
+  String get newPasswordField => 'Neues Passwort';
+
+  @override
+  String get recoverAction => 'Passwort ändern';
+
+  @override
+  String get backToLoginAction => 'Zurück zur Anmeldung';
+
+  @override
+  String get recoveryRejectedError =>
+      'E-Mail oder Code passen nicht. Wenn du dein Passwort mit diesem Code schon geändert hast, melde dich mit dem neuen Passwort an.';
+
+  @override
+  String get passwordResetNotice =>
+      'Dein Passwort wurde geändert. Melde dich mit dem neuen Passwort an.';
+
+  @override
+  String get recoveryCodeTitle => 'Wiederherstellungscode';
+
+  @override
+  String get recoveryCodeHeadline => 'Speichere diesen Code';
+
+  @override
+  String get recoveryCodeIntro =>
+      'Mit ihm kommst du wieder in deinen Account, wenn du dein Passwort vergisst. Wir zeigen ihn einmal und speichern ihn nicht.';
+
+  @override
+  String get recoveryCodeKeepPaper =>
+      'Schreib den Code auf Papier oder speichere ihn in einem Passwortmanager.';
+
+  @override
+  String get recoveryCodeKeepElsewhere =>
+      'Bewahre ihn nicht nur auf diesem Handy auf: Ohne Handy hättest du auch keinen Code.';
+
+  @override
+  String get recoveryCodeKeepSecret =>
+      'Zeig ihn niemandem: Mit dem Code und deiner E-Mail kann jeder dein Passwort ändern.';
+
+  @override
+  String get recoveryCodeSingleUse =>
+      'Der Code gilt einmal: Nach der Passwortänderung bekommst du einen neuen.';
+
+  @override
+  String get recoveryCodeNoScreenshot =>
+      'Screenshots sind hier aus, damit der Code nicht in deiner Galerie landet.';
+
+  @override
+  String get recoveryCodeCopyAction => 'Code kopieren';
+
+  @override
+  String get recoveryCodeCopied => 'Code kopiert';
+
+  @override
+  String get recoveryCodeSavedCheck =>
+      'Der Code ist an einem sicheren Ort gespeichert';
+
+  @override
+  String get recoveryCodeDoneAction => 'Fertig';
+
+  @override
+  String get securitySection => 'SICHERHEIT';
+
+  @override
+  String get passwordChangeAction => 'Passwort ändern';
+
+  @override
+  String get passwordChangeActionDescription =>
+      'Andere Geräte werden abgemeldet';
+
+  @override
+  String get recoveryCodeAction => 'Wiederherstellungscode';
+
+  @override
+  String get recoveryCodeActionDescription =>
+      'Bringt dich zurück, wenn du dein Passwort vergisst';
+
+  @override
+  String recoveryCodeStatusCreated(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return 'Erstellt am $dateString';
+  }
+
+  @override
+  String get recoveryCodeStatusMissing => 'Nicht erstellt';
+
+  @override
+  String get recoveryCodeIssueHeadline => 'Ein neuer Wiederherstellungscode';
+
+  @override
+  String get recoveryCodeIssueWhat =>
+      'Mit dem Code kommst du wieder in deinen Account, wenn du dein Passwort vergisst. Wir verschicken keine E-Mails, einen anderen Weg gibt es also nicht.';
+
+  @override
+  String get recoveryCodeIssueReplaces =>
+      'Wenn du schon einen Code hattest, gilt er nicht mehr: Es zählt nur der neueste.';
+
+  @override
+  String get recoveryCodeIssueShownOnce =>
+      'Wir zeigen den Code einmal. Leg dir etwas zum Aufschreiben bereit.';
+
+  @override
+  String get currentPasswordField => 'Aktuelles Passwort';
+
+  @override
+  String get recoveryCodeIssuePasswordHelp =>
+      'Dein Passwort bestätigt, dass du selbst den Code anforderst';
+
+  @override
+  String get recoveryCodeIssueSubmit => 'Code anzeigen';
+
+  @override
+  String get credentialPasswordRejected => 'Falsches Passwort';
+
+  @override
+  String get credentialUnreachable =>
+      'Der Server ist nicht erreichbar. Es wurde nichts geändert. Prüf deine Verbindung und versuch es noch einmal.';
+
+  @override
+  String get credentialUnavailable =>
+      'Der Server konnte das nicht ausführen. Es wurde nichts geändert. Versuch es später noch einmal.';
+
+  @override
+  String get credentialAuthentication =>
+      'Sitzung beendet. Melde dich neu an. Es wurde nichts geändert.';
+
+  @override
+  String get passwordChangeTitle => 'Passwort ändern';
+
+  @override
+  String get passwordChangeIntro =>
+      'Nach der Änderung werden alle anderen Geräte abgemeldet, hier bleibst du angemeldet. Dein Wiederherstellungscode bleibt gleich.';
+
+  @override
+  String get passwordChangeDone =>
+      'Passwort geändert. Andere Geräte wurden abgemeldet.';
 }

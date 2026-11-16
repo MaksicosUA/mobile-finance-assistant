@@ -9,8 +9,17 @@ import '../../voice_entry/data/waiting_phrase_store.dart';
 import '../data/auth_api.dart';
 import '../data/auth_repository.dart';
 import '../data/auth_session_store.dart';
+import '../data/credentials_api.dart';
+import '../data/credentials_repository.dart';
+import '../domain/recovery_code.dart';
 
-enum AuthMode { login, register }
+enum AuthMode {
+  login,
+  register,
+
+  /// Replacing a forgotten password with a recovery code (ADR 0035).
+  recover,
+}
 
 enum AuthNotice {
   none,
@@ -22,6 +31,10 @@ enum AuthNotice {
 
   /// Signing in cancelled that request.
   deletionCancelled,
+
+  /// The password was replaced with a recovery code, and the sign-in that
+  /// should have followed did not happen (ADR 0035).
+  passwordReset,
 }
 
 sealed class AuthState {
@@ -135,6 +148,42 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   );
 });
 
+final credentialsRepositoryProvider = Provider<CredentialsRepositoryClient>((
+  ref,
+) {
+  if (!isNetworkBackendConfigured) {
+    throw StateError('Credentials require API_BASE_URL.');
+  }
+  // Read first: building it is what refuses a base address that is not HTTPS.
+  final auth = ref.watch(authRepositoryProvider);
+  final dio = Dio();
+  ref.onDispose(() => dio.close(force: true));
+  return CredentialsRepository(
+    api: CredentialsApi(dio: dio, baseUri: Uri.parse(configuredApiBaseUrl)),
+    auth: auth,
+  );
+});
+
+/// A recovery code the person has been given and has not yet said they kept.
+///
+/// Memory only, and on purpose: the code exists so that losing this phone does
+/// not lose the account, so the phone must never be where it is stored. While
+/// one waits here it covers everything else on screen (see the auth gate).
+final pendingRecoveryCodeProvider =
+    NotifierProvider<PendingRecoveryCode, RecoveryCode?>(
+      PendingRecoveryCode.new,
+    );
+
+class PendingRecoveryCode extends Notifier<RecoveryCode?> {
+  @override
+  RecoveryCode? build() => null;
+
+  void show(RecoveryCode code) => state = code;
+
+  /// The person says they have kept it. It is gone from the phone after this.
+  void acknowledge() => state = null;
+}
+
 final authControllerProvider = NotifierProvider<AuthController, AuthState>(
   AuthController.new,
 );
@@ -197,9 +246,108 @@ class AuthController extends Notifier<AuthState> {
     final result = await ref
         .read(authRepositoryProvider)
         .register(displayName: displayName, email: email, password: password);
+    if (result is AuthSubmissionSuccess) {
+      // Asked for now because the password is in hand, and a new account is
+      // exactly the one that has no way back in yet. Not getting one does not
+      // undo the registration: Profile offers it again.
+      final code = await _firstRecoveryCode(password);
+      if (code != null && intentEpoch == _intentEpoch) {
+        ref.read(pendingRecoveryCodeProvider.notifier).show(code);
+      }
+    }
     if (intentEpoch == _intentEpoch) {
       _applySubmission(result, AuthMode.register);
     }
+  }
+
+  /// Replaces a forgotten password with the recovery code, then signs in.
+  Future<void> resetPassword({
+    required String email,
+    required String recoveryCode,
+    required String newPassword,
+  }) async {
+    if (state is AuthSubmitting || state is AuthSigningOut) return;
+    final intentEpoch = ++_intentEpoch;
+    state = const AuthSubmitting(AuthMode.recover);
+    CredentialResult<RecoveryCode> reset;
+    try {
+      reset = await ref
+          .read(credentialsRepositoryProvider)
+          .resetPassword(
+            email: email,
+            recoveryCode: recoveryCode,
+            newPassword: newPassword,
+          );
+    } on Object {
+      reset = const CredentialFailure(CredentialFailureKind.unknown);
+    }
+    switch (reset) {
+      case CredentialFailure(:final kind):
+        if (intentEpoch == _intentEpoch) {
+          state = AuthSignedOut(
+            mode: AuthMode.recover,
+            issue: _resetIssue(kind),
+          );
+        }
+      case CredentialSuccess(:final value):
+        AuthSubmissionResult signIn;
+        try {
+          signIn = await ref
+              .read(authRepositoryProvider)
+              .login(email: email, password: newPassword);
+        } on Object {
+          signIn = const AuthSubmissionFailure(AuthFailureKind.unknown);
+        }
+        // Shown whatever else happened. The password is already changed, the
+        // code that did it is spent, and its successor exists nowhere but in
+        // this answer: dropping it would leave the account with no way back.
+        ref.read(pendingRecoveryCodeProvider.notifier).show(value);
+        if (intentEpoch != _intentEpoch) return;
+        state = switch (signIn) {
+          AuthSubmissionSuccess(:final deletionCancelled) => AuthSignedIn(
+            notice: deletionCancelled
+                ? AuthNotice.deletionCancelled
+                : AuthNotice.none,
+          ),
+          AuthSubmissionFailure() => const AuthSignedOut(
+            notice: AuthNotice.passwordReset,
+          ),
+        };
+    }
+  }
+
+  Future<RecoveryCode?> _firstRecoveryCode(String password) async {
+    try {
+      final issued = await ref
+          .read(credentialsRepositoryProvider)
+          .issueRecoveryCode(password: password);
+      return switch (issued) {
+        CredentialSuccess(:final value) => value,
+        CredentialFailure() => null,
+      };
+    } on Object {
+      return null;
+    }
+  }
+
+  static AuthFailureKind _resetIssue(CredentialFailureKind kind) {
+    return switch (kind) {
+      CredentialFailureKind.recoveryRejected =>
+        AuthFailureKind.recoveryRejected,
+      CredentialFailureKind.newPasswordRejected ||
+      CredentialFailureKind.invalidInput ||
+      // A reset has no password to confirm and no session to lose.
+      CredentialFailureKind.passwordRejected ||
+      CredentialFailureKind.authenticationRequired =>
+        AuthFailureKind.invalidInput,
+      CredentialFailureKind.throttled => AuthFailureKind.throttled,
+      CredentialFailureKind.offline => AuthFailureKind.offline,
+      CredentialFailureKind.timeout => AuthFailureKind.timeout,
+      CredentialFailureKind.unavailable => AuthFailureKind.serviceUnavailable,
+      CredentialFailureKind.malformedResponse =>
+        AuthFailureKind.malformedResponse,
+      CredentialFailureKind.unknown => AuthFailureKind.unknown,
+    };
   }
 
   Future<AuthRefreshResult> recoverSession() async {

@@ -11,6 +11,7 @@ import '../../../core/network/api_config.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/auth_controller.dart';
 import 'auth_page.dart';
+import 'recovery_code_page.dart';
 
 class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
@@ -59,8 +60,14 @@ class _AuthGateState extends ConsumerState<AuthGate> {
         );
       }
     });
-    _setProtection(state is AuthSignedIn ? settings.privacyMode : true);
-    return switch (state) {
+    _setProtection(
+      screenIsProtected(
+        signedIn: state is AuthSignedIn,
+        privacyMode: settings.privacyMode,
+        recoveryCodeOnScreen: ref.watch(pendingRecoveryCodeProvider) != null,
+      ),
+    );
+    final page = switch (state) {
       AuthBootstrapping() || AuthSigningOut() => const _AuthLoadingPage(),
       AuthSignedOut(
         :final mode,
@@ -78,6 +85,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
       AuthSubmitting(:final mode) => AuthPage(mode: mode, isSubmitting: true),
       AuthSignedIn() => const AppShell(),
     };
+    return RecoveryCodeCover(child: page);
   }
 
   void _setProtection(bool protected) {
@@ -90,6 +98,20 @@ class _AuthGateState extends ConsumerState<AuthGate> {
           .catchError((_) {}),
     );
   }
+}
+
+/// Whether the screen is kept out of screenshots and the app switcher.
+///
+/// Always while signed out, by the person's own setting once signed in, and
+/// always while a recovery code is on screen whatever that setting says: a
+/// picture of the code in a gallery that syncs to a cloud is a copy nobody
+/// meant to make (ADR 0035).
+bool screenIsProtected({
+  required bool signedIn,
+  required bool privacyMode,
+  required bool recoveryCodeOnScreen,
+}) {
+  return recoveryCodeOnScreen || !signedIn || privacyMode;
 }
 
 class _AuthLoadingPage extends StatelessWidget {
