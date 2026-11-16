@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +6,8 @@ import '../../../app/theme/app_tokens.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../application/auth_controller.dart';
 import '../data/auth_api.dart';
+import '../domain/password_rules.dart';
+import '../domain/recovery_code.dart';
 
 class AuthPage extends ConsumerStatefulWidget {
   const AuthPage({
@@ -36,6 +36,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   final _formKey = GlobalKey<FormState>();
   final _displayNameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _recoveryCodeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
@@ -48,6 +49,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.mode != widget.mode) {
       _displayNameController.clear();
+      _recoveryCodeController.clear();
       _passwordController.clear();
       _confirmPasswordController.clear();
       _formKey.currentState?.reset();
@@ -61,6 +63,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   void dispose() {
     _displayNameController.dispose();
     _emailController.dispose();
+    _recoveryCodeController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -70,6 +73,10 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final isRegister = widget.mode == AuthMode.register;
+    final isRecover = widget.mode == AuthMode.recover;
+    // Both of these set a password, so both ask for it twice and say what a
+    // password has to be.
+    final setsPassword = isRegister || isRecover;
     final message = widget.issue == null
         ? _noticeMessage(l10n, widget.notice)
         : _issueMessage(l10n, widget.issue!);
@@ -101,15 +108,21 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                           ),
                           const SizedBox(height: AppSpacing.md),
                           Text(
-                            isRegister ? l10n.registerTitle : l10n.loginTitle,
+                            switch (widget.mode) {
+                              AuthMode.login => l10n.loginTitle,
+                              AuthMode.register => l10n.registerTitle,
+                              AuthMode.recover => l10n.recoverTitle,
+                            },
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.headlineSmall,
                           ),
                           const SizedBox(height: AppSpacing.xs),
                           Text(
-                            isRegister
-                                ? l10n.registerDescription
-                                : l10n.loginDescription,
+                            switch (widget.mode) {
+                              AuthMode.login => l10n.loginDescription,
+                              AuthMode.register => l10n.registerDescription,
+                              AuthMode.recover => l10n.recoverDescription,
+                            },
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
@@ -177,27 +190,60 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                             validator: (value) => _validateEmail(l10n, value),
                           ),
                           const SizedBox(height: AppSpacing.sm),
+                          if (isRecover) ...[
+                            TextFormField(
+                              key: const Key('auth-recovery-code'),
+                              controller: _recoveryCodeController,
+                              enabled: !widget.isSubmitting,
+                              // Typed from paper, so nothing may "correct" it
+                              // and nothing should remember it.
+                              keyboardType: TextInputType.visiblePassword,
+                              textCapitalization: TextCapitalization.characters,
+                              enableSuggestions: false,
+                              autocorrect: false,
+                              textInputAction: TextInputAction.next,
+                              maxLength: 64,
+                              style: const TextStyle(
+                                fontFeatures: [FontFeature.tabularFigures()],
+                                letterSpacing: 1.2,
+                              ),
+                              decoration: InputDecoration(
+                                labelText: l10n.recoveryCodeField,
+                                helperText: l10n.recoveryCodeFieldHelp,
+                                helperMaxLines: 2,
+                                counterText: '',
+                              ),
+                              validator: (value) =>
+                                  canonicalRecoveryCode(value ?? '') == null
+                                  ? l10n.recoveryCodeInvalid
+                                  : null,
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                          ],
                           TextFormField(
                             key: const Key('auth-password'),
                             controller: _passwordController,
                             enabled: !widget.isSubmitting,
                             autofillHints: [
-                              isRegister
+                              setsPassword
                                   ? AutofillHints.newPassword
                                   : AutofillHints.password,
                             ],
                             obscureText: _obscurePassword,
                             enableSuggestions: false,
                             autocorrect: false,
-                            textInputAction: isRegister
+                            textInputAction: setsPassword
                                 ? TextInputAction.next
                                 : TextInputAction.done,
-                            onFieldSubmitted: isRegister || widget.isSubmitting
+                            onFieldSubmitted:
+                                setsPassword || widget.isSubmitting
                                 ? null
                                 : (_) => _submit(),
                             decoration: InputDecoration(
-                              labelText: l10n.passwordField,
-                              helperText: isRegister
+                              labelText: isRecover
+                                  ? l10n.newPasswordField
+                                  : l10n.passwordField,
+                              helperText: setsPassword
                                   ? l10n.passwordRequirements
                                   : null,
                               suffixIcon: IconButton(
@@ -220,7 +266,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                             validator: (value) =>
                                 _validatePassword(l10n, value),
                           ),
-                          if (isRegister) ...[
+                          if (setsPassword) ...[
                             const SizedBox(height: AppSpacing.sm),
                             TextFormField(
                               key: const Key('auth-confirm-password'),
@@ -273,12 +319,24 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                                       ).colorScheme.onPrimary,
                                     ),
                                   )
-                                : Text(
-                                    isRegister
-                                        ? l10n.registerAction
-                                        : l10n.loginAction,
-                                  ),
+                                : Text(switch (widget.mode) {
+                                    AuthMode.login => l10n.loginAction,
+                                    AuthMode.register => l10n.registerAction,
+                                    AuthMode.recover => l10n.recoverAction,
+                                  }),
                           ),
+                          if (widget.mode == AuthMode.login) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            TextButton(
+                              key: const Key('auth-forgot-password'),
+                              onPressed: widget.isSubmitting
+                                  ? null
+                                  : () => ref
+                                        .read(authControllerProvider.notifier)
+                                        .showMode(AuthMode.recover),
+                              child: Text(l10n.forgotPasswordAction),
+                            ),
+                          ],
                           const SizedBox(height: AppSpacing.sm),
                           TextButton(
                             key: const Key('auth-switch-mode'),
@@ -287,15 +345,15 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                                 : () => ref
                                       .read(authControllerProvider.notifier)
                                       .showMode(
-                                        isRegister
-                                            ? AuthMode.login
-                                            : AuthMode.register,
+                                        widget.mode == AuthMode.login
+                                            ? AuthMode.register
+                                            : AuthMode.login,
                                       ),
-                            child: Text(
-                              isRegister
-                                  ? l10n.haveAccountAction
-                                  : l10n.createAccountAction,
-                            ),
+                            child: Text(switch (widget.mode) {
+                              AuthMode.login => l10n.createAccountAction,
+                              AuthMode.register => l10n.haveAccountAction,
+                              AuthMode.recover => l10n.backToLoginAction,
+                            }),
                           ),
                         ],
                       ),
@@ -314,17 +372,24 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     setState(() => _validateContinuously = true);
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final controller = ref.read(authControllerProvider.notifier);
-    if (widget.mode == AuthMode.register) {
-      await controller.register(
-        displayName: _displayNameController.text,
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
-    } else {
-      await controller.login(
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
+    switch (widget.mode) {
+      case AuthMode.register:
+        await controller.register(
+          displayName: _displayNameController.text,
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+      case AuthMode.login:
+        await controller.login(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+      case AuthMode.recover:
+        await controller.resetPassword(
+          email: _emailController.text,
+          recoveryCode: _recoveryCodeController.text,
+          newPassword: _passwordController.text,
+        );
     }
   }
 
@@ -341,13 +406,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   }
 
   String? _validatePassword(AppLocalizations l10n, String? value) {
-    final candidate = value ?? '';
-    if (candidate.runes.length < 12 ||
-        candidate.runes.length > 128 ||
-        utf8.encode(candidate).length > 1024) {
-      return l10n.passwordInvalid;
-    }
-    return null;
+    return isAcceptablePassword(value ?? '') ? null : l10n.passwordInvalid;
   }
 
   String? _noticeMessage(AppLocalizations l10n, AuthNotice notice) {
@@ -361,6 +420,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       },
       // Said on arrival instead, once the person is signed in.
       AuthNotice.deletionCancelled => null,
+      AuthNotice.passwordReset => l10n.passwordResetNotice,
     };
   }
 
@@ -368,6 +428,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     return switch (issue) {
       AuthFailureKind.invalidCredentials => l10n.invalidCredentialsError,
       AuthFailureKind.emailInUse => l10n.emailInUseError,
+      AuthFailureKind.recoveryRejected => l10n.recoveryRejectedError,
       AuthFailureKind.invalidInput => l10n.authInvalidInputError,
       AuthFailureKind.invalidRefresh => l10n.authSessionExpiredNotice,
       AuthFailureKind.throttled => l10n.authThrottledError,

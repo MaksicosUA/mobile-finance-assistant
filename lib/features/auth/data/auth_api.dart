@@ -9,6 +9,9 @@ import '../domain/auth_session.dart';
 enum AuthFailureKind {
   invalidCredentials,
   emailInUse,
+
+  /// The address and recovery code did not open an account (ADR 0035).
+  recoveryRejected,
   invalidInput,
   invalidRefresh,
   throttled,

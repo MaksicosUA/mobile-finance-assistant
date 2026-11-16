@@ -2311,4 +2311,165 @@ class AppLocalizationsEn extends AppLocalizations {
     });
     return '$_temp0';
   }
+
+  @override
+  String get forgotPasswordAction => 'Forgot your password?';
+
+  @override
+  String get recoverTitle => 'New password';
+
+  @override
+  String get recoverDescription =>
+      'Enter the recovery code you saved and choose a new password.';
+
+  @override
+  String get recoveryCodeField => 'Recovery code';
+
+  @override
+  String get recoveryCodeFieldHelp =>
+      '20 letters and digits. Case and hyphens do not matter.';
+
+  @override
+  String get recoveryCodeInvalid => 'The code must have 20 letters and digits';
+
+  @override
+  String get newPasswordField => 'New password';
+
+  @override
+  String get recoverAction => 'Change password';
+
+  @override
+  String get backToLoginAction => 'Back to sign-in';
+
+  @override
+  String get recoveryRejectedError =>
+      'The email or the code did not match. If you already changed your password with this code, sign in with the new password.';
+
+  @override
+  String get passwordResetNotice =>
+      'Your password was changed. Sign in with the new password.';
+
+  @override
+  String get recoveryCodeTitle => 'Recovery code';
+
+  @override
+  String get recoveryCodeHeadline => 'Save this code';
+
+  @override
+  String get recoveryCodeIntro =>
+      'It gets you back into your user account if you forget your password. We show it once and do not keep it.';
+
+  @override
+  String get recoveryCodeKeepPaper =>
+      'Write the code on paper or save it in a password manager.';
+
+  @override
+  String get recoveryCodeKeepElsewhere =>
+      'Do not keep it only on this phone: lose the phone and you lose the code.';
+
+  @override
+  String get recoveryCodeKeepSecret =>
+      'Show it to nobody: with the code and your email, anyone can change your password.';
+
+  @override
+  String get recoveryCodeSingleUse =>
+      'The code works once: after it changes your password you get a new one.';
+
+  @override
+  String get recoveryCodeNoScreenshot =>
+      'Screenshots are off on this screen, so the code does not end up in your gallery.';
+
+  @override
+  String get recoveryCodeCopyAction => 'Copy code';
+
+  @override
+  String get recoveryCodeCopied => 'Code copied';
+
+  @override
+  String get recoveryCodeSavedCheck => 'The code is saved somewhere safe';
+
+  @override
+  String get recoveryCodeDoneAction => 'Done';
+
+  @override
+  String get securitySection => 'SECURITY';
+
+  @override
+  String get passwordChangeAction => 'Change password';
+
+  @override
+  String get passwordChangeActionDescription =>
+      'Other devices will be signed out';
+
+  @override
+  String get recoveryCodeAction => 'Recovery code';
+
+  @override
+  String get recoveryCodeActionDescription =>
+      'Gets you back in if you forget your password';
+
+  @override
+  String recoveryCodeStatusCreated(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return 'Created $dateString';
+  }
+
+  @override
+  String get recoveryCodeStatusMissing => 'Not created';
+
+  @override
+  String get recoveryCodeIssueHeadline => 'A new recovery code';
+
+  @override
+  String get recoveryCodeIssueWhat =>
+      'The code gets you back into your user account if you forget your password. We send no email, so there is no other way.';
+
+  @override
+  String get recoveryCodeIssueReplaces =>
+      'If you already had a code, it stops working: only the latest one counts.';
+
+  @override
+  String get recoveryCodeIssueShownOnce =>
+      'We show the code once. Have somewhere ready to write it down.';
+
+  @override
+  String get currentPasswordField => 'Current password';
+
+  @override
+  String get currentPasswordRequired => 'Enter your current password';
+
+  @override
+  String get recoveryCodeIssuePasswordHelp =>
+      'Your password confirms that it is you asking for the code';
+
+  @override
+  String get recoveryCodeIssueSubmit => 'Show the code';
+
+  @override
+  String get credentialPasswordRejected => 'Wrong password';
+
+  @override
+  String get credentialUnreachable =>
+      'Could not reach the server. Nothing was changed. Check your connection and try again.';
+
+  @override
+  String get credentialUnavailable =>
+      'The server could not do that. Nothing was changed. Try again later.';
+
+  @override
+  String get credentialAuthentication =>
+      'Your session has ended. Sign in again. Nothing was changed.';
+
+  @override
+  String get passwordChangeTitle => 'Change password';
+
+  @override
+  String get passwordChangeIntro =>
+      'After the change every other device is signed out, and you stay signed in here. Your recovery code does not change.';
+
+  @override
+  String get passwordChangeDone =>
+      'Password changed. Other devices were signed out.';
 }

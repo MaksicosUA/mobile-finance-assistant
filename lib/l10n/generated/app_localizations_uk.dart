@@ -2312,4 +2312,165 @@ class AppLocalizationsUk extends AppLocalizations {
     });
     return '$_temp0';
   }
+
+  @override
+  String get forgotPasswordAction => 'Забули пароль?';
+
+  @override
+  String get recoverTitle => 'Новий пароль';
+
+  @override
+  String get recoverDescription =>
+      'Введіть код відновлення, який ви зберегли, і придумайте новий пароль.';
+
+  @override
+  String get recoveryCodeField => 'Код відновлення';
+
+  @override
+  String get recoveryCodeFieldHelp =>
+      '20 літер і цифр. Регістр і дефіси не важливі.';
+
+  @override
+  String get recoveryCodeInvalid =>
+      'У коді має бути 20 латинських літер і цифр';
+
+  @override
+  String get newPasswordField => 'Новий пароль';
+
+  @override
+  String get recoverAction => 'Змінити пароль';
+
+  @override
+  String get backToLoginAction => 'Повернутися до входу';
+
+  @override
+  String get recoveryRejectedError =>
+      'Пошта або код не підійшли. Якщо ви вже змінили пароль цим кодом, увійдіть з новим паролем.';
+
+  @override
+  String get passwordResetNotice => 'Пароль змінено. Увійдіть з новим паролем.';
+
+  @override
+  String get recoveryCodeTitle => 'Код відновлення';
+
+  @override
+  String get recoveryCodeHeadline => 'Збережіть цей код';
+
+  @override
+  String get recoveryCodeIntro =>
+      'Він поверне доступ до акаунта, якщо ви забудете пароль. Ми показуємо його один раз і не зберігаємо в себе.';
+
+  @override
+  String get recoveryCodeKeepPaper =>
+      'Запишіть код на папері або збережіть у менеджері паролів.';
+
+  @override
+  String get recoveryCodeKeepElsewhere =>
+      'Не зберігайте його лише в цьому телефоні: без телефона ви залишитеся й без коду.';
+
+  @override
+  String get recoveryCodeKeepSecret =>
+      'Нікому його не показуйте: з кодом і вашою поштою можна змінити пароль.';
+
+  @override
+  String get recoveryCodeSingleUse =>
+      'Код одноразовий: після зміни пароля ви отримаєте новий.';
+
+  @override
+  String get recoveryCodeNoScreenshot =>
+      'Знімок цього екрана вимкнено, щоб код не потрапив у галерею.';
+
+  @override
+  String get recoveryCodeCopyAction => 'Скопіювати код';
+
+  @override
+  String get recoveryCodeCopied => 'Код скопійовано';
+
+  @override
+  String get recoveryCodeSavedCheck => 'Код збережено в надійному місці';
+
+  @override
+  String get recoveryCodeDoneAction => 'Готово';
+
+  @override
+  String get securitySection => 'БЕЗПЕКА';
+
+  @override
+  String get passwordChangeAction => 'Змінити пароль';
+
+  @override
+  String get passwordChangeActionDescription =>
+      'На інших пристроях буде виконано вихід';
+
+  @override
+  String get recoveryCodeAction => 'Код відновлення';
+
+  @override
+  String get recoveryCodeActionDescription =>
+      'Поверне доступ, якщо ви забудете пароль';
+
+  @override
+  String recoveryCodeStatusCreated(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return 'Створено $dateString';
+  }
+
+  @override
+  String get recoveryCodeStatusMissing => 'Не створено';
+
+  @override
+  String get recoveryCodeIssueHeadline => 'Новий код відновлення';
+
+  @override
+  String get recoveryCodeIssueWhat =>
+      'Код поверне доступ до акаунта, якщо ви забудете пароль. Листів ми не надсилаємо, тому іншого способу немає.';
+
+  @override
+  String get recoveryCodeIssueReplaces =>
+      'Якщо код у вас уже був, він перестане працювати: діє лише останній.';
+
+  @override
+  String get recoveryCodeIssueShownOnce =>
+      'Ми покажемо код один раз. Приготуйте, куди його записати.';
+
+  @override
+  String get currentPasswordField => 'Поточний пароль';
+
+  @override
+  String get currentPasswordRequired => 'Введіть поточний пароль';
+
+  @override
+  String get recoveryCodeIssuePasswordHelp =>
+      'Пароль підтверджує, що код просите саме ви';
+
+  @override
+  String get recoveryCodeIssueSubmit => 'Показати код';
+
+  @override
+  String get credentialPasswordRejected => 'Неправильний пароль';
+
+  @override
+  String get credentialUnreachable =>
+      'Не вдалося зв\'язатися із сервером. Нічого не змінилося. Перевірте інтернет і спробуйте ще раз.';
+
+  @override
+  String get credentialUnavailable =>
+      'Сервер не зміг виконати запит. Нічого не змінилося. Спробуйте пізніше.';
+
+  @override
+  String get credentialAuthentication =>
+      'Сеанс завершився. Увійдіть знову. Нічого не змінилося.';
+
+  @override
+  String get passwordChangeTitle => 'Зміна пароля';
+
+  @override
+  String get passwordChangeIntro =>
+      'Після зміни на всіх інших пристроях буде виконано вихід, а тут ви залишитеся в акаунті. Код відновлення не зміниться.';
+
+  @override
+  String get passwordChangeDone =>
+      'Пароль змінено. На інших пристроях виконано вихід.';
 }
