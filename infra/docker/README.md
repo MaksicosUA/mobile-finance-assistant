@@ -87,23 +87,75 @@ and nothing tells you in advance whether it can.
 `backup.sh` takes a logical dump in custom format, refuses to keep a
 suspiciously small one, and only then ages out anything older than
 `MFA_BACKUP_KEEP_DAYS` — so a run of failures can never delete the last working
-copy. Install the schedule once:
+copy. Fourteen days means fourteen: a dump is gone at the run two weeks after
+its own, because that is what a person who erased their account was told
+(ADR 0030). Install the schedule once:
 
     sudo cp mfa-backup.service mfa-backup.timer /etc/systemd/system/
     sudo systemctl daemon-reload
     sudo systemctl enable --now mfa-backup.timer
 
-Failures surface in `systemctl status mfa-backup` and the journal rather than
-in a mailbox nobody reads.
+Failures surface in `systemctl status mfa-backup` and the journal, and are told
+to a watcher outside the host when one is set (below).
 
-### Keeping a copy somewhere else
+### A copy that leaves the host
 
-The dumps sit on the same volume as the database, so a failed volume takes both.
-From a machine outside the host:
+The dumps sit on the same volume as the database, so a lost volume, a lost host
+or a lost provider account takes both. After each dump `backup.sh` runs
+`offsite.py`, which seals the dump with `age` and uploads it to a Backblaze B2
+bucket.
 
-    MFA_RELEASE_HOST=<user>@<host> tool/pull_backups.sh
+What leaves is ciphertext, sealed to a public key. The host holds only that
+public key: it can seal a dump and cannot open one. The private key stays with
+the owner, off this host and off the storage account, so taking either reads
+nothing. **Losing the private key loses every copy that left.** Keep it where
+the signing key's copy is kept, and in a password manager.
 
-A dump is everyone's finances in the clear. Keep the copy on an encrypted disk.
+Once, on the host:
+
+    sudo apt install age
+
+On a machine that is not the host, make the key pair. The file is the private
+key; the line it prints is the public one:
+
+    age-keygen -o mfa-backup.key
+
+In Backblaze B2:
+
+1. A **private** bucket, with **Object Lock enabled** when it is created.
+2. Lifecycle, custom rule for the whole bucket: hide after **9** days, delete
+   **1** day after hiding. A copy is then gone within twelve days of arriving,
+   and the two nights a failed upload may wait keep that inside the fourteen an
+   erased account was promised. Do not lengthen it without changing that promise.
+3. If the bucket offers a default retention, 9 days: until then nobody, with
+   any key, can remove a copy.
+4. An application key limited to that bucket, **Write Only**.
+
+Then in `.env`, all four:
+
+    MFA_OFFSITE_AGE_RECIPIENT=age1...
+    MFA_OFFSITE_B2_KEY_ID=...
+    MFA_OFFSITE_B2_APPLICATION_KEY=...
+    MFA_OFFSITE_B2_BUCKET=...
+
+Ask what the key may do, without sending anything, then send:
+
+    sudo sh -c 'set -a; . ./.env; python3 offsite.py --check "$MFA_DATA_ROOT/backups"'
+    sudo ./backup.sh
+
+A key that can also delete is pointed out on every run rather than refused,
+because the console's presets may not offer less; Object Lock is then what
+keeps a copy from whoever holds the key. A dump that could not be sent fails
+the run and waits for the next two; each one sent leaves a small `.sent` receipt
+beside it. Dumps older than two days are not sent late.
+
+To get one back: download the `.age` file from the bucket in the Backblaze
+console, then, where the private key is,
+
+    age --decrypt -i mfa-backup.key mfa-<stamp>.dump.age > mfa-<stamp>.dump
+
+and restore it as below. `tool/pull_backups.sh` still copies the plain dumps to
+another machine; that copy belongs on an encrypted disk.
 
 ### Proving a backup restores
 
@@ -117,6 +169,44 @@ database and compare it with the live one, then drop the scratch:
     # compare counts of users, finance_operations, finance_categories, ...
     docker compose exec -T postgres psql -U "$POSTGRES_USER" -d postgres \
       -c "DROP DATABASE mfa_restore_check;"
+
+## Being told when it stops
+
+A host cannot report its own death, so the report is turned around. Every five
+minutes `watch.sh` asks whether the host is doing its job and says "still well"
+to a service outside it (healthchecks.io); that service raises the alarm when
+the word stops coming, and again when it comes back. `backup.sh` does the same
+once a night.
+
+`watch.sh` asks four things and names the ones that fail:
+
+- `api` — `GET /api/v1/health` through the public name and its own TLS. Every
+  other route answers 401 before it looks at the database; this one sends a
+  query through the pool the requests share, and says up or down and nothing
+  else.
+- `projector` — its own health check: leader present, no lag, no dead letters.
+- `disk` — the system disk or the data volume is at 90 percent or more.
+- `certificate` — less than a week of validity left, which means renewal has
+  been failing for three.
+
+Only those words leave the host. In healthchecks.io, two checks:
+
+| Check | Period | Grace | Goes into `.env` as |
+|---|---|---|---|
+| the host | 5 minutes | 5 minutes | `MFA_WATCH_PING_URL` |
+| the backup | 1 day | 2 hours | `MFA_BACKUP_PING_URL` |
+
+Each address is a capability: whoever has it can speak for this host. Then:
+
+    sudo cp mfa-watch.service mfa-watch.timer /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now mfa-watch.timer
+
+Run by hand, `sudo ./watch.sh` prints what is failing and exits non-zero.
+Without the addresses both scripts still run and answer only in the journal.
+
+The watch runs on the host it watches, so it cannot see a fault that only the
+outside sees, such as a DNS record pointing elsewhere.
 
 ## Looking at the database
 

@@ -39,6 +39,7 @@ from .postgres_planned_cost_recurrence_repository import (
 from .postgres_planned_cost_repository import PostgresPlannedCostRepository
 from .postgres_profile_repository import PostgresProfileRepository
 from .postgres_transfer_repository import PostgresTransferRepository
+from .service_health import DatabaseServiceHealth
 from .tokens import AccessTokenCodec
 from .transfer_core import TransferCore
 
@@ -119,5 +120,6 @@ app = create_app(
         else FilesystemAppReleaseStore(directory=release_directory)
     ),
     app_download_link_secret=load_download_link_secret(),
+    service_health=DatabaseServiceHealth(session_factory=session_factory),
     database_engine=engine,
 )

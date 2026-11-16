@@ -64,6 +64,8 @@ from .repository import (
     UnavailableHomeRepository,
 )
 from .request_limits import RequestLimits
+from .service_health import ServiceHealth, UnavailableServiceHealth
+from .service_health_routes import router as service_health_router
 from .text_entry_routes import router as text_entry_router
 from .text_entry_routes import transfer_router as transfer_text_entry_router
 from .timezones import validated_iana_timezone
@@ -294,6 +296,7 @@ def create_app(
     profile_repository: object | None = None,
     account_data_repository: object | None = None,
     credential_repository: object | None = None,
+    service_health: ServiceHealth | None = None,
     app_release_store: AppReleaseStore | None = None,
     app_download_link_secret: bytes | None = None,
     database_engine: AsyncEngine | None = None,
@@ -420,6 +423,11 @@ def create_app(
         if analytics_repository is not None
         else UnavailableAnalyticsRepository()
     )
+    # Down unless something real is wired: a watcher told "ok" by a process
+    # with no database behind it would be told nothing.
+    application.state.service_health = (
+        service_health if service_health is not None else UnavailableServiceHealth()
+    )
 
     @application.exception_handler(QuotaExceeded)
     async def quota_reached(_: Request, __: QuotaExceeded) -> Response:
@@ -495,6 +503,7 @@ def create_app(
     application.include_router(profile_router)
     application.include_router(account_data_router)
     application.include_router(app_release_router)
+    application.include_router(service_health_router)
     # Shares the /api/v1/operations prefix with the write routes on purpose:
     # proposing and committing are the same resource, but only one of them
     # writes (ADR 0022).

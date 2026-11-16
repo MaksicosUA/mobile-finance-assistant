@@ -1,0 +1,12 @@
+[Unit]
+Description=Ask whether the finance service is well, and tell the watcher
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mfa/infra/docker/watch.sh
+# A check that hangs is itself a finding: the next one must still run.
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
