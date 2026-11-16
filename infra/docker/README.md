@@ -128,9 +128,11 @@ Once, and again after a migration adds a column to `users` or
 
     sudo ./readonly-role.sh
 
-It creates `mfa_readonly`, which can read every table except the password hash
-and the refresh-token hash, runs every statement in a read-only transaction, and
-can therefore change nothing. Its password is generated into `.env` and never
+It creates `mfa_readonly`, which can read every table except the password hash,
+the recovery-code hash and the refresh-token hash, runs every statement in a
+read-only transaction, and can therefore change nothing. A column a migration
+adds to those two tables stays unreadable until the script is run again, so
+forgetting to run it hides something rather than exposing it. Its password is generated into `.env` and never
 printed.
 
 When you want to look:
@@ -143,7 +145,7 @@ Open http://localhost:8080 and sign in with System **PostgreSQL**, Server
 password from `sudo grep ^MFA_READONLY_DB_PASSWORD= .env`. `sudo ./adminer.sh stop`
 when done.
 
-`users` and `auth_refresh_tokens` refuse `SELECT *`, because two of their columns
+`users` and `auth_refresh_tokens` refuse `SELECT *`, because some of their columns
 are hidden: in Adminer, choose the columns under **Select** before opening them.
 For accounts, `account_admin list` is quicker anyway.
 

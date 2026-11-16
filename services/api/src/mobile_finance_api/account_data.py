@@ -74,7 +74,8 @@ _LOGGER = logging.getLogger(__name__)
 #: Columns that never leave, whatever table they sit in.
 WITHHELD_COLUMNS: Mapping[str, frozenset[str]] = {
     # A credential, not data: with it someone could test guesses offline.
-    "users": frozenset({"password_hash"}),
+    # The digest of the recovery code is the same kind of thing (ADR 0035).
+    "users": frozenset({"password_hash", "recovery_code_hash"}),
 }
 
 _CREDENTIAL = "a credential: it lets someone act as the person, and is not their data"

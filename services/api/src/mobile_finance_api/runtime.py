@@ -18,6 +18,7 @@ from .config import (
     load_release_directory,
     require_runtime_settings,
 )
+from .credentials import PostgresCredentialRepository
 from .database import create_database
 from .finance_core import FinanceCore
 from .goal_core import GoalCore
@@ -52,6 +53,9 @@ finance_accounts = PostgresFinanceAccountRepository(
     session_factory=session_factory,
 )
 finance_categories = PostgresCategoryRepository(session_factory=session_factory)
+# One service, so the bound on concurrent Argon2 runs holds across everything
+# that checks a password rather than once per caller.
+passwords = PasswordService()
 
 app = create_app(
     registration_allowlist=load_registration_allowlist(),
@@ -64,7 +68,7 @@ app = create_app(
     ),
     authentication_service=PostgresAuthenticationService(
         session_factory=session_factory,
-        password_service=PasswordService(),
+        password_service=passwords,
         access_tokens=access_tokens,
     ),
     account_core=AccountCore(repository=finance_accounts),
@@ -103,6 +107,11 @@ app = create_app(
     profile_repository=PostgresProfileRepository(session_factory=session_factory),
     account_data_repository=PostgresAccountDataRepository(
         session_factory=session_factory,
+        passwords=passwords,
+    ),
+    credential_repository=PostgresCredentialRepository(
+        session_factory=session_factory,
+        passwords=passwords,
     ),
     app_release_store=(
         NoAppReleaseStore()

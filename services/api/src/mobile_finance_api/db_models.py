@@ -59,6 +59,15 @@ class UserRow(Base):
             "AND deletion_due_at > deletion_requested_at)",
             name="ck_users_deletion_schedule",
         ),
+        # A code and the day it was made exist together or not at all, and what
+        # is stored is a SHA-256 digest, never the code (ADR 0035).
+        CheckConstraint(
+            "(recovery_code_hash IS NULL AND recovery_code_created_at IS NULL) OR "
+            "(recovery_code_hash IS NOT NULL AND "
+            "octet_length(recovery_code_hash) = 32 AND "
+            "recovery_code_created_at IS NOT NULL)",
+            name="ck_users_recovery_code",
+        ),
         Index(
             "ix_users_deletion_due_at",
             "deletion_due_at",
@@ -108,6 +117,17 @@ class UserRow(Base):
         nullable=True,
     )
     deletion_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    #: The digest of the code that resets a forgotten password, and when it was
+    #: issued. The code itself is shown once and kept only by the person
+    #: (ADR 0035). Absent until they ask for one.
+    recovery_code_hash: Mapped[bytes | None] = mapped_column(
+        LargeBinary(32),
+        nullable=True,
+    )
+    recovery_code_created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
