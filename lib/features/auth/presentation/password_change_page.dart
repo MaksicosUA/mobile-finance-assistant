@@ -86,8 +86,10 @@ class _PasswordChangePageState extends ConsumerState<PasswordChangePage> {
                           ? l10n.credentialPasswordRejected
                           : null,
                     ),
+                    // Nothing has been checked yet, so this asks for the
+                    // password rather than calling it wrong.
                     validator: (value) => (value ?? '').isEmpty
-                        ? l10n.credentialPasswordRejected
+                        ? l10n.currentPasswordRequired
                         : null,
                   ),
                   const SizedBox(height: AppSpacing.sm),

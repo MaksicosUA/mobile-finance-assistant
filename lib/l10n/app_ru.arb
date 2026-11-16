@@ -2079,6 +2079,8 @@
   "@recoveryCodeIssueShownOnce": {"description": "Password recovery and change (ADR 0035)."},
   "currentPasswordField": "Текущий пароль",
   "@currentPasswordField": {"description": "Password recovery and change (ADR 0035)."},
+  "currentPasswordRequired": "Введите текущий пароль",
+  "@currentPasswordRequired": {"description": "Password recovery and change (ADR 0035)."},
   "recoveryCodeIssuePasswordHelp": "Пароль подтверждает, что код просите именно вы",
   "@recoveryCodeIssuePasswordHelp": {"description": "Password recovery and change (ADR 0035)."},
   "recoveryCodeIssueSubmit": "Показать код",

@@ -2330,7 +2330,7 @@ class AppLocalizationsEn extends AppLocalizations {
       '20 letters and digits. Case and hyphens do not matter.';
 
   @override
-  String get recoveryCodeInvalid => 'The code has 20 letters and digits';
+  String get recoveryCodeInvalid => 'The code must have 20 letters and digits';
 
   @override
   String get newPasswordField => 'New password';
@@ -2436,6 +2436,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get currentPasswordField => 'Current password';
+
+  @override
+  String get currentPasswordRequired => 'Enter your current password';
 
   @override
   String get recoveryCodeIssuePasswordHelp =>

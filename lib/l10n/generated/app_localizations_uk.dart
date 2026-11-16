@@ -2439,6 +2439,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get currentPasswordField => 'Поточний пароль';
 
   @override
+  String get currentPasswordRequired => 'Введіть поточний пароль';
+
+  @override
   String get recoveryCodeIssuePasswordHelp =>
       'Пароль підтверджує, що код просите саме ви';
 

@@ -656,6 +656,7 @@
   "recoveryCodeIssueReplaces": "Якщо код у вас уже був, він перестане працювати: діє лише останній.",
   "recoveryCodeIssueShownOnce": "Ми покажемо код один раз. Приготуйте, куди його записати.",
   "currentPasswordField": "Поточний пароль",
+  "currentPasswordRequired": "Введіть поточний пароль",
   "recoveryCodeIssuePasswordHelp": "Пароль підтверджує, що код просите саме ви",
   "recoveryCodeIssueSubmit": "Показати код",
   "credentialPasswordRejected": "Неправильний пароль",

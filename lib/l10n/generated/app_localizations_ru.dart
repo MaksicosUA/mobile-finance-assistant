@@ -2434,6 +2434,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get currentPasswordField => 'Текущий пароль';
 
   @override
+  String get currentPasswordRequired => 'Введите текущий пароль';
+
+  @override
   String get recoveryCodeIssuePasswordHelp =>
       'Пароль подтверждает, что код просите именно вы';
 

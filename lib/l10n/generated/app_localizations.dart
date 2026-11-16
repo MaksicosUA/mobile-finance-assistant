@@ -4052,6 +4052,12 @@ abstract class AppLocalizations {
   /// Password recovery and change (ADR 0035).
   ///
   /// In ru, this message translates to:
+  /// **'Введите текущий пароль'**
+  String get currentPasswordRequired;
+
+  /// Password recovery and change (ADR 0035).
+  ///
+  /// In ru, this message translates to:
   /// **'Пароль подтверждает, что код просите именно вы'**
   String get recoveryCodeIssuePasswordHelp;
 

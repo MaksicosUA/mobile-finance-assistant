@@ -11,6 +11,7 @@ import 'package:mobile_finance_assistant/app/settings/app_settings.dart';
 import 'package:mobile_finance_assistant/app/settings/app_settings_controller.dart';
 import 'package:mobile_finance_assistant/app/theme/app_theme.dart';
 import 'package:mobile_finance_assistant/features/auth/application/auth_controller.dart';
+import 'package:mobile_finance_assistant/features/auth/application/credentials_controller.dart';
 import 'package:mobile_finance_assistant/features/auth/data/auth_api.dart';
 import 'package:mobile_finance_assistant/features/auth/data/auth_repository.dart';
 import 'package:mobile_finance_assistant/features/auth/data/auth_session_store.dart';
@@ -1023,6 +1024,200 @@ void main() {
       expect(find.byKey(const Key('profile-change-password')), findsOneWidget);
     });
   });
+
+  group('a request that cannot be made at all', () {
+    // Two ways to get here. A build with no API_BASE_URL has no credentials
+    // repository, so reading the provider throws, and Profile still offers both
+    // actions there. And a repository can throw on its own.
+    for (final (name, credentials) in <(String, CredentialsRepositoryClient?)>[
+      ('in a build with no backend', null),
+      ('when the repository throws', _ThrowingCredentials()),
+    ]) {
+      test('asking for a code $name is refused, not thrown', () async {
+        final container = ProviderContainer(
+          overrides: _overrides(credentials, null),
+        );
+        addTearDown(container.dispose);
+        final kept = container.listen(
+          recoveryCodeIssueControllerProvider,
+          (previous, next) {},
+        );
+        addTearDown(kept.close);
+
+        final code = await container
+            .read(recoveryCodeIssueControllerProvider.notifier)
+            .submit(_password);
+
+        expect(code, isNull);
+        expect(
+          container.read(recoveryCodeIssueControllerProvider),
+          isA<CredentialFormReady>().having(
+            (state) => state.issue,
+            'issue',
+            CredentialIssue.unavailable,
+          ),
+        );
+      });
+
+      test('changing the password $name is refused, not thrown', () async {
+        final container = ProviderContainer(
+          overrides: _overrides(credentials, null),
+        );
+        addTearDown(container.dispose);
+        final kept = container.listen(
+          passwordChangeControllerProvider,
+          (previous, next) {},
+        );
+        addTearDown(kept.close);
+
+        final changed = await container
+            .read(passwordChangeControllerProvider.notifier)
+            .submit(currentPassword: _password, newPassword: _newPassword);
+
+        expect(changed, isFalse);
+        expect(
+          container.read(passwordChangeControllerProvider),
+          isA<CredentialFormReady>().having(
+            (state) => state.issue,
+            'issue',
+            CredentialIssue.unavailable,
+          ),
+        );
+      });
+
+      testWidgets('the page asking for a code $name says so and lets go', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          const _Pusher(RecoveryCodeIssuePage()),
+          credentials: credentials,
+          backend: credentials != null,
+        );
+        await tester.tap(find.byKey(const Key('push')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('recovery-code-issue-password')),
+          _password,
+        );
+        await tester.pump();
+        final submit = find.byKey(const Key('recovery-code-issue-submit'));
+        await tester.tap(submit);
+        // Not pumpAndSettle: a page left waiting never settles, and the
+        // assertions below should be what says so.
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(
+          find.textContaining('Сервер не смог выполнить запрос'),
+          findsOneWidget,
+        );
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(tester.widget<FilledButton>(submit).onPressed, isNotNull);
+
+        // Back is not held shut by a request that was never sent.
+        await tester.binding.handlePopRoute();
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byKey(const Key('recovery-code-issue-page')), findsNothing);
+      });
+
+      testWidgets('the password page $name says so and lets go', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          const _Pusher(PasswordChangePage()),
+          credentials: credentials,
+          backend: credentials != null,
+        );
+        await tester.tap(find.byKey(const Key('push')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('password-change-current')),
+          _password,
+        );
+        await tester.enterText(
+          find.byKey(const Key('password-change-new')),
+          _newPassword,
+        );
+        await tester.enterText(
+          find.byKey(const Key('password-change-confirm')),
+          _newPassword,
+        );
+        final submit = find.byKey(const Key('password-change-submit'));
+        await tester.tap(submit);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(
+          find.textContaining('Сервер не смог выполнить запрос'),
+          findsOneWidget,
+        );
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(tester.widget<FilledButton>(submit).onPressed, isNotNull);
+        expect(find.textContaining('Пароль изменён'), findsNothing);
+
+        await tester.binding.handlePopRoute();
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byKey(const Key('password-change-page')), findsNothing);
+      });
+    }
+  });
+
+  group('what a field says before anything is sent', () {
+    testWidgets('an empty current password is asked for, not called wrong', (
+      tester,
+    ) async {
+      final credentials = _FakeCredentials();
+      await _pump(tester, const PasswordChangePage(), credentials: credentials);
+      await tester.enterText(
+        find.byKey(const Key('password-change-new')),
+        _newPassword,
+      );
+      await tester.enterText(
+        find.byKey(const Key('password-change-confirm')),
+        _newPassword,
+      );
+      await tester.tap(find.byKey(const Key('password-change-submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Введите текущий пароль'), findsOneWidget);
+      // Nothing was checked, so nothing can have been wrong.
+      expect(find.text('Неверный пароль'), findsNothing);
+      expect(credentials.changes, isEmpty);
+    });
+
+    test('a code of the wrong shape is told what it must be', () {
+      const instruction = {
+        'ru': 'должно быть 20',
+        'uk': 'має бути 20',
+        'en': 'must have 20',
+        'de': 'muss 20',
+      };
+      for (final locale in AppLocalizations.supportedLocales) {
+        final l10n = lookupAppLocalizations(locale);
+        expect(
+          l10n.recoveryCodeInvalid,
+          contains(instruction[locale.languageCode]),
+          reason: locale.languageCode,
+        );
+      }
+    });
+
+    test('asking for a password is never worded as refusing one', () {
+      for (final locale in AppLocalizations.supportedLocales) {
+        final l10n = lookupAppLocalizations(locale);
+        expect(l10n.currentPasswordRequired, isNotEmpty);
+        expect(
+          l10n.currentPasswordRequired,
+          isNot(l10n.credentialPasswordRejected),
+          reason: locale.languageCode,
+        );
+      }
+    });
+  });
 }
 
 const _code = 'ABCDE-FGHJK-MNPQR-STVWX';
@@ -1080,13 +1275,19 @@ ProviderContainer _container({
   return ProviderContainer(overrides: _overrides(credentials, auth));
 }
 
-List<Override> _overrides(_FakeCredentials credentials, _FakeAuthApi? auth) {
+/// [credentials] left out is a build with no backend: the provider is the
+/// real one, and without an API_BASE_URL it throws.
+List<Override> _overrides(
+  CredentialsRepositoryClient? credentials,
+  _FakeAuthApi? auth,
+) {
   return [
     initialAppSettingsProvider.overrideWithValue(const AppSettings()),
     authRepositoryProvider.overrideWithValue(
       AuthRepository(api: auth ?? _FakeAuthApi(), sessionStore: _FakeStore()),
     ),
-    credentialsRepositoryProvider.overrideWithValue(credentials),
+    if (credentials != null)
+      credentialsRepositoryProvider.overrideWithValue(credentials),
     waitingPhraseStoreProvider.overrideWithValue(const NoWaitingPhraseStore()),
   ];
 }
@@ -1094,8 +1295,9 @@ List<Override> _overrides(_FakeCredentials credentials, _FakeAuthApi? auth) {
 Future<ProviderContainer> _pump(
   WidgetTester tester,
   Widget home, {
-  _FakeCredentials? credentials,
+  CredentialsRepositoryClient? credentials,
   _FakeAuthApi? auth,
+  bool backend = true,
   Size size = const Size(360, 800),
   double textScale = 1,
   Locale locale = const Locale('ru'),
@@ -1104,7 +1306,10 @@ Future<ProviderContainer> _pump(
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
   final container = ProviderContainer(
-    overrides: _overrides(credentials ?? _FakeCredentials(), auth),
+    overrides: _overrides(
+      backend ? credentials ?? _FakeCredentials() : null,
+      auth,
+    ),
   );
   addTearDown(container.dispose);
   await tester.pumpWidget(
@@ -1272,6 +1477,31 @@ final class _FakeCredentials implements CredentialsRepositoryClient {
     resets.add((email, recoveryCode, newPassword));
     return reset;
   }
+}
+
+/// A repository that fails instead of answering.
+final class _ThrowingCredentials implements CredentialsRepositoryClient {
+  @override
+  Future<CredentialResult<RecoveryCodeStatus>> readRecoveryCodeStatus() =>
+      throw StateError('synthetic');
+
+  @override
+  Future<CredentialResult<RecoveryCode>> issueRecoveryCode({
+    required String password,
+  }) => throw StateError('synthetic');
+
+  @override
+  Future<CredentialResult<void>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw StateError('synthetic');
+
+  @override
+  Future<CredentialResult<RecoveryCode>> resetPassword({
+    required String email,
+    required String recoveryCode,
+    required String newPassword,
+  }) => throw StateError('synthetic');
 }
 
 final class _FakeCredentialsApi implements CredentialsApiClient {

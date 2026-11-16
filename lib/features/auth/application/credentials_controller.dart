@@ -107,9 +107,17 @@ class RecoveryCodeIssueController extends Notifier<CredentialFormState> {
   Future<RecoveryCode?> submit(String password) async {
     if (state is CredentialFormSubmitting) return null;
     state = const CredentialFormSubmitting();
-    final result = await ref
-        .read(credentialsRepositoryProvider)
-        .issueRecoveryCode(password: password);
+    CredentialResult<RecoveryCode> result;
+    try {
+      result = await ref
+          .read(credentialsRepositoryProvider)
+          .issueRecoveryCode(password: password);
+    } on Object {
+      // A build with no backend has no repository to read, and one that threw
+      // has not answered. Either way nothing was issued, and the form must not
+      // be left waiting: it cannot be left by going back while it waits.
+      result = const CredentialFailure(CredentialFailureKind.unknown);
+    }
     switch (result) {
       case CredentialSuccess(:final value):
         // Left submitting: the screen is about to go.
@@ -141,12 +149,18 @@ class PasswordChangeController extends Notifier<CredentialFormState> {
   }) async {
     if (state is CredentialFormSubmitting) return false;
     state = const CredentialFormSubmitting();
-    final result = await ref
-        .read(credentialsRepositoryProvider)
-        .changePassword(
-          currentPassword: currentPassword,
-          newPassword: newPassword,
-        );
+    CredentialResult<void> result;
+    try {
+      result = await ref
+          .read(credentialsRepositoryProvider)
+          .changePassword(
+            currentPassword: currentPassword,
+            newPassword: newPassword,
+          );
+    } on Object {
+      // As above: no repository, or one that threw, is a refusal to report.
+      result = const CredentialFailure(CredentialFailureKind.unknown);
+    }
     switch (result) {
       case CredentialSuccess():
         if (ref.mounted) state = const CredentialFormReady();

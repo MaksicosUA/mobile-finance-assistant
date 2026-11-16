@@ -2352,7 +2352,8 @@ class AppLocalizationsDe extends AppLocalizations {
       '20 Buchstaben und Ziffern. Groß- und Kleinschreibung und Bindestriche sind egal.';
 
   @override
-  String get recoveryCodeInvalid => 'Der Code hat 20 Buchstaben und Ziffern';
+  String get recoveryCodeInvalid =>
+      'Der Code muss 20 Buchstaben und Ziffern haben';
 
   @override
   String get newPasswordField => 'Neues Passwort';
@@ -2459,6 +2460,9 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get currentPasswordField => 'Aktuelles Passwort';
+
+  @override
+  String get currentPasswordRequired => 'Gib dein aktuelles Passwort ein';
 
   @override
   String get recoveryCodeIssuePasswordHelp =>
