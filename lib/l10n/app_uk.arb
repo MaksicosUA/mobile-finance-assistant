@@ -565,6 +565,8 @@
   "timezoneSettingsDescription": "Де проходить межа дня й місяця",
   "entrySentenceGapCurrency": "Валюту не розібрав — впишіть суму самі.",
   "entrySentenceCurrencyMismatch": "Сума в {parsed}, а рахунок у {account} — не підставив її.",
+  "entrySentenceWalletChosen": "Сума в {currency} — обрав гаманець «{wallet}».",
+  "entrySentenceWalletUnclear": "Сума в {currency}, а гаманців у цій валюті кілька — оберіть гаманець, і сума підставиться.",
   "otherWalletsTitle": "ІНШІ ГАМАНЦІ",
   "transferTitle": "Переказ між рахунками",
   "transferSettingsAction": "Переказ між рахунками",

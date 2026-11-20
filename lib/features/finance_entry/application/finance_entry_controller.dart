@@ -133,11 +133,13 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
   ///
   /// The typed amount and date are kept: switching wallets is choosing where
   /// the money moved, not starting again (ADR 0029).
-  void selectAccount(FinanceAccount account, OperationEntryInput input) {
+  /// Whether the form is now on [account]. False when it stayed where it was:
+  /// a caller that filled a field for the new wallet has to take it back.
+  bool selectAccount(FinanceAccount account, OperationEntryInput input) {
     final current = state;
-    if (_requestInFlight || current is! FinanceOperationEditing) return;
+    if (_requestInFlight || current is! FinanceOperationEditing) return false;
     if (!_wallets.any((wallet) => wallet.accountId == account.accountId)) {
-      return;
+      return false;
     }
     state = FinanceOperationEditing(
       account: account,
@@ -146,6 +148,7 @@ class FinanceEntryController extends Notifier<FinanceEntryState> {
       latestOperationDate: current.latestOperationDate,
       accountCreated: current.accountCreated,
     );
+    return true;
   }
 
   Future<void> evaluateAccount(AccountSetupInput input) async {

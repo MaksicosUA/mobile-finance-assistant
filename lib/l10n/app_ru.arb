@@ -1889,6 +1889,27 @@
       }
     }
   },
+  "entrySentenceWalletChosen": "Сумма в {currency} — выбрал кошелёк «{wallet}».",
+  "@entrySentenceWalletChosen": {
+    "description": "Entry by sentence: the sentence named a currency exactly one other wallet keeps, and the form moved there.",
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "wallet": {
+        "type": "String"
+      }
+    }
+  },
+  "entrySentenceWalletUnclear": "Сумма в {currency}, а кошельков в этой валюте несколько — выберите кошелёк, и сумма подставится.",
+  "@entrySentenceWalletUnclear": {
+    "description": "Entry by sentence: the sentence named a currency several wallets keep, so none was chosen.",
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
   "otherWalletsTitle": "ДРУГИЕ КОШЕЛЬКИ",
   "@otherWalletsTitle": {
     "description": "Home: wallets in other currencies, listed beside the balance card and never summed with it (ADR 0029)."

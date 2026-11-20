@@ -3503,6 +3503,18 @@ abstract class AppLocalizations {
   /// **'Сумма в {parsed}, а счёт в {account} — не подставил её.'**
   String entrySentenceCurrencyMismatch(String parsed, String account);
 
+  /// Entry by sentence: the sentence named a currency exactly one other wallet keeps, and the form moved there.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сумма в {currency} — выбрал кошелёк «{wallet}».'**
+  String entrySentenceWalletChosen(String currency, String wallet);
+
+  /// Entry by sentence: the sentence named a currency several wallets keep, so none was chosen.
+  ///
+  /// In ru, this message translates to:
+  /// **'Сумма в {currency}, а кошельков в этой валюте несколько — выберите кошелёк, и сумма подставится.'**
+  String entrySentenceWalletUnclear(String currency);
+
   /// Home: wallets in other currencies, listed beside the balance card and never summed with it (ADR 0029).
   ///
   /// In ru, this message translates to:

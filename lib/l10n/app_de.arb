@@ -565,6 +565,8 @@
   "timezoneSettingsDescription": "Wo Tag und Monat enden",
   "entrySentenceGapCurrency": "Währung nicht erkannt — trag den Betrag selbst ein.",
   "entrySentenceCurrencyMismatch": "Betrag in {parsed}, Konto in {account} — nicht übernommen.",
+  "entrySentenceWalletChosen": "Betrag in {currency} — Konto „{wallet}“ gewählt.",
+  "entrySentenceWalletUnclear": "Betrag in {currency}, mehrere Konten führen diese Währung — wähle das Konto, dann wird der Betrag übernommen.",
   "otherWalletsTitle": "WEITERE KONTEN",
   "transferTitle": "Umbuchung",
   "transferSettingsAction": "Umbuchung",

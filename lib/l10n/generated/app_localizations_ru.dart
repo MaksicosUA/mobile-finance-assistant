@@ -1983,6 +1983,16 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
+  String entrySentenceWalletChosen(String currency, String wallet) {
+    return 'Сумма в $currency — выбрал кошелёк «$wallet».';
+  }
+
+  @override
+  String entrySentenceWalletUnclear(String currency) {
+    return 'Сумма в $currency, а кошельков в этой валюте несколько — выберите кошелёк, и сумма подставится.';
+  }
+
+  @override
   String get otherWalletsTitle => 'ДРУГИЕ КОШЕЛЬКИ';
 
   @override

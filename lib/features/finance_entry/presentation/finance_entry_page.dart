@@ -491,7 +491,7 @@ class _OperationForm extends ConsumerStatefulWidget {
   final bool privacyEnabled;
   final bool focusSentence;
   final ValueChanged<OperationEntryInput> onSubmit;
-  final void Function(FinanceAccount, OperationEntryInput) onSelectAccount;
+  final bool Function(FinanceAccount, OperationEntryInput) onSelectAccount;
 
   @override
   ConsumerState<_OperationForm> createState() => _OperationFormState();
@@ -528,6 +528,11 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
   bool _directionUnanswered = false;
   final _directionQuestionKey = GlobalKey();
   bool _validateContinuously = false;
+
+  /// The wallet a sentence moved the form to, so the form can say that it did.
+  /// Recording into another wallet than the one on screen is never done
+  /// silently. Forgotten once the person chooses a wallet themselves.
+  FinanceAccount? _walletChosenBySentence;
 
   /// The waiting phrase whose words are in the sentence field, if any.
   ///
@@ -621,11 +626,64 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
     );
   }
 
+  /// The one other wallet that keeps the currency a sentence's amount is in.
+  ///
+  /// Null when this wallet already keeps it, when none does, and when several
+  /// do: which of two hryvnia wallets was meant is the person's to say. Null
+  /// too when there is no amount to bring, because then nothing in the sentence
+  /// needs another wallet.
+  FinanceAccount? _walletFor(OperationProposal proposal) {
+    if (proposal.amount == null ||
+        proposal.gaps.contains(OperationParseGap.currencyNotUnderstood) ||
+        proposal.gaps.contains(OperationParseGap.transferNotAnOperation) ||
+        proposal.currency == widget.state.account.currency) {
+      return null;
+    }
+    final keeping = [
+      for (final wallet in widget.state.wallets)
+        if (wallet.currency == proposal.currency) wallet,
+    ];
+    return keeping.length == 1 ? keeping.single : null;
+  }
+
+  /// Moves the form to the wallet the person picked.
+  ///
+  /// The amount a sentence read belongs to the sentence's currency, so it
+  /// follows that currency and nothing else. It arrives when the chosen wallet
+  /// is the first to keep it, and it leaves when the chosen wallet does not:
+  /// carried across, «280 гривен» would sit in a field labelled € (issue 0007).
+  /// What the person typed themselves is theirs and stays either way.
+  void _chooseWallet(FinanceAccount wallet) {
+    final proposal = _proposal;
+    final read = proposal?.amount;
+    final before = _amountController.text;
+    if (proposal != null && read != null) {
+      final fitsThere = _proposalFitsAccount(proposal, wallet.currency);
+      if (fitsThere && before.trim().isEmpty) {
+        _amountController.text = read;
+      } else if (!fitsThere &&
+          before == read &&
+          _proposalFitsAccount(proposal, widget.state.account.currency)) {
+        _amountController.clear();
+      }
+    }
+    if (!widget.onSelectAccount(wallet, _currentInput())) {
+      _amountController.text = before;
+      return;
+    }
+    setState(() => _walletChosenBySentence = null);
+  }
+
   /// Fills the form from a proposal. It fills fields and nothing else: the
   /// operation is still written by the ordinary confirm path below (ADR 0022).
   void _applyProposal(OperationProposal proposal) {
+    // A sentence that names hryvnias is about the hryvnia wallet. When exactly
+    // one wallet keeps that currency the form goes there, and says so.
+    final wallet = _walletFor(proposal);
+    final amountBefore = _amountController.text;
     setState(() {
       _proposal = proposal;
+      _walletChosenBySentence = wallet;
       _directionUnanswered = proposal.gaps.contains(
         OperationParseGap.directionNotClear,
       );
@@ -639,7 +697,8 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
       // and nothing used to look at what it said.
       final amount = proposal.amount;
       if (amount != null &&
-          _proposalFitsAccount(proposal, widget.state.account.currency)) {
+          (wallet != null ||
+              _proposalFitsAccount(proposal, widget.state.account.currency))) {
         _amountController.text = amount;
       }
       final occurredOn = DateTime.tryParse('${proposal.occurredOn}T00:00:00Z');
@@ -655,6 +714,12 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
       }
       _fillCategory(proposal.categoryId, proposal.type);
     });
+    // After the fields are in place, so the move carries them along. If the
+    // form could not move, the amount must not stay behind in the wrong unit.
+    if (wallet != null && !widget.onSelectAccount(wallet, _currentInput())) {
+      _amountController.text = amountBefore;
+      setState(() => _walletChosenBySentence = null);
+    }
   }
 
   /// Puts in the category a sentence reached, when this catalogue offers it.
@@ -742,6 +807,10 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
             state: textEntry,
             enabled: !widget.state.isSubmitting,
             accountCurrency: widget.state.account.currency,
+            walletCurrencies: [
+              for (final wallet in widget.state.wallets) wallet.currency,
+            ],
+            walletChosen: _walletChosenBySentence?.name,
             saidAt: _phraseInField?.saidAt,
             onParse: () => ref
                 .read(textEntryControllerProvider.notifier)
@@ -814,11 +883,10 @@ class _OperationFormState extends ConsumerState<_OperationForm> {
                   ? null
                   : (selected) {
                       if (selected == null) return;
-                      widget.onSelectAccount(
+                      _chooseWallet(
                         widget.state.wallets.firstWhere(
                           (wallet) => wallet.accountId == selected,
                         ),
-                        _currentInput(),
                       );
                     },
             ),
@@ -1549,18 +1617,26 @@ class _SentenceField extends StatelessWidget {
     required this.state,
     required this.enabled,
     required this.accountCurrency,
+    required this.walletCurrencies,
     required this.onParse,
     required this.onOpenTransfer,
     required this.directionUnanswered,
     required this.directionQuestionKey,
     required this.onChooseDirection,
     this.saidAt,
+    this.walletChosen,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final TextEntryState state;
   final bool enabled;
+
+  /// The currency of every wallet the person has, this one included.
+  final List<String> walletCurrencies;
+
+  /// The name of the wallet the sentence moved the form to, when it did.
+  final String? walletChosen;
 
   /// When the words in the field were said, for a phrase said earlier.
   final DateTime? saidAt;
@@ -1705,7 +1781,20 @@ class _SentenceField extends StatelessWidget {
       for (final gap in _openGaps(proposal)) _gapMessage(l10n, gap),
       if (!proposal.gaps.contains(OperationParseGap.currencyNotUnderstood) &&
           proposal.currency != accountCurrency)
-        l10n.entrySentenceCurrencyMismatch(proposal.currency, accountCurrency),
+        // Several wallets keep it, so the form did not guess which was meant.
+        // One tap on the wallet brings the amount.
+        walletCurrencies
+                    .where((currency) => currency == proposal.currency)
+                    .length >
+                1
+            ? l10n.entrySentenceWalletUnclear(proposal.currency)
+            : l10n.entrySentenceCurrencyMismatch(
+                proposal.currency,
+                accountCurrency,
+              ),
+      if (walletChosen case final wallet?
+          when proposal.currency == accountCurrency)
+        l10n.entrySentenceWalletChosen(proposal.currency, wallet),
     ];
   }
 
