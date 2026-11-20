@@ -1,17 +1,21 @@
 package com.mobilefinanceassistant.mobile_finance_assistant
 
+import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.view.WindowManager
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.text.SimpleDateFormat
@@ -39,6 +43,16 @@ class MainActivity : FlutterActivity() {
     // recognises in its own process; only the text comes back (ADR 0031).
     private val speechInputChannel = "com.mobilefinanceassistant/speech_input"
     private var pendingSpeech: MethodChannel.Result? = null
+
+    // Listening through pauses: the app's own screen, with the phone's
+    // recognition service doing the recognising. Only text comes back; the
+    // microphone permission is asked for the first time it is used, and a
+    // refusal falls back to the voice input screen above (ADR 0031 amendment).
+    private val speechSessionChannel = "com.mobilefinanceassistant/speech_session"
+    private val speechSessionEventsChannel =
+        "com.mobilefinanceassistant/speech_session/events"
+    private var speechSession: SpeechSession? = null
+    private var pendingMicrophone: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -175,6 +189,83 @@ class MainActivity : FlutterActivity() {
                 result,
             )
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            speechSessionChannel,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "prepare" -> prepareSpeechSession(result)
+                "finish" -> {
+                    speechSession?.finish()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            speechSessionEventsChannel,
+        ).setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                val languageTag =
+                    (arguments as? Map<*, *>)?.get("languageTag") as? String ?: "ru-RU"
+                speechSession?.cancel()
+                lateinit var session: SpeechSession
+                session = SpeechSession(this@MainActivity, languageTag, events) {
+                    if (speechSession === session) speechSession = null
+                }
+                speechSession = session
+                session.start()
+            }
+
+            override fun onCancel(arguments: Any?) {
+                speechSession?.cancel()
+                speechSession = null
+            }
+        })
+    }
+
+    /** Whether listening can begin: a recogniser exists and the microphone is ours. */
+    private fun prepareSpeechSession(result: MethodChannel.Result) {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            result.success("unavailable")
+            return
+        }
+        if (pendingMicrophone != null || speechSession?.isOpen == true || pendingSpeech != null) {
+            result.success("busy")
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success("ready")
+            return
+        }
+        pendingMicrophone = result
+        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), MICROPHONE_REQUEST_CODE)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != MICROPHONE_REQUEST_CODE) return
+        val pending = pendingMicrophone ?: return
+        pendingMicrophone = null
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        pending.success(if (granted) "ready" else "denied")
+    }
+
+    // A microphone must not go on listening behind another app. What was
+    // heard so far is kept, as if the person had tapped Done.
+    override fun onStop() {
+        speechSession?.finish()
+        super.onStop()
     }
 
     private fun listenForSpeech(
@@ -401,6 +492,7 @@ class MainActivity : FlutterActivity() {
 
     private companion object {
         private const val SPEECH_REQUEST_CODE = 4731
+        private const val MICROPHONE_REQUEST_CODE = 4732
         private val unstableTimezoneKeys = setOf("Factory", "localtime", "posixrules")
         private val availableIanaTimezoneKeys = TimeZone.getAvailableIDs().toSet()
         private val utcTimezone: TimeZone = TimeZone.getTimeZone("UTC")
