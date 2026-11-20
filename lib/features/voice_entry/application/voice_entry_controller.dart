@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/canonical_timezone.dart';
 import '../../../app/settings/app_settings_controller.dart';
 import '../../../core/platform/speech_input.dart';
+import '../../../core/platform/speech_session.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../finance_entry/application/finance_entry_controller.dart';
 import '../domain/waiting_phrase.dart';
@@ -60,6 +63,24 @@ enum VoiceEntryOutcome {
   failed,
 }
 
+/// What the app has heard so far while it listens through pauses.
+///
+/// Null whenever it is not listening that way: the listening screen is shown
+/// while this holds a value and goes away when it returns to null. Memory only,
+/// like the sentence it becomes.
+final voiceHeardSoFarProvider = NotifierProvider<VoiceHeardSoFar, String?>(
+  VoiceHeardSoFar.new,
+);
+
+class VoiceHeardSoFar extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void show(String text) => state = text;
+
+  void clear() => state = null;
+}
+
 /// Whether the recogniser is open, so Home does not open a second one.
 final voiceEntryControllerProvider =
     NotifierProvider<VoiceEntryController, bool>(VoiceEntryController.new);
@@ -75,19 +96,31 @@ class VoiceEntryController extends Notifier<bool> {
   @override
   bool build() => false;
 
+  StreamSubscription<SpeechSessionEvent>? _session;
+  Completer<SpeechResult?>? _sessionResult;
+
   /// Null when the recogniser is already open.
+  ///
+  /// The app's own listening screen first, which waits through pauses until
+  /// the person taps Done. When the microphone is refused, or this phone has
+  /// no recogniser to listen with that way, the voice input screen is used
+  /// instead, as before (ADR 0031 amendment).
   Future<VoiceEntryOutcome?> listen({required String prompt}) async {
     if (state) return null;
     state = true;
     try {
-      final result = await ref
-          .read(speechInputProvider)
-          .listen(
-            // The language of the app, which the sentence parser reads like
-            // the other three (ADR 0034).
-            languageTag: ref.read(appLanguageProvider).speechTag,
-            prompt: prompt,
-          );
+      // The language of the app, which the sentence parser reads like the
+      // other three (ADR 0034).
+      final languageTag = ref.read(appLanguageProvider).speechTag;
+      final throughPauses = await _listenThroughPauses(languageTag);
+      // The listening screen goes the moment listening stops, not once the
+      // words have been put away below.
+      if (ref.mounted) ref.read(voiceHeardSoFarProvider.notifier).clear();
+      final result =
+          throughPauses ??
+          await ref
+              .read(speechInputProvider)
+              .listen(languageTag: languageTag, prompt: prompt);
       switch (result) {
         case SpeechHeard(:final text):
           final kept = await _keep(text);
@@ -107,7 +140,85 @@ class VoiceEntryController extends Notifier<bool> {
           return VoiceEntryOutcome.failed;
       }
     } finally {
-      if (ref.mounted) state = false;
+      if (ref.mounted) {
+        ref.read(voiceHeardSoFarProvider.notifier).clear();
+        state = false;
+      }
+    }
+  }
+
+  /// The person is done: what is being said now is still taken.
+  Future<void> finish() async {
+    if (_session == null) return;
+    await ref.read(speechSessionProvider).finish();
+  }
+
+  /// The person changed their mind: nothing heard goes anywhere.
+  Future<void> cancel() async {
+    final session = _session;
+    final result = _sessionResult;
+    if (session == null || result == null) return;
+    _session = null;
+    _sessionResult = null;
+    if (!result.isCompleted) result.complete(const SpeechCancelled());
+    // Not awaited: a session still asking for the microphone ends only once
+    // it has an answer, and the person should not wait for that.
+    unawaited(session.cancel());
+  }
+
+  /// Null when this way of listening cannot be used here, so the voice input
+  /// screen should be.
+  Future<SpeechResult?> _listenThroughPauses(String languageTag) {
+    final result = Completer<SpeechResult?>();
+    _sessionResult = result;
+    _session = ref
+        .read(speechSessionProvider)
+        .listen(languageTag: languageTag)
+        .listen(
+          (event) {
+            if (result.isCompleted) return;
+            switch (event) {
+              case SpeechSessionHearing(:final text):
+                ref.read(voiceHeardSoFarProvider.notifier).show(text);
+              case SpeechSessionEnded(:final reason, :final text):
+                result.complete(_resultOf(reason, text));
+            }
+          },
+          onError: (Object _) {
+            if (!result.isCompleted) result.complete(const SpeechFailed());
+          },
+          onDone: () {
+            if (!result.isCompleted) result.complete(const SpeechFailed());
+          },
+          cancelOnError: true,
+        );
+    return result.future.whenComplete(() {
+      _session = null;
+      _sessionResult = null;
+    });
+  }
+
+  /// What a session that stopped amounts to. Whatever was heard before it
+  /// stopped is kept, whatever stopped it: a lost connection halfway through
+  /// a sentence does not unsay the half that was heard.
+  static SpeechResult? _resultOf(SpeechSessionEnd reason, String text) {
+    final heard = text.trim();
+    switch (reason) {
+      case SpeechSessionEnd.cancelled:
+        return const SpeechCancelled();
+      case SpeechSessionEnd.permissionDenied || SpeechSessionEnd.unavailable
+          when heard.isEmpty:
+        return null;
+      case _ when heard.isNotEmpty:
+        return SpeechHeard(heard);
+      case SpeechSessionEnd.needsNetwork:
+        return const SpeechNeedsNetwork();
+      case SpeechSessionEnd.done || SpeechSessionEnd.silence:
+        return const SpeechNothingHeard();
+      case SpeechSessionEnd.permissionDenied ||
+          SpeechSessionEnd.unavailable ||
+          SpeechSessionEnd.failed:
+        return const SpeechFailed();
     }
   }
 

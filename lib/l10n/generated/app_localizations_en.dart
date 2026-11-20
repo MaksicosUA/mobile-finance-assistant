@@ -107,6 +107,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceTypeInsteadAction => 'Type';
 
   @override
+  String get voiceListeningTitle => 'Listening';
+
+  @override
+  String get voiceListeningHint =>
+      'Take your time: a pause will not stop it. When you have finished, tap Done.';
+
+  @override
+  String get voiceListeningNothingYet => 'Nothing heard yet';
+
+  @override
+  String get voiceListeningSilence =>
+      'After 15 seconds of silence it stops on its own.';
+
+  @override
+  String get voiceListeningDone => 'Done';
+
+  @override
+  String get voiceListeningCancel => 'Cancel';
+
+  @override
   String get setupAccountAction => 'Set up account';
 
   @override

@@ -87,6 +87,18 @@
   "@voiceTypeInsteadAction": {
     "description": "Voice entry through the phone's own recogniser (ADR 0031). Snackbar action that opens the sentence field instead."
   },
+  "voiceListeningTitle": "Слушаю",
+  "@voiceListeningTitle": {"description": "Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment)."},
+  "voiceListeningHint": "Говорите сколько нужно: пауза не прервёт. Когда закончите, нажмите «Готово».",
+  "@voiceListeningHint": {"description": "Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment)."},
+  "voiceListeningNothingYet": "Пока ничего не слышно",
+  "@voiceListeningNothingYet": {"description": "Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment)."},
+  "voiceListeningSilence": "После 15 секунд тишины остановлюсь сам.",
+  "@voiceListeningSilence": {"description": "Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment)."},
+  "voiceListeningDone": "Готово",
+  "@voiceListeningDone": {"description": "Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment)."},
+  "voiceListeningCancel": "Отмена",
+  "@voiceListeningCancel": {"description": "Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment)."},
   "setupAccountAction": "Настроить счёт",
   "monthSummaryTitle": "Итоги за {month}",
   "@monthSummaryTitle": {

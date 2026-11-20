@@ -25,6 +25,7 @@ import '../features/timezone/presentation/timezone_page.dart';
 import '../features/transfers/presentation/transfer_page.dart';
 import '../features/voice_entry/application/voice_entry_controller.dart';
 import '../features/voice_entry/application/waiting_phrases_controller.dart';
+import '../features/voice_entry/presentation/voice_listening_sheet.dart';
 import '../features/wallets/presentation/wallet_page.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../core/network/api_config.dart';
@@ -297,100 +298,102 @@ class _AppShellState extends ConsumerState<AppShell>
     final operationSyncState = isNetworkBackendConfigured
         ? ref.watch(operationSyncControllerProvider)
         : null;
-    return Scaffold(
-      body: IndexedStack(
-        index: _section.index,
-        children: [
-          HomePage(
-            onNotificationsPressed: _openNotifications,
-            onEntryPressed: _openQuickEntry,
-            onWaitingPhrasesPressed: _openWaitingPhrases,
-            // The fixture build has no entry screen for a sentence to land on.
-            onVoicePressed: isNetworkBackendConfigured
-                ? () => unawaited(_openVoiceEntry())
-                : null,
-            onManualEntryPressed: isNetworkBackendConfigured
-                ? _openManualEntry
-                : null,
-            onAnalyticsPressed: () => _selectSection(AppSection.analytics),
-            onGoalPressed: () => _selectSection(AppSection.goals),
-            onSignOutRequested: _openSessionExpired,
-            operationDeliveryStatus:
-                operationSyncState == null ||
-                    (operationSyncState.phase == OperationSyncPhase.idle &&
-                        !operationSyncState.hasLocalOperations)
-                ? null
-                : OperationSyncStatusBanner(
-                    state: operationSyncState,
-                    onRetry: ref
-                        .read(operationSyncControllerProvider.notifier)
-                        .retryNow,
-                    onSignIn: _openSessionExpired,
-                  ),
-          ),
-          if (isNetworkBackendConfigured && _section == AppSection.chat)
-            FinanceEntryPage(
-              onBackHome: () => _selectSection(AppSection.home),
-              onSignInRequested: _openSessionExpired,
-              focusSentence: _quickEntryRequested,
-              deliveryLocked:
-                  operationSyncState?.phase == OperationSyncPhase.locked,
-            )
-          else
-            StubPage(
-              title: l10n.chatTab,
-              description: l10n.stubDescription,
-              onBackHome: () => _selectSection(AppSection.home),
+    return VoiceListeningHost(
+      child: Scaffold(
+        body: IndexedStack(
+          index: _section.index,
+          children: [
+            HomePage(
+              onNotificationsPressed: _openNotifications,
+              onEntryPressed: _openQuickEntry,
+              onWaitingPhrasesPressed: _openWaitingPhrases,
+              // The fixture build has no entry screen for a sentence to land on.
+              onVoicePressed: isNetworkBackendConfigured
+                  ? () => unawaited(_openVoiceEntry())
+                  : null,
+              onManualEntryPressed: isNetworkBackendConfigured
+                  ? _openManualEntry
+                  : null,
+              onAnalyticsPressed: () => _selectSection(AppSection.analytics),
+              onGoalPressed: () => _selectSection(AppSection.goals),
+              onSignOutRequested: _openSessionExpired,
+              operationDeliveryStatus:
+                  operationSyncState == null ||
+                      (operationSyncState.phase == OperationSyncPhase.idle &&
+                          !operationSyncState.hasLocalOperations)
+                  ? null
+                  : OperationSyncStatusBanner(
+                      state: operationSyncState,
+                      onRetry: ref
+                          .read(operationSyncControllerProvider.notifier)
+                          .retryNow,
+                      onSignIn: _openSessionExpired,
+                    ),
             ),
-          // Analytics needs the authenticated backend: it groups committed
-          // operations, and the fixture build has none behind it.
-          if (isNetworkBackendConfigured)
-            AnalyticsPage(
-              onSignInRequested: _openSessionExpired,
-              onOpenAllOperations: _openOperationHistory,
-            )
-          else
-            StubPage(
-              title: l10n.analyticsTab,
-              description: l10n.stubDescription,
-              onBackHome: () => _selectSection(AppSection.home),
-            ),
-          // Goals need the authenticated backend: a goal and its ledger are
-          // server facts, and the fixture build has no account behind them.
-          if (isNetworkBackendConfigured)
-            SavingsGoalPage(onSignInRequested: _openSessionExpired)
-          else
-            StubPage(
-              title: l10n.goalsTab,
-              description: l10n.stubDescription,
-              onBackHome: () => _selectSection(AppSection.home),
-            ),
-          // Profile needs the authenticated backend: the identity and the
-          // account facts are server truth, and the fixture build has neither.
-          if (isNetworkBackendConfigured)
-            ProfilePage(
-              onSignInRequested: _openSessionExpired,
-              onCorrectOpeningDate: _openAccountBaseline,
-              onPlanCost: _openPlannedCost,
-              onManageCategories: _openCategories,
-              onOperationHistory: _openOperationHistory,
-              onBudgets: _openBudgets,
-              onCorrectTimezone: _openTimezone,
-              onTransfer: _openTransfer,
-              onOpenWallet: _openWallet,
-              onSignOut: ref.read(authControllerProvider.notifier).signOut,
-            )
-          else
-            StubPage(
-              title: l10n.profileTab,
-              description: l10n.stubDescription,
-              onBackHome: () => _selectSection(AppSection.home),
-            ),
-        ],
-      ),
-      bottomNavigationBar: AppBottomNavigation(
-        selected: _section,
-        onSelected: _selectSection,
+            if (isNetworkBackendConfigured && _section == AppSection.chat)
+              FinanceEntryPage(
+                onBackHome: () => _selectSection(AppSection.home),
+                onSignInRequested: _openSessionExpired,
+                focusSentence: _quickEntryRequested,
+                deliveryLocked:
+                    operationSyncState?.phase == OperationSyncPhase.locked,
+              )
+            else
+              StubPage(
+                title: l10n.chatTab,
+                description: l10n.stubDescription,
+                onBackHome: () => _selectSection(AppSection.home),
+              ),
+            // Analytics needs the authenticated backend: it groups committed
+            // operations, and the fixture build has none behind it.
+            if (isNetworkBackendConfigured)
+              AnalyticsPage(
+                onSignInRequested: _openSessionExpired,
+                onOpenAllOperations: _openOperationHistory,
+              )
+            else
+              StubPage(
+                title: l10n.analyticsTab,
+                description: l10n.stubDescription,
+                onBackHome: () => _selectSection(AppSection.home),
+              ),
+            // Goals need the authenticated backend: a goal and its ledger are
+            // server facts, and the fixture build has no account behind them.
+            if (isNetworkBackendConfigured)
+              SavingsGoalPage(onSignInRequested: _openSessionExpired)
+            else
+              StubPage(
+                title: l10n.goalsTab,
+                description: l10n.stubDescription,
+                onBackHome: () => _selectSection(AppSection.home),
+              ),
+            // Profile needs the authenticated backend: the identity and the
+            // account facts are server truth, and the fixture build has neither.
+            if (isNetworkBackendConfigured)
+              ProfilePage(
+                onSignInRequested: _openSessionExpired,
+                onCorrectOpeningDate: _openAccountBaseline,
+                onPlanCost: _openPlannedCost,
+                onManageCategories: _openCategories,
+                onOperationHistory: _openOperationHistory,
+                onBudgets: _openBudgets,
+                onCorrectTimezone: _openTimezone,
+                onTransfer: _openTransfer,
+                onOpenWallet: _openWallet,
+                onSignOut: ref.read(authControllerProvider.notifier).signOut,
+              )
+            else
+              StubPage(
+                title: l10n.profileTab,
+                description: l10n.stubDescription,
+                onBackHome: () => _selectSection(AppSection.home),
+              ),
+          ],
+        ),
+        bottomNavigationBar: AppBottomNavigation(
+          selected: _section,
+          onSelected: _selectSection,
+        ),
       ),
     );
   }

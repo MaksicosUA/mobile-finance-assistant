@@ -5,6 +5,11 @@
          the key that signed the installed app (ADR 0026). -->
     <uses-permission
         android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Listening through pauses (ADR 0031 amendment). Asked for the first
+         time the microphone is tapped; the phone's recognition service does
+         the recognising and the app receives text only. Refused, the voice
+         input screen is used instead, which needs no permission. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:allowBackup="false"
         android:label="@string/app_name"
@@ -59,11 +64,15 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- Finds the phone's voice input screen. No microphone permission:
-             that screen records in its own process, and only the recognised
-             text comes back (ADR 0031). -->
+        <!-- Finds the phone's voice input screen, the fallback that needs no
+             microphone permission (ADR 0031). -->
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH"/>
+        </intent>
+        <!-- Finds the recognition service the app's own listening screen
+             uses (ADR 0031 amendment). -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>

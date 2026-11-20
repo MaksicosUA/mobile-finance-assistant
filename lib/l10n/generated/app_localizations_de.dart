@@ -109,6 +109,26 @@ class AppLocalizationsDe extends AppLocalizations {
   String get voiceTypeInsteadAction => 'Schreiben';
 
   @override
+  String get voiceListeningTitle => 'Ich höre zu';
+
+  @override
+  String get voiceListeningHint =>
+      'Lass dir Zeit: Eine Pause unterbricht nicht. Wenn du fertig bist, tippe auf „Fertig“.';
+
+  @override
+  String get voiceListeningNothingYet => 'Noch nichts gehört';
+
+  @override
+  String get voiceListeningSilence =>
+      'Nach 15 Sekunden Stille hört es von selbst auf.';
+
+  @override
+  String get voiceListeningDone => 'Fertig';
+
+  @override
+  String get voiceListeningCancel => 'Abbrechen';
+
+  @override
   String get setupAccountAction => 'Konto einrichten';
 
   @override

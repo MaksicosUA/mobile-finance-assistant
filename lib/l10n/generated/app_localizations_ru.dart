@@ -107,6 +107,25 @@ class AppLocalizationsRu extends AppLocalizations {
   String get voiceTypeInsteadAction => 'Написать';
 
   @override
+  String get voiceListeningTitle => 'Слушаю';
+
+  @override
+  String get voiceListeningHint =>
+      'Говорите сколько нужно: пауза не прервёт. Когда закончите, нажмите «Готово».';
+
+  @override
+  String get voiceListeningNothingYet => 'Пока ничего не слышно';
+
+  @override
+  String get voiceListeningSilence => 'После 15 секунд тишины остановлюсь сам.';
+
+  @override
+  String get voiceListeningDone => 'Готово';
+
+  @override
+  String get voiceListeningCancel => 'Отмена';
+
+  @override
   String get setupAccountAction => 'Настроить счёт';
 
   @override

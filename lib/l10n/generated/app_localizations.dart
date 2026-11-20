@@ -276,6 +276,42 @@ abstract class AppLocalizations {
   /// **'Написать'**
   String get voiceTypeInsteadAction;
 
+  /// Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Слушаю'**
+  String get voiceListeningTitle;
+
+  /// Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Говорите сколько нужно: пауза не прервёт. Когда закончите, нажмите «Готово».'**
+  String get voiceListeningHint;
+
+  /// Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Пока ничего не слышно'**
+  String get voiceListeningNothingYet;
+
+  /// Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'После 15 секунд тишины остановлюсь сам.'**
+  String get voiceListeningSilence;
+
+  /// Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Готово'**
+  String get voiceListeningDone;
+
+  /// Voice: the app's own listening screen, which waits through pauses (ADR 0031 amendment).
+  ///
+  /// In ru, this message translates to:
+  /// **'Отмена'**
+  String get voiceListeningCancel;
+
   /// No description provided for @setupAccountAction.
   ///
   /// In ru, this message translates to:

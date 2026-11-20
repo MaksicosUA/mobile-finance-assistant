@@ -43,7 +43,11 @@ final class SpeechFailed extends SpeechResult {
 /// The recogniser is Android's voice input screen, the same one the keyboard's
 /// microphone opens. It records and recognises in its own process: the audio
 /// never enters this app or reaches our server, so there is nothing of it to
-/// keep, encrypt or delete, and the app asks for no microphone permission.
+/// keep, encrypt or delete, and this path needs no microphone permission.
+///
+/// It stops at the first pause, so it is now the fallback: the app listens
+/// through pauses with [SpeechSession] and opens this screen only when the
+/// microphone is refused or that way is unavailable (ADR 0031 amendment).
 abstract interface class SpeechInput {
   /// [languageTag] is the language to listen for, e.g. `ru-RU`; [prompt] is
   /// shown in the recogniser while it listens.

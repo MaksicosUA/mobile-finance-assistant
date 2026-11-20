@@ -107,6 +107,25 @@ class AppLocalizationsUk extends AppLocalizations {
   String get voiceTypeInsteadAction => 'Написати';
 
   @override
+  String get voiceListeningTitle => 'Слухаю';
+
+  @override
+  String get voiceListeningHint =>
+      'Говоріть скільки потрібно: пауза не перерве. Коли закінчите, натисніть «Готово».';
+
+  @override
+  String get voiceListeningNothingYet => 'Поки нічого не чути';
+
+  @override
+  String get voiceListeningSilence => 'Після 15 секунд тиші зупинюся сам.';
+
+  @override
+  String get voiceListeningDone => 'Готово';
+
+  @override
+  String get voiceListeningCancel => 'Скасувати';
+
+  @override
   String get setupAccountAction => 'Налаштувати рахунок';
 
   @override
