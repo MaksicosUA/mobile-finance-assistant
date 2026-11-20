@@ -1987,6 +1987,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String entrySentenceWalletChosen(String currency, String wallet) {
+    return 'The amount is in $currency, so the wallet is now “$wallet”.';
+  }
+
+  @override
+  String entrySentenceWalletUnclear(String currency) {
+    return 'The amount is in $currency and several wallets keep it — choose the wallet and the amount will be filled in.';
+  }
+
+  @override
   String get otherWalletsTitle => 'OTHER WALLETS';
 
   @override

@@ -1988,6 +1988,16 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
+  String entrySentenceWalletChosen(String currency, String wallet) {
+    return 'Сума в $currency — обрав гаманець «$wallet».';
+  }
+
+  @override
+  String entrySentenceWalletUnclear(String currency) {
+    return 'Сума в $currency, а гаманців у цій валюті кілька — оберіть гаманець, і сума підставиться.';
+  }
+
+  @override
   String get otherWalletsTitle => 'ІНШІ ГАМАНЦІ';
 
   @override

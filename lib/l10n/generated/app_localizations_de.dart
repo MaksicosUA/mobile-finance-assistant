@@ -2008,6 +2008,16 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String entrySentenceWalletChosen(String currency, String wallet) {
+    return 'Betrag in $currency — Konto „$wallet“ gewählt.';
+  }
+
+  @override
+  String entrySentenceWalletUnclear(String currency) {
+    return 'Betrag in $currency, mehrere Konten führen diese Währung — wähle das Konto, dann wird der Betrag übernommen.';
+  }
+
+  @override
   String get otherWalletsTitle => 'WEITERE KONTEN';
 
   @override

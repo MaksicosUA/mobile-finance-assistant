@@ -251,6 +251,165 @@ void main() {
     expect(find.textContaining('не подставил'), findsNothing);
   });
 
+  group('a sentence in another wallet\'s currency', () {
+    Future<void> say(WidgetTester tester, String sentence) async {
+      await tester.enterText(
+        find.byKey(const Key('operation-sentence')),
+        sentence,
+      );
+      await tester.tap(find.byKey(const Key('operation-sentence-parse')));
+      await tester.pumpAndSettle();
+    }
+
+    String shownWallet(WidgetTester tester) {
+      final picker = find.byKey(const Key('operation-wallet'));
+      return tester
+          .widget<DropdownButtonFormField<String>>(picker)
+          .initialValue!;
+    }
+
+    Future<void> pick(WidgetTester tester, String label) async {
+      await tester.tap(find.byKey(const Key('operation-wallet')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('moves the form to the one wallet that keeps it, and says so', (
+      tester,
+    ) async {
+      final repository = _FakeRepository(
+        wallets: const [('Евро', 'EUR'), ('Гривна', 'UAH')],
+        proposal: _proposal(amount: '280', currency: 'UAH'),
+      );
+      await _pumpPage(tester, repository: repository);
+
+      await say(tester, 'заработал сегодня 280 гривен');
+
+      expect(shownWallet(tester), _walletId(1));
+      // What the picker draws, not only what it holds: the dropdown keeps its
+      // own value, so a move it was not told about would still show euro.
+      expect(find.text('Гривна · UAH'), findsOneWidget);
+      expect(_amountText(tester), '280');
+      expect(find.textContaining('выбрал кошелёк «Гривна»'), findsOneWidget);
+      expect(find.textContaining('не подставил'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('operation-evaluate')));
+      await tester.pumpAndSettle();
+      expect(repository.draft?.accountId, _walletId(1));
+      expect(repository.draft?.currency, 'UAH');
+      expect(repository.draft?.amount, '280');
+    });
+
+    testWidgets('chooses nothing when two wallets keep it', (tester) async {
+      final repository = _FakeRepository(
+        wallets: const [('Евро', 'EUR'), ('Карта', 'UAH'), ('Наличные', 'UAH')],
+        proposal: _proposal(amount: '280', currency: 'UAH'),
+      );
+      await _pumpPage(tester, repository: repository);
+
+      await say(tester, 'заработал сегодня 280 гривен');
+
+      expect(shownWallet(tester), _walletId(0));
+      expect(_amountText(tester), isEmpty);
+      expect(
+        find.textContaining('кошельков в этой валюте несколько'),
+        findsOneWidget,
+      );
+
+      // One tap on the wallet brings the amount the sentence read.
+      await pick(tester, 'Наличные · UAH');
+      expect(shownWallet(tester), _walletId(2));
+      expect(_amountText(tester), '280');
+    });
+
+    testWidgets('a currency no wallet keeps is still refused where it is', (
+      tester,
+    ) async {
+      final repository = _FakeRepository(
+        wallets: const [('Евро', 'EUR'), ('Гривна', 'UAH')],
+        proposal: _proposal(amount: '250', currency: 'USD'),
+      );
+      await _pumpPage(tester, repository: repository);
+
+      await say(tester, 'потратил 250 долларов');
+
+      expect(shownWallet(tester), _walletId(0));
+      expect(_amountText(tester), isEmpty);
+      expect(find.textContaining('Сумма в USD, а счёт в EUR'), findsOneWidget);
+    });
+
+    testWidgets('a currency it could not name moves nothing', (tester) async {
+      final repository = _FakeRepository(
+        wallets: const [('Евро', 'EUR'), ('Гривна', 'UAH')],
+        proposal: _proposal(
+          amount: '500',
+          currency: 'UAH',
+          gaps: const [OperationParseGap.currencyNotUnderstood],
+        ),
+      );
+      await _pumpPage(tester, repository: repository);
+
+      await say(tester, 'потратил 500 ¥');
+
+      expect(shownWallet(tester), _walletId(0));
+      expect(_amountText(tester), isEmpty);
+    });
+
+    testWidgets('going back to a wallet that does not keep it takes the '
+        'amount back', (tester) async {
+      final repository = _FakeRepository(
+        wallets: const [('Евро', 'EUR'), ('Гривна', 'UAH')],
+        proposal: _proposal(amount: '280', currency: 'UAH'),
+      );
+      await _pumpPage(tester, repository: repository);
+      await say(tester, 'заработал сегодня 280 гривен');
+
+      await pick(tester, 'Евро · EUR');
+
+      // Carried across, 280 hryvnias would sit in a field labelled euro.
+      expect(shownWallet(tester), _walletId(0));
+      expect(_amountText(tester), isEmpty);
+      expect(find.textContaining('выбрал кошелёк'), findsNothing);
+
+      // Coming back is the person's choice, not the sentence's, and the form
+      // must not claim otherwise. The amount comes back with the wallet.
+      await pick(tester, 'Гривна · UAH');
+      expect(_amountText(tester), '280');
+      expect(find.textContaining('выбрал кошелёк'), findsNothing);
+    });
+
+    testWidgets('an amount the person typed goes with them', (tester) async {
+      final repository = _FakeRepository(
+        wallets: const [('Евро', 'EUR'), ('Гривна', 'UAH')],
+        proposal: _proposal(amount: '280', currency: 'UAH'),
+      );
+      await _pumpPage(tester, repository: repository);
+      await say(tester, 'заработал сегодня 280 гривен');
+
+      await tester.enterText(find.byKey(const Key('operation-amount')), '7');
+      await pick(tester, 'Евро · EUR');
+
+      expect(_amountText(tester), '7');
+    });
+
+    testWidgets('a sentence in this wallet\'s currency stays put', (
+      tester,
+    ) async {
+      final repository = _FakeRepository(
+        wallets: const [('Евро', 'EUR'), ('Гривна', 'UAH')],
+        proposal: _proposal(amount: '12.50', currency: 'EUR'),
+      );
+      await _pumpPage(tester, repository: repository);
+
+      await say(tester, 'потратил 12,50 на продукты');
+
+      expect(shownWallet(tester), _walletId(0));
+      expect(_amountText(tester), '12.50');
+      expect(find.textContaining('выбрал кошелёк'), findsNothing);
+    });
+  });
+
   testWidgets('a refused currency still leaves the date and category read', (
     tester,
   ) async {
@@ -969,6 +1128,10 @@ String _amountText(WidgetTester tester) =>
 
 void _ignore() {}
 
+/// The first wallet keeps the identifier the single-wallet tests always had.
+String _walletId(int index) =>
+    '11111111-1111-4111-8111-11111111111${index + 1}';
+
 WaitingPhrase _waitingPhrase() => WaitingPhrase(
   id: '00000000-0000-4000-8000-000000000001',
   text: 'Вчера заплатил 80 за свет',
@@ -1092,6 +1255,7 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
     this.failure,
     this.accountsFailure,
     this.walletCurrency = 'EUR',
+    this.wallets,
   }) : proposal = proposal ?? _proposal(),
        _queued = List<OperationProposal>.of(proposals ?? const []);
 
@@ -1102,6 +1266,10 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
   /// Why the account cannot be read, when it cannot — offline, say.
   final FinanceEntryFailureKind? accountsFailure;
   final String walletCurrency;
+
+  /// Name and currency of each wallet, the first the default. Null is one
+  /// wallet in [walletCurrency].
+  final List<(String, String)>? wallets;
   final List<
     ({
       String text,
@@ -1127,19 +1295,21 @@ class _FakeRepository implements FinanceEntryRepositoryClient {
         canonicalTimezone: 'Europe/Berlin',
         timezoneRevision: 1,
         accounts: [
-          FinanceAccount(
-            accountId: '11111111-1111-4111-8111-111111111111',
-            userId: '22222222-2222-4222-8222-222222222222',
-            commandId: '33333333-3333-4333-8333-333333333333',
-            name: 'Основной счёт',
-            currency: walletCurrency,
-            openingBalance: '100.00',
-            openingBalanceOn: '2026-07-01',
-            openingTimezone: 'Europe/Berlin',
-            isDefault: true,
-            confirmedAt: '2026-07-01T08:00:00Z',
-            createdAt: '2026-07-01T08:00:00Z',
-          ),
+          for (final (index, (name, currency))
+              in (wallets ?? [('Основной счёт', walletCurrency)]).indexed)
+            FinanceAccount(
+              accountId: _walletId(index),
+              userId: '22222222-2222-4222-8222-222222222222',
+              commandId: '33333333-3333-4333-8333-33333333333$index',
+              name: name,
+              currency: currency,
+              openingBalance: '100.00',
+              openingBalanceOn: '2026-07-01',
+              openingTimezone: 'Europe/Berlin',
+              isDefault: index == 0,
+              confirmedAt: '2026-07-01T08:00:00Z',
+              createdAt: '2026-07-01T08:00:00Z',
+            ),
         ],
       ),
     );

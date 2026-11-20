@@ -565,6 +565,8 @@
   "timezoneSettingsDescription": "Where a day and a month begin and end",
   "entrySentenceGapCurrency": "Currency not understood — enter the amount yourself.",
   "entrySentenceCurrencyMismatch": "The amount is in {parsed}, but the account is in {account} — so it was not filled in.",
+  "entrySentenceWalletChosen": "The amount is in {currency}, so the wallet is now “{wallet}”.",
+  "entrySentenceWalletUnclear": "The amount is in {currency} and several wallets keep it — choose the wallet and the amount will be filled in.",
   "otherWalletsTitle": "OTHER WALLETS",
   "transferTitle": "Transfer",
   "transferSettingsAction": "Transfer",
